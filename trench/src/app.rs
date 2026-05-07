@@ -2,7 +2,7 @@ use crate::config::{Config, CustomThemeConfig};
 use crate::discovery::DiscoveryMessage;
 use crate::ingestion::message::FetchMessage;
 use crate::models::*;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use ratatui::layout::Rect;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -356,6 +356,9 @@ pub struct App {
   pub discovery_palette_scroll: usize,
   /// Activity log — paper opens and discovery queries.
   pub history: Vec<crate::history::HistoryEntry>,
+  /// Latest open timestamp for each paper URL. Keeps the library time filter
+  /// on the visible-items hot path O(items) instead of O(items * history).
+  pub history_last_opened: HashMap<String, DateTime<Utc>>,
   pub history_filter: crate::history::HistoryFilter,
   pub history_selected_index: usize,
   pub history_list_offset: usize,
@@ -502,13 +505,13 @@ pub struct App {
   // True while waiting for [1]/[2] to choose which reader window gets a new tab.
   pub tab_window_prompt_active: bool,
   // Bottom pane in State 3 (summoned by Ldr+f, dismissed by q/Esc)
-  pub reader_bottom_open: bool,      // pane is visible
-  pub reader_bottom_focused: bool,   // pane has keyboard focus
-  pub reader_bottom_details: bool,   // showing details (true) or feed list (false)
-  pub reader_bottom_scroll: usize,   // scroll offset for both feed and details
+  pub reader_bottom_open: bool,    // pane is visible
+  pub reader_bottom_focused: bool, // pane has keyboard focus
+  pub reader_bottom_details: bool, // showing details (true) or feed list (false)
+  pub reader_bottom_scroll: usize, // scroll offset for both feed and details
   pub narrow_feed_details_open: bool, // State 2: description popup over reader
-  pub abstract_popup_active: bool,    // Space: quick abstract view
-  pub reader_feed_popup_selected: usize,  // selected item in bottom feed list
+  pub abstract_popup_active: bool, // Space: quick abstract view
+  pub reader_feed_popup_selected: usize, // selected item in bottom feed list
 
   // Settings buffers for chat fields
   pub settings_claude_key: String,
@@ -583,6 +586,7 @@ impl App {
       discovery_palette_selected: 0,
       discovery_palette_scroll: 0,
       history: crate::store::history::load(),
+      history_last_opened: HashMap::new(),
       history_filter: crate::history::HistoryFilter::default(),
       history_selected_index: 0,
       history_list_offset: 0,
@@ -712,7 +716,9 @@ impl App {
 
   pub fn theme(&self) -> ui_theme::Theme {
     if let Some(id) = &self.active_custom_theme_id {
-      if let Some(custom) = self.config.custom_themes.iter().find(|t| &t.id == id) {
+      if let Some(custom) =
+        self.config.custom_themes.iter().find(|t| &t.id == id)
+      {
         return custom.to_theme();
       }
     }
@@ -767,7 +773,9 @@ impl App {
 
   pub fn active_theme_name(&self) -> String {
     if let Some(id) = &self.active_custom_theme_id {
-      if let Some(custom) = self.config.custom_themes.iter().find(|t| &t.id == id) {
+      if let Some(custom) =
+        self.config.custom_themes.iter().find(|t| &t.id == id)
+      {
         return custom.name.clone();
       }
     }
@@ -907,12 +915,11 @@ impl App {
   pub fn secondary_panes_sorted(&self) -> Vec<PaneId> {
     let primary =
       if self.reader_active { PaneId::Reader } else { PaneId::Feed };
-    let mut secondaries: Vec<&PaneInfo> =
-      self
-        .panes
-        .iter()
-        .filter(|p| p.id != primary && p.is_open && p.is_focusable())
-        .collect();
+    let mut secondaries: Vec<&PaneInfo> = self
+      .panes
+      .iter()
+      .filter(|p| p.id != primary && p.is_open && p.is_focusable())
+      .collect();
     secondaries.sort_by_key(|p| (p.rect.y, p.rect.x));
     secondaries.iter().map(|p| p.id).collect()
   }
@@ -959,6 +966,16 @@ impl App {
     let needs = self.needs_redraw;
     self.needs_redraw = false;
     needs
+  }
+
+  pub fn rebuild_history_paper_index(&mut self) {
+    self.history_last_opened.clear();
+    self.history_last_opened.reserve(self.history.len());
+    for entry in &self.history {
+      if entry.kind == crate::history::HistoryKind::Paper {
+        self.history_last_opened.insert(entry.key.clone(), entry.opened_at);
+      }
+    }
   }
 
   /// True if any continuous animation or background activity is in flight
@@ -1064,13 +1081,8 @@ impl App {
               crate::history::HistoryFilter::All
             ) {
               let now = chrono::Utc::now();
-              let last_opened = self
-                .history
-                .iter()
-                .find(|e| {
-                  e.kind == crate::history::HistoryKind::Paper && e.key == item.url
-                })
-                .map(|e| e.opened_at);
+              let last_opened =
+                self.history_last_opened.get(&item.url).copied();
               match last_opened {
                 Some(t) if self.library_time_filter.matches_time(t, now) => {}
                 _ => return false,
@@ -1109,6 +1121,24 @@ impl App {
       .collect();
     *self.visible_cache.borrow_mut() = Some((self.feed_tab, indices.clone()));
     indices.iter().map(|&i| &items[i]).collect()
+  }
+
+  pub fn visible_window(&self, start: usize, end: usize) -> Vec<&FeedItem> {
+    {
+      let cache = self.visible_cache.borrow();
+      if let Some((tab, indices)) = cache.as_ref() {
+        if *tab == self.feed_tab {
+          let items = self.items_for_tab();
+          let start = start.min(indices.len());
+          let end = end.min(indices.len());
+          return indices[start..end].iter().map(|&i| &items[i]).collect();
+        }
+      }
+    }
+    let visible = self.visible_items();
+    let start = start.min(visible.len());
+    let end = end.min(visible.len());
+    visible[start..end].to_vec()
   }
 
   pub(crate) fn invalidate_visible_cache(&self) {
@@ -1256,7 +1286,8 @@ impl App {
     }
     let cursor = self.library_selected_index;
     let anchor = self.library_visual_anchor;
-    let (lo, hi) = if cursor <= anchor { (cursor, anchor) } else { (anchor, cursor) };
+    let (lo, hi) =
+      if cursor <= anchor { (cursor, anchor) } else { (anchor, cursor) };
     let visible = self.visible_items();
     self.library_selected_urls = visible
       .iter()
@@ -1281,7 +1312,8 @@ impl App {
     if self.library_selected_urls.is_empty() {
       return 0;
     }
-    let urls: Vec<String> = self.library_selected_urls.iter().cloned().collect();
+    let urls: Vec<String> =
+      self.library_selected_urls.iter().cloned().collect();
     let mut count = 0;
     for url in urls {
       for item in self.items.iter_mut() {
@@ -1325,9 +1357,7 @@ impl App {
     }
     let urls = self.tag_picker_target_urls.clone();
     let any_missing = urls.iter().any(|url| {
-      !crate::tags::for_url(&self.item_tags, url)
-        .iter()
-        .any(|t| t == &tag)
+      !crate::tags::for_url(&self.item_tags, url).iter().any(|t| t == &tag)
     });
     for url in &urls {
       if any_missing {
@@ -1346,10 +1376,7 @@ impl App {
     } else if self.discovery_loading || self.is_loading {
       QuitPopupKind::QuitWithProgress
     } else if self.chat_active
-      && self
-        .chat_ui
-        .as_ref()
-        .map_or(false, |c| !c.input.trim().is_empty())
+      && self.chat_ui.as_ref().map_or(false, |c| !c.input.trim().is_empty())
     {
       QuitPopupKind::QuitWithChat
     } else {
@@ -1378,6 +1405,9 @@ impl App {
       source,
       meta,
     );
+    if let Some(entry) = self.history.first() {
+      self.history_last_opened.insert(entry.key.clone(), entry.opened_at);
+    }
     crate::store::history::save(&self.history);
   }
 
@@ -1386,7 +1416,11 @@ impl App {
     topic: &str,
     intent: crate::discovery::intent::QueryIntent,
   ) {
-    crate::history::record_query(&mut self.history, topic.to_string(), intent.label());
+    crate::history::record_query(
+      &mut self.history,
+      topic.to_string(),
+      intent.label(),
+    );
     crate::store::history::save(&self.history);
   }
 
@@ -1719,10 +1753,7 @@ impl App {
     match ctx.pane_focus {
       RepoPane::File => {
         let path = ctx.file_path.as_deref().or(ctx.file_name.as_deref())?;
-        Some(format!(
-          "{base}/blob/{branch}/{}",
-          encode_repo_url_path(path)
-        ))
+        Some(format!("{base}/blob/{branch}/{}", encode_repo_url_path(path)))
       }
       RepoPane::Tree => {
         if let Some(node) = ctx.tree_nodes.get(ctx.tree_cursor) {
@@ -1840,12 +1871,13 @@ impl App {
     }
 
     let was_empty = self.items.is_empty();
-    let mut had_items = false;
+    let mut had_structural_item_changes = false;
+    let mut had_source_updates = false;
+    let mut had_enriched_updates = false;
 
     for msg in messages {
       match msg {
         FetchMessage::Items(new_items) => {
-          had_items = true;
           for mut item in new_items {
             // Apply any persisted workflow state.
             if let Some(state) = self.persisted_states.get(&item.url) {
@@ -1856,6 +1888,7 @@ impl App {
             // scan that fired ~50× per refresh × ~2,600 items.
             if let Some(&pos) = self.url_index.get(&item.url) {
               self.items[pos] = item;
+              had_source_updates = true;
               continue;
             }
 
@@ -1869,6 +1902,7 @@ impl App {
                   let ws = self.items[pos].workflow_state;
                   self.items[pos] = item;
                   self.items[pos].workflow_state = ws;
+                  had_source_updates = true;
                 }
                 // else: existing is already arXiv, drop the HF duplicate.
                 continue;
@@ -1883,6 +1917,56 @@ impl App {
               self.arxiv_id_index.insert(aid.to_string(), new_idx);
             }
             self.items.push(item);
+            had_structural_item_changes = true;
+            had_source_updates = true;
+          }
+        }
+        FetchMessage::EnrichedItems(new_items) => {
+          for mut item in new_items {
+            if let Some(state) = self.persisted_states.get(&item.url) {
+              item.workflow_state = *state;
+            }
+
+            if let Some(&pos) = self.url_index.get(&item.url) {
+              let workflow_state = self.items[pos].workflow_state;
+              self.items[pos] = item;
+              self.items[pos].workflow_state = workflow_state;
+              had_enriched_updates = true;
+              continue;
+            }
+
+            if let Some(aid) = arxiv_id_from_url(&item.url) {
+              if let Some(&pos) = self.arxiv_id_index.get(aid) {
+                let workflow_state = self.items[pos].workflow_state;
+                if self.items[pos].source_platform == SourcePlatform::ArXiv
+                  && item.source_platform != SourcePlatform::ArXiv
+                {
+                  if self.items[pos].github_repo.is_none() {
+                    self.items[pos].github_repo = item.github_repo.take();
+                    self.items[pos].github_owner = item.github_owner.take();
+                    self.items[pos].github_repo_name =
+                      item.github_repo_name.take();
+                  }
+                  if self.items[pos].full_content.is_none() {
+                    self.items[pos].full_content = item.full_content.take();
+                  }
+                  had_enriched_updates = true;
+                  continue;
+                }
+                self.items[pos] = item;
+                self.items[pos].workflow_state = workflow_state;
+                had_enriched_updates = true;
+                continue;
+              }
+            }
+
+            let new_idx = self.items.len();
+            self.url_index.insert(item.url.clone(), new_idx);
+            if let Some(aid) = arxiv_id_from_url(&item.url) {
+              self.arxiv_id_index.insert(aid.to_string(), new_idx);
+            }
+            self.items.push(item);
+            had_structural_item_changes = true;
           }
         }
         FetchMessage::SourceComplete(name) => {
@@ -1900,7 +1984,7 @@ impl App {
       }
     }
 
-    if had_items {
+    if had_structural_item_changes {
       self.items.sort_by(|a, b| b.published_at.cmp(&a.published_at));
       // Sort invalidated every position; indices must reflect the new order.
       self.rebuild_indices();
@@ -1911,6 +1995,14 @@ impl App {
       if was_empty {
         self.list_offset = 0;
       }
+      self.mark_dirty();
+    } else if had_source_updates {
+      self.invalidate_visible_cache();
+      crate::store::cache::queue_save(self.items.clone());
+      self.mark_dirty();
+    } else if had_enriched_updates {
+      self.invalidate_visible_cache();
+      crate::store::cache::queue_save(self.items.clone());
       self.mark_dirty();
     }
     if disconnected {
@@ -2052,8 +2144,11 @@ impl App {
   /// Library tab chips, so the panel covers sources, signals, content types,
   /// tags, and clear-all.
   pub fn filter_total_items(&self) -> usize {
-    self.filter_source_names().len() + 3 + 3
-      + crate::tags::all_tags(&self.item_tags).len() + 1
+    self.filter_source_names().len()
+      + 3
+      + 3
+      + crate::tags::all_tags(&self.item_tags).len()
+      + 1
   }
 
   /// Sorted unique source label strings derived from loaded items.
@@ -2098,14 +2193,26 @@ impl App {
     } else if c < content_start {
       match c - signals_start {
         0 => toggle_set(&mut self.active_filters.signals, SignalLevel::Primary),
-        1 => toggle_set(&mut self.active_filters.signals, SignalLevel::Secondary),
-        _ => toggle_set(&mut self.active_filters.signals, SignalLevel::Tertiary),
+        1 => {
+          toggle_set(&mut self.active_filters.signals, SignalLevel::Secondary)
+        }
+        _ => {
+          toggle_set(&mut self.active_filters.signals, SignalLevel::Tertiary)
+        }
       }
     } else if c < tags_start {
       match c - content_start {
-        0 => toggle_set(&mut self.active_filters.content_types, ContentType::Paper),
-        1 => toggle_set(&mut self.active_filters.content_types, ContentType::Article),
-        _ => toggle_set(&mut self.active_filters.content_types, ContentType::Digest),
+        0 => {
+          toggle_set(&mut self.active_filters.content_types, ContentType::Paper)
+        }
+        1 => toggle_set(
+          &mut self.active_filters.content_types,
+          ContentType::Article,
+        ),
+        _ => toggle_set(
+          &mut self.active_filters.content_types,
+          ContentType::Digest,
+        ),
       }
     } else if c < clear_all {
       let tag = tag_names[c - tags_start].clone();
@@ -2805,9 +2912,7 @@ impl App {
   }
 
   pub fn reader_secondary_active_tab_mut(&mut self) -> Option<&mut ReaderTab> {
-    self
-      .reader_secondary_tabs
-      .get_mut(self.reader_secondary_active_tab)
+    self.reader_secondary_tabs.get_mut(self.reader_secondary_active_tab)
   }
 
   pub fn reader_push_tab(
@@ -2876,13 +2981,14 @@ impl App {
     if self.reader_secondary_tabs.is_empty() {
       self.reader_secondary_push_tab(title, arxiv_id, notes_context, reader);
     } else {
-      self.reader_secondary_tabs[self.reader_secondary_active_tab] = ReaderTab {
-        title,
-        arxiv_id,
-        notes_context,
-        reader,
-        image_state: tread::ImageState::default(),
-      };
+      self.reader_secondary_tabs[self.reader_secondary_active_tab] =
+        ReaderTab {
+          title,
+          arxiv_id,
+          notes_context,
+          reader,
+          image_state: tread::ImageState::default(),
+        };
     }
   }
 
@@ -2950,7 +3056,9 @@ impl App {
     if self.reader_secondary_tabs.is_empty() {
       return true;
     }
-    if let Some(tab) = self.reader_secondary_tabs.get_mut(self.reader_secondary_active_tab) {
+    if let Some(tab) =
+      self.reader_secondary_tabs.get_mut(self.reader_secondary_active_tab)
+    {
       tab.reader.exit_voice_mode();
       tread::clear_images(&mut tab.image_state);
     }

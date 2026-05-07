@@ -562,7 +562,10 @@ fn draw_dual_reader_workspace_header(frame: &mut Frame, app: &App, area: Rect) {
     frame,
     halves[1],
     "secondary",
-    reader_tab_title(&app.reader_secondary_tabs, app.reader_secondary_active_tab),
+    reader_tab_title(
+      &app.reader_secondary_tabs,
+      app.reader_secondary_active_tab,
+    ),
     &t,
   );
 }
@@ -578,7 +581,8 @@ fn draw_reader_header_title(
     return;
   }
   let prefix = format!("{label}: ");
-  let title_w = (area.width as usize).saturating_sub(prefix.chars().count() + 2);
+  let title_w =
+    (area.width as usize).saturating_sub(prefix.chars().count() + 2);
   let line = Line::from(vec![
     Span::styled(" · ", Style::default().fg(t.text_dim).bg(t.bg_panel)),
     Span::styled(prefix, Style::default().fg(t.text_dim).bg(t.bg_panel)),
@@ -646,7 +650,10 @@ fn notes_browser_visible<'a>(
   }
 }
 
-fn notes_browser_selected_index(app: &App, side: FocusedReader) -> Option<usize> {
+fn notes_browser_selected_index(
+  app: &App,
+  side: FocusedReader,
+) -> Option<usize> {
   let current_id = app.notes_app.as_ref()?.current_note_id.as_ref()?;
   notes_browser_visible(app, side)
     .iter()
@@ -826,7 +833,8 @@ fn note_preview_meta_summary(note: &notes::Note) -> String {
   parts.push(format!("{} {noun}", note.linked_papers.len()));
   parts.push(note.updated_at.format("%Y-%m-%d").to_string());
   if !note.tags.is_empty() {
-    parts.push(note.tags.iter().take(3).cloned().collect::<Vec<_>>().join(", "));
+    parts
+      .push(note.tags.iter().take(3).cloned().collect::<Vec<_>>().join(", "));
   }
   parts.join("  ·  ")
 }
@@ -849,7 +857,8 @@ fn draw_notes_browser_list(
 
   let slots = (area.height as usize / 2).max(1);
   let selected = selected_idx.unwrap_or(0).min(notes.len().saturating_sub(1));
-  let start = selected.saturating_sub(slots / 2).min(notes.len().saturating_sub(slots));
+  let start =
+    selected.saturating_sub(slots / 2).min(notes.len().saturating_sub(slots));
   let end = (start + slots).min(notes.len());
   let selection_style = if focused {
     Style::default().bg(t.bg_selection).fg(t.text)
@@ -874,7 +883,14 @@ fn draw_notes_browser_list(
     );
     let lines = vec![
       Line::from(vec![
-        Span::styled(if is_selected { "› " } else { "  " }, if is_selected { selection_style } else { Style::default().fg(t.text_dim) }),
+        Span::styled(
+          if is_selected { "› " } else { "  " },
+          if is_selected {
+            selection_style
+          } else {
+            Style::default().fg(t.text_dim)
+          },
+        ),
         Span::styled(
           title,
           if is_selected {
@@ -885,7 +901,10 @@ fn draw_notes_browser_list(
         ),
       ]),
       Line::from(vec![
-        Span::styled("  ", if is_selected { selection_style } else { Style::default() }),
+        Span::styled(
+          "  ",
+          if is_selected { selection_style } else { Style::default() },
+        ),
         Span::styled(
           meta,
           if is_selected {
@@ -930,10 +949,13 @@ fn draw_notes_browser_preview(
     );
     return;
   };
-  let mut lines = vec![Line::from(""), Line::from(Span::styled(
-    truncate(&note.title, inner.width as usize),
-    Style::default().fg(t.header).add_modifier(Modifier::BOLD),
-  ))];
+  let mut lines = vec![
+    Line::from(""),
+    Line::from(Span::styled(
+      truncate(&note.title, inner.width as usize),
+      Style::default().fg(t.header).add_modifier(Modifier::BOLD),
+    )),
+  ];
   lines.push(Line::from(Span::styled(
     truncate(&note_preview_meta_summary(note), inner.width as usize),
     Style::default().fg(t.text_dim),
@@ -1014,12 +1036,9 @@ fn draw_notes_surface(
   };
   let content_area = rows[content_row];
 
-  let editor_active = app
-    .notes_app
-    .as_ref()
-    .is_some_and(|notes_app| {
-      notes_app.notes_state == notes::app::NotesState::Editor
-    });
+  let editor_active = app.notes_app.as_ref().is_some_and(|notes_app| {
+    notes_app.notes_state == notes::app::NotesState::Editor
+  });
   let popup_active = app
     .notes_app
     .as_ref()
@@ -1052,7 +1071,12 @@ fn draw_notes_surface(
     NotesMode::PaperNotes | NotesMode::Library => {
       let visible = notes_browser_visible(app, side);
       if visible.is_empty() {
-        draw_notes_empty_state(frame, content_area, app.notes_mode_for_side(side), theme);
+        draw_notes_empty_state(
+          frame,
+          content_area,
+          app.notes_mode_for_side(side),
+          theme,
+        );
       } else if content_area.width >= 72 {
         let chunks = Layout::horizontal([
           Constraint::Percentage(44),
@@ -1168,9 +1192,9 @@ fn draw_note_preview(
     .as_ref()
     .and_then(|notes_app| notes_app.get_current_note())
     .or_else(|| {
-      tabs
-        .get(active)
-        .and_then(|tab| app.notes_app.as_ref().and_then(|na| na.get_note(&tab.note_id)))
+      tabs.get(active).and_then(|tab| {
+        app.notes_app.as_ref().and_then(|na| na.get_note(&tab.note_id))
+      })
     });
   draw_notes_browser_preview(frame, area, selected, t);
 }
@@ -1334,7 +1358,10 @@ fn draw_main_row(frame: &mut Frame, app: &mut App, area: Rect) -> MainRowRects {
       tab.reader.resize(rows[1].width, rows[1].height);
       tread::draw(frame, rows[1], &tab.reader, &tread_theme);
       tread::after_draw(&tab.reader, &mut tab.image_state, rows[1], kitty);
-      log::debug!("draw_editor (full-width): {}ms", elapsed.elapsed().as_millis());
+      log::debug!(
+        "draw_editor (full-width): {}ms",
+        elapsed.elapsed().as_millis()
+      );
     }
     return MainRowRects {
       feed: None,
@@ -2076,8 +2103,8 @@ fn history_source_label(entry: &crate::history::HistoryEntry) -> String {
 
 fn draw_narrow_feed(frame: &mut Frame, app: &mut App, area: Rect) {
   let t = app.theme();
-  let rows = Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
-    .split(area);
+  let rows =
+    Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(area);
   let header_area = rows[0];
   let list_area = rows[1];
   if list_area.height == 0 {
@@ -2094,7 +2121,12 @@ fn draw_narrow_feed(frame: &mut Frame, app: &mut App, area: Rect) {
     if selected < offset {
       offset = selected;
     } else {
-      let vc = count_reader_feed_visible_items(&visible, offset, viewport_rows, title_w);
+      let vc = count_reader_feed_visible_items(
+        &visible,
+        offset,
+        viewport_rows,
+        title_w,
+      );
       if selected >= offset + vc {
         let mut rows_used = 0usize;
         offset = selected;
@@ -2133,7 +2165,10 @@ fn draw_narrow_feed(frame: &mut Frame, app: &mut App, area: Rect) {
       let row_rect =
         Rect { x: list_area.x, y, width: list_area.width, height: 1 };
       if is_selected {
-        frame.render_widget(Paragraph::new(line).style(t.style_selection()), row_rect);
+        frame.render_widget(
+          Paragraph::new(line).style(t.style_selection()),
+          row_rect,
+        );
       } else {
         frame.render_widget(Paragraph::new(line), row_rect);
       }
@@ -2161,9 +2196,7 @@ fn reader_feed_title_width(width: usize) -> usize {
     let kind_w = 6usize;
     let date_w = 10usize;
     let gap_w = 3usize;
-    width
-      .saturating_sub(source_w + kind_w + date_w + gap_w)
-      .max(8)
+    width.saturating_sub(source_w + kind_w + date_w + gap_w).max(8)
   }
 }
 
@@ -2186,12 +2219,16 @@ fn count_reader_feed_visible_items(
   count.max(1)
 }
 
-fn reader_feed_row_height(item: &crate::models::FeedItem, title_w: usize) -> usize {
+fn reader_feed_row_height(
+  item: &crate::models::FeedItem,
+  title_w: usize,
+) -> usize {
   reader_feed_title_lines(&item.title, title_w).len() + 1
 }
 
 fn reader_feed_title_lines(title: &str, title_w: usize) -> Vec<String> {
-  let mut raw_lines = textwrap::wrap(title, title_w).into_iter().collect::<Vec<_>>();
+  let mut raw_lines =
+    textwrap::wrap(title, title_w).into_iter().collect::<Vec<_>>();
   if raw_lines.is_empty() {
     return vec![String::new()];
   }
@@ -2234,21 +2271,14 @@ fn reader_feed_row_lines(
       } else {
         " ".repeat(source_w)
       };
-      let kind_text = if idx == 0 {
-        format!("{kind:<kind_w$}")
-      } else {
-        " ".repeat(kind_w)
-      };
-      let date_text = if idx == 0 {
-        format!("{date:<date_w$}")
-      } else {
-        " ".repeat(date_w)
-      };
+      let kind_text =
+        if idx == 0 { format!("{kind:<kind_w$}") } else { " ".repeat(kind_w) };
+      let date_text =
+        if idx == 0 { format!("{date:<date_w$}") } else { " ".repeat(date_w) };
 
       if selected {
-        let row = format!(
-          "{source_text} {kind_text} {title:<title_w$} {date_text}"
-        );
+        let row =
+          format!("{source_text} {kind_text} {title:<title_w$} {date_text}");
         return Line::from(Span::styled(row, t.style_selection_text()));
       }
 
@@ -2257,10 +2287,7 @@ fn reader_feed_row_lines(
         Span::raw(" "),
         Span::styled(kind_text, Style::default().fg(t.text_dim)),
         Span::raw(" "),
-        Span::styled(
-          format!("{title:<title_w$}"),
-          Style::default().fg(t.text),
-        ),
+        Span::styled(format!("{title:<title_w$}"), Style::default().fg(t.text)),
         Span::raw(" "),
         Span::styled(date_text, Style::default().fg(t.text_dim)),
       ])
@@ -2377,17 +2404,13 @@ fn draw_item_table(frame: &mut Frame, app: &mut App, area: Rect) {
   // ── Auto scroll tracking — item-count-based ───────────────────────────────
   // Count and visible_count computed in a scoped borrow so list_offset can be
   // mutated afterwards without a live reference into app.items.
-  let (total_items_pre, visible_count) = {
-    let v = app.visible_items();
-    let total = v.len();
-    let vc = count_visible_items(
-      &v,
-      app.active_list_offset(),
-      viewport_rows,
-      title_wrap_w,
-    );
-    (total, vc)
-  };
+  let total_items_pre = app.visible_count();
+  let visible_count = count_visible_items_from_app(
+    app,
+    app.active_list_offset(),
+    viewport_rows,
+    title_wrap_w,
+  );
 
   let mut list_offset = app.active_list_offset();
   let selected_index = app.active_selected_index();
@@ -2405,15 +2428,14 @@ fn draw_item_table(frame: &mut Frame, app: &mut App, area: Rect) {
   app.set_active_list_offset(list_offset);
 
   // Now get the full visible slice for rendering.
-  let visible = app.visible_items();
-  let total_items = visible.len();
+  let total_items = total_items_pre;
 
   // ── Slice to visible window — trust app.list_offset as first visible item ─
   // Take viewport_rows + 2 extra so the last row is never clipped even when
   // an item spans 2 rows.
   let start = app.active_list_offset().min(total_items.saturating_sub(1));
   let end = (start + viewport_rows + 2).min(total_items);
-  let window = &visible[start..end];
+  let window = app.visible_window(start, end);
 
   // ── Single textwrap pass over visible window only ─────────────────────────
   // Produces (row_height, title_lines) together — no second wrap call needed.
@@ -3772,7 +3794,8 @@ fn footer_command_line(app: &App) -> Line<'static> {
     } else {
       FocusedReader::Primary
     };
-    spans.push(Span::styled(app.notes_mode_for_side(side).footer_label(), accent));
+    spans
+      .push(Span::styled(app.notes_mode_for_side(side).footer_label(), accent));
     let keys = match app.notes_mode_for_side(side) {
       NotesMode::Capture => {
         ": [ / ] modes | n/Enter create | Ldr+n hide | ? help"
@@ -4210,8 +4233,8 @@ fn draw_bottom_pane_details(frame: &mut Frame, app: &App, area: Rect) {
   let items = app.visible_items();
   let Some(item) = items.get(sel) else { return };
 
-  let rows = Layout::vertical([Constraint::Length(3), Constraint::Min(0)])
-    .split(area);
+  let rows =
+    Layout::vertical([Constraint::Length(3), Constraint::Min(0)]).split(area);
   let title = Line::from(Span::styled(
     item.title.clone(),
     Style::default().fg(t.text).add_modifier(Modifier::BOLD),
@@ -4246,8 +4269,8 @@ fn draw_bottom_pane_details(frame: &mut Frame, app: &App, area: Rect) {
 fn draw_bottom_pane_feed(frame: &mut Frame, app: &mut App, area: Rect) {
   let t = app.theme();
   let sel = app.reader_feed_popup_selected;
-  let rows = Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
-    .split(area);
+  let rows =
+    Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(area);
   let header_area = rows[0];
   let list_area = rows[1];
   let viewport_rows = list_area.height as usize;
@@ -4273,11 +4296,8 @@ fn draw_bottom_pane_feed(frame: &mut Frame, app: &mut App, area: Rect) {
 
   let items = app.visible_items();
   if items.is_empty() {
-    let empty = if app.search_query.is_empty() {
-      "No items"
-    } else {
-      "No matches"
-    };
+    let empty =
+      if app.search_query.is_empty() { "No items" } else { "No matches" };
     frame.render_widget(
       Paragraph::new(empty)
         .alignment(Alignment::Center)
@@ -4287,12 +4307,7 @@ fn draw_bottom_pane_feed(frame: &mut Frame, app: &mut App, area: Rect) {
     return;
   }
 
-  for (i, item) in items
-    .iter()
-    .enumerate()
-    .skip(offset)
-    .take(viewport_rows)
-  {
+  for (i, item) in items.iter().enumerate().skip(offset).take(viewport_rows) {
     let is_selected = i == sel;
     let row_y = list_area.y + (i - offset) as u16;
     let row_rect = Rect::new(list_area.x, row_y, list_area.width, 1);
@@ -4309,7 +4324,10 @@ fn draw_bottom_pane_feed(frame: &mut Frame, app: &mut App, area: Rect) {
   }
 }
 
-fn drawer_feed_header_line(width: usize, t: &crate::theme::Theme) -> Line<'static> {
+fn drawer_feed_header_line(
+  width: usize,
+  t: &crate::theme::Theme,
+) -> Line<'static> {
   if width < 34 {
     return Line::from(Span::styled(
       "Title",
@@ -4321,9 +4339,7 @@ fn drawer_feed_header_line(width: usize, t: &crate::theme::Theme) -> Line<'stati
   let kind_w = 6usize;
   let date_w = 10usize;
   let gap_w = 3usize;
-  let title_w = width
-    .saturating_sub(source_w + kind_w + date_w + gap_w)
-    .max(8);
+  let title_w = width.saturating_sub(source_w + kind_w + date_w + gap_w).max(8);
 
   Line::from(vec![
     Span::styled(
@@ -4368,9 +4384,7 @@ fn drawer_feed_row_line(
   let kind_w = 6usize;
   let date_w = 10usize;
   let gap_w = 3usize;
-  let title_w = width
-    .saturating_sub(source_w + kind_w + date_w + gap_w)
-    .max(8);
+  let title_w = width.saturating_sub(source_w + kind_w + date_w + gap_w).max(8);
 
   let source = truncate_str(&feed_source_label(item), source_w);
   let kind = truncate_str(item.content_type.short_label(), kind_w);
@@ -4385,25 +4399,13 @@ fn drawer_feed_row_line(
   }
 
   Line::from(vec![
-    Span::styled(
-      format!("{source:<source_w$}"),
-      Style::default().fg(t.accent),
-    ),
+    Span::styled(format!("{source:<source_w$}"), Style::default().fg(t.accent)),
     Span::raw(" "),
-    Span::styled(
-      format!("{kind:<kind_w$}"),
-      Style::default().fg(t.text_dim),
-    ),
+    Span::styled(format!("{kind:<kind_w$}"), Style::default().fg(t.text_dim)),
     Span::raw(" "),
-    Span::styled(
-      format!("{title:<title_w$}"),
-      Style::default().fg(t.text),
-    ),
+    Span::styled(format!("{title:<title_w$}"), Style::default().fg(t.text)),
     Span::raw(" "),
-    Span::styled(
-      format!("{date:<date_w$}"),
-      Style::default().fg(t.text_dim),
-    ),
+    Span::styled(format!("{date:<date_w$}"), Style::default().fg(t.text_dim)),
   ])
 }
 
@@ -5600,15 +5602,16 @@ fn h_margin(r: Rect, margin: u16) -> Rect {
 
 /// Count how many items (starting from `list_offset`) fit in `viewport_rows`
 /// screen rows, including one spacer row between feed items.
-fn count_visible_items(
-  items: &[&crate::models::FeedItem],
+fn count_visible_items_from_app(
+  app: &App,
   list_offset: usize,
   viewport_rows: usize,
   title_wrap_w: usize,
 ) -> usize {
   let mut rows_used = 0usize;
   let mut count = 0usize;
-  for item in items.iter().skip(list_offset) {
+  for idx in list_offset..app.visible_count() {
+    let Some(item) = app.visible_get(idx) else { break };
     let item_height = if item.title.len() > title_wrap_w { 3 } else { 2 };
     if rows_used + item_height > viewport_rows {
       break;
@@ -5803,10 +5806,7 @@ const HELP_SECTIONS: &[(&str, &[(&str, &str)])] = &[
       ("? / Ldr+?", "This help screen"),
       ("Ldr+q", "Quit application"),
       ("Ldr+s", "Open settings"),
-      (
-        "Reader",
-        "Ldr+Enter popup · Ldr+f reader feed/drawer · Ldr+Esc back",
-      ),
+      ("Reader", "Ldr+Enter popup · Ldr+f reader feed/drawer · Ldr+Esc back"),
       ("Ldr+n", "Open notes from current context"),
       ("Ldr+c", "Toggle chat panel"),
       ("Ldr+z", "Move chat top / bottom"),

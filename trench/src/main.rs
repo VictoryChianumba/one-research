@@ -120,10 +120,7 @@ mod panic_msg_tests {
       .recv_timeout(std::time::Duration::from_secs(1))
       .expect("receiver should get the panic-routed Err");
     match received {
-      Err(s) => assert!(
-        s.contains("simulated worker failure"),
-        "got: {s}"
-      ),
+      Err(s) => assert!(s.contains("simulated worker failure"), "got: {s}"),
       Ok(n) => panic!("expected Err, got Ok({n})"),
     }
   }
@@ -162,14 +159,8 @@ fn run_source<F>(
   log::info!("source {name}: starting fetch");
   match fetch_fn() {
     Ok(items) => {
-      log::info!(
-        "source {name}: completed, {} items",
-        items.len()
-      );
-      all_items
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .extend(items.clone());
+      log::info!("source {name}: completed, {} items", items.len());
+      all_items.lock().unwrap_or_else(|e| e.into_inner()).extend(items.clone());
       let _ = tx.send(FetchMessage::Items(items));
       let _ = tx.send(FetchMessage::SourceComplete(name.to_string()));
     }
@@ -184,15 +175,11 @@ fn run_source<F>(
 /// kill its siblings. Routes the panic to a SourceError + SourceComplete
 /// pair so the loading-spinner clears and the UI surfaces the error.
 /// Reuses the W1 `panic_msg` helper.
-fn run_source_protected<F>(
-  name: &str,
-  tx: &mpsc::Sender<FetchMessage>,
-  body: F,
-) where
+fn run_source_protected<F>(name: &str, tx: &mpsc::Sender<FetchMessage>, body: F)
+where
   F: FnOnce(),
 {
-  let outcome =
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(body));
+  let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(body));
   if let Err(payload) = outcome {
     let msg = panic_msg(payload);
     log::error!("source {name}: thread panicked — {msg}");
@@ -260,11 +247,9 @@ fn spawn_fetch(tx: mpsc::Sender<FetchMessage>, config: config::Config) {
       // underlying Mutex / closure / Vec / Option are not).
       let all_items_ref = &all_items;
       let enabled_ref = &enabled;
-      let arxiv_categories: &[String] =
-        &config.sources.arxiv_categories;
+      let arxiv_categories: &[String] = &config.sources.arxiv_categories;
       let core_key: Option<&str> = config.core_api_key.as_deref();
-      let custom_feeds: &[config::CustomFeed] =
-        &config.sources.custom_feeds;
+      let custom_feeds: &[config::CustomFeed] = &config.sources.custom_feeds;
 
       // Concurrency groups:
       //   A — arxiv-family (sequential within: arxiv → huggingface),
@@ -293,9 +278,8 @@ fn spawn_fetch(tx: mpsc::Sender<FetchMessage>, config: config::Config) {
               );
             } else {
               log::info!("source huggingface: disabled — skipping");
-              let _ = tx_a.send(FetchMessage::SourceComplete(
-                "huggingface".to_string(),
-              ));
+              let _ = tx_a
+                .send(FetchMessage::SourceComplete("huggingface".to_string()));
             }
           });
         });
@@ -313,9 +297,8 @@ fn spawn_fetch(tx: mpsc::Sender<FetchMessage>, config: config::Config) {
               );
             } else {
               log::info!("source openreview: disabled — skipping");
-              let _ = tx_b.send(FetchMessage::SourceComplete(
-                "openreview".to_string(),
-              ));
+              let _ = tx_b
+                .send(FetchMessage::SourceComplete("openreview".to_string()));
             }
           });
         });
@@ -326,16 +309,14 @@ fn spawn_fetch(tx: mpsc::Sender<FetchMessage>, config: config::Config) {
           run_source_protected("core", &tx_c, || {
             if !enabled_ref("core") {
               log::info!("source core: disabled — skipping");
-              let _ = tx_c
-                .send(FetchMessage::SourceComplete("core".to_string()));
+              let _ =
+                tx_c.send(FetchMessage::SourceComplete("core".to_string()));
               return;
             }
             let Some(key) = core_key else {
-              log::info!(
-                "source core: no API key configured — skipping"
-              );
-              let _ = tx_c
-                .send(FetchMessage::SourceComplete("core".to_string()));
+              log::info!("source core: no API key configured — skipping");
+              let _ =
+                tx_c.send(FetchMessage::SourceComplete("core".to_string()));
               return;
             };
             run_source("core", &tx_c, all_items_ref, || {
@@ -353,8 +334,8 @@ fn spawn_fetch(tx: mpsc::Sender<FetchMessage>, config: config::Config) {
             run_source_protected(name, &tx_d, || {
               if !enabled_ref(name) {
                 log::info!("source {name}: disabled — skipping");
-                let _ = tx_d
-                  .send(FetchMessage::SourceComplete(name.to_string()));
+                let _ =
+                  tx_d.send(FetchMessage::SourceComplete(name.to_string()));
                 return;
               }
               run_source(name, &tx_d, all_items_ref, || {
@@ -383,9 +364,8 @@ fn spawn_fetch(tx: mpsc::Sender<FetchMessage>, config: config::Config) {
       });
 
       // All scope threads have joined; recover ownership from the Mutex.
-      let mut all_items = all_items
-        .into_inner()
-        .unwrap_or_else(|e| e.into_inner());
+      let mut all_items =
+        all_items.into_inner().unwrap_or_else(|e| e.into_inner());
 
       log::info!(
         "background: {} total items collected across all sources",
@@ -405,7 +385,7 @@ fn spawn_fetch(tx: mpsc::Sender<FetchMessage>, config: config::Config) {
         "ingestion complete: {with_repo}/{} items have github_repo set",
         all_items.len()
       );
-      let _ = tx.send(FetchMessage::Items(all_items));
+      let _ = tx.send(FetchMessage::EnrichedItems(all_items));
       let _ = tx.send(FetchMessage::SourceComplete("enriching".to_string()));
       let _ = tx.send(FetchMessage::AllComplete);
     }));
@@ -429,10 +409,9 @@ pub(crate) fn spawn_discovery(
 ) {
   std::thread::spawn(move || {
     let tx_panic = tx.clone();
-    let result =
-      std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let _ = tx.send(discover_feed(&url));
-      }));
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+      let _ = tx.send(discover_feed(&url));
+    }));
     if let Err(payload) = result {
       let msg = panic_msg(payload);
       log::error!("spawn_discovery: thread panicked — {msg}");
@@ -665,7 +644,13 @@ pub(crate) fn spawn_ai_discovery(
     format!("Searching [{}]…", intent.label())
   };
 
-  discovery::pipeline::spawn_discovery(topic, config, tx, prior_history, intent);
+  discovery::pipeline::spawn_discovery(
+    topic,
+    config,
+    tx,
+    prior_history,
+    intent,
+  );
 }
 
 /// Like do_refresh, but always runs — reloads config from disk, abandons any
@@ -731,8 +716,10 @@ fn handle_mouse(
         match hovered {
           Some(PaneId::Details) => {}
           Some(PaneId::Notes) => {
-            if let Some(note_id) =
-              app.notes_tabs.get(app.notes_active_tab).map(|t| t.note_id.clone())
+            if let Some(note_id) = app
+              .notes_tabs
+              .get(app.notes_active_tab)
+              .map(|t| t.note_id.clone())
             {
               if let Some(notes_app) = app.notes_app.as_mut() {
                 notes_app.focus_note(&note_id);
@@ -776,8 +763,10 @@ fn handle_mouse(
         match hovered {
           Some(PaneId::Details) => {}
           Some(PaneId::Notes) => {
-            if let Some(note_id) =
-              app.notes_tabs.get(app.notes_active_tab).map(|t| t.note_id.clone())
+            if let Some(note_id) = app
+              .notes_tabs
+              .get(app.notes_active_tab)
+              .map(|t| t.note_id.clone())
             {
               if let Some(notes_app) = app.notes_app.as_mut() {
                 notes_app.focus_note(&note_id);
@@ -842,8 +831,10 @@ fn handle_mouse(
           PaneId::Reader | PaneId::Notes => {
             app.focused_reader = FocusedReader::Primary;
             if pane == PaneId::Notes {
-              if let Some(note_id) =
-                app.notes_tabs.get(app.notes_active_tab).map(|t| t.note_id.clone())
+              if let Some(note_id) = app
+                .notes_tabs
+                .get(app.notes_active_tab)
+                .map(|t| t.note_id.clone())
               {
                 if let Some(notes_app) = app.notes_app.as_mut() {
                   notes_app.focus_note(&note_id);
@@ -884,10 +875,9 @@ pub(crate) fn spawn_fulltext_fetch(
 ) {
   std::thread::spawn(move || {
     let tx_panic = tx.clone();
-    let result =
-      std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let _ = tx.send(ingestion::fulltext::fetch(&item));
-      }));
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+      let _ = tx.send(ingestion::fulltext::fetch(&item));
+    }));
     if let Err(payload) = result {
       let msg = panic_msg(payload);
       log::error!("spawn_fulltext_fetch: thread panicked — {msg}");
@@ -904,21 +894,20 @@ pub(crate) fn spawn_repo_open(
 ) {
   std::thread::spawn(move || {
     let tx_panic = tx.clone();
-    let result =
-      std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let branch = match github::get_default_branch(&owner, &repo, &token) {
-          Err(e) => {
-            let _ = tx.send(RepoFetchResult::RepoOpened {
-              branch: String::new(),
-              tree: Err(e),
-            });
-            return;
-          }
-          Ok(b) => b,
-        };
-        let tree = github::fetch_tree_dir(&owner, &repo, &branch, "", &token);
-        let _ = tx.send(RepoFetchResult::RepoOpened { branch, tree });
-      }));
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+      let branch = match github::get_default_branch(&owner, &repo, &token) {
+        Err(e) => {
+          let _ = tx.send(RepoFetchResult::RepoOpened {
+            branch: String::new(),
+            tree: Err(e),
+          });
+          return;
+        }
+        Ok(b) => b,
+      };
+      let tree = github::fetch_tree_dir(&owner, &repo, &branch, "", &token);
+      let _ = tx.send(RepoFetchResult::RepoOpened { branch, tree });
+    }));
     if let Err(payload) = result {
       let msg = panic_msg(payload);
       log::error!("spawn_repo_open: thread panicked — {msg}");
@@ -1048,6 +1037,7 @@ fn migrate_legacy_config_dir() {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+  let startup_t0 = std::time::Instant::now();
   migrate_legacy_config_dir();
 
   let log_level = if std::env::var_os("TRENCH_DEBUG_LOG").is_some() {
@@ -1059,7 +1049,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path = home.join(".config/trench/trench.log");
     std::fs::create_dir_all(path.parent()?).ok()?;
     // Truncate on each startup — prevents unbounded growth from filling disk.
-    std::fs::OpenOptions::new().create(true).write(true).truncate(true).open(&path).ok()
+    std::fs::OpenOptions::new()
+      .create(true)
+      .write(true)
+      .truncate(true)
+      .open(&path)
+      .ok()
   });
   match log_file {
     Some(f) => {
@@ -1124,21 +1119,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   let mut terminal = Terminal::new(backend)?;
 
   let mut app = App::new();
+  log::debug!("startup: App::new {}ms", startup_t0.elapsed().as_millis());
 
   // Load config.
+  let t = std::time::Instant::now();
   let cfg = config::Config::load();
   app.github_token = cfg.github_token.clone();
   app.active_theme = cfg.theme;
   app.active_custom_theme_id = cfg.active_custom_theme_id.clone();
   app.config = cfg;
   app.reconcile_custom_theme_selection();
+  log::debug!("startup: config load {}ms", t.elapsed().as_millis());
 
   // Load persisted workflow states and UI state.
+  let t = std::time::Instant::now();
   app.persisted_states = store::load();
   let ui = store::load_ui();
-  app.last_read        = ui.last_read;
+  app.last_read = ui.last_read;
   app.last_read_source = ui.last_read_source;
-  app.notes_tabs       = ui.notes_tabs;
+  app.notes_tabs = ui.notes_tabs;
   // Clamp in case ui.json was written with a tab count that has since shrunk.
   app.notes_active_tab =
     ui.notes_active_tab.min(app.notes_tabs.len().saturating_sub(1));
@@ -1146,8 +1145,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   app.secondary_notes_active_tab = ui
     .secondary_notes_active_tab
     .min(app.secondary_notes_tabs.len().saturating_sub(1));
+  log::debug!("startup: state/ui load {}ms", t.elapsed().as_millis());
 
   // 1. Load cache immediately → populate app.items.
+  let t = std::time::Instant::now();
   let cached = store::cache::load();
   if !cached.is_empty() {
     app.items = cached;
@@ -1157,8 +1158,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   // batch. Same for discovery_items, which were loaded in App::new.
   app.rebuild_indices();
   app.rebuild_discovery_indices();
+  log::debug!(
+    "startup: cache load + index rebuild {}ms ({} cached items)",
+    t.elapsed().as_millis(),
+    app.items.len()
+  );
 
   // 2. Apply persisted states to cached items.
+  let t = std::time::Instant::now();
   for item in &mut app.items {
     if let Some(state) = app.persisted_states.get(&item.url) {
       item.workflow_state = *state;
@@ -1169,6 +1176,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
       item.workflow_state = *state;
     }
   }
+  app.rebuild_history_paper_index();
+  log::debug!(
+    "startup: persisted state apply + history index {}ms",
+    t.elapsed().as_millis()
+  );
 
   app.list_offset = 0;
 
@@ -1197,6 +1209,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   }
 
   // 3. Start the TUI loop.
+  let mut first_draw_logged = false;
   loop {
     // Drain any pending fetch results before drawing. process_incoming +
     // process_incoming_discovery internally call mark_dirty when state
@@ -1285,23 +1298,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                       "tread::fetch_paper failed for {id}, using fetcher result: {e}"
                     );
                     (
-                      notes_context
-                        .as_ref()
-                        .map(|ctx| ctx.paper.id.clone()),
+                      notes_context.as_ref().map(|ctx| ctx.paper.id.clone()),
                       fetched_paper,
                     )
                   }
                 }
               } else {
                 (
-                  notes_context
-                    .as_ref()
-                    .map(|ctx| ctx.paper.id.clone()),
+                  notes_context.as_ref().map(|ctx| ctx.paper.id.clone()),
                   fetched_paper,
                 )
               };
               let reader = tread::Reader::init(
-                paper, None, arxiv_id.clone(), 80, 24, kitty_supported,
+                paper,
+                None,
+                arxiv_id.clone(),
+                80,
+                24,
+                kitty_supported,
                 Some(app.voice_controller.clone()),
               );
               if app.fulltext_for_secondary {
@@ -1370,7 +1384,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
           match result {
             Ok(paper) => {
               let reader = tread::Reader::init(
-                paper, None, None, 80, 24, false,
+                paper,
+                None,
+                None,
+                80,
+                24,
+                false,
                 Some(app.voice_controller.clone()),
               );
               app.reader_popup_editor = Some(reader);
@@ -1396,7 +1415,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(std::sync::mpsc::TryRecvError::Empty) => {}
       }
     }
-
 
     if let Some(rx) = app.repo_fetch_rx.as_ref() {
       let t = std::time::Instant::now();
@@ -1444,6 +1462,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
       let t_draw = std::time::Instant::now();
       terminal.draw(|frame| ui::draw(frame, &mut app))?;
       let draw_ms = t_draw.elapsed().as_millis();
+      if !first_draw_logged {
+        log::debug!(
+          "startup: first frame ready in {}ms",
+          startup_t0.elapsed().as_millis()
+        );
+        first_draw_logged = true;
+      }
       if draw_ms > 16 {
         log::debug!("terminal.draw took {}ms (slow frame)", draw_ms);
       }
@@ -1543,11 +1568,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   store::cache::flush_blocking();
 
   store::save_ui(&store::UiState {
-    last_read:        app.last_read.clone(),
+    last_read: app.last_read.clone(),
     last_read_source: app.last_read_source.clone(),
-    notes_tabs:       app.notes_tabs.clone(),
+    notes_tabs: app.notes_tabs.clone(),
     notes_active_tab: app.notes_active_tab,
-    secondary_notes_tabs:       app.secondary_notes_tabs.clone(),
+    secondary_notes_tabs: app.secondary_notes_tabs.clone(),
     secondary_notes_active_tab: app.secondary_notes_active_tab,
   });
 

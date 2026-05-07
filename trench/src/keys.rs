@@ -120,18 +120,11 @@ pub fn dispatch(key: KeyEvent, app: &mut App) {
     && reader_pane_focused(app)
   {
     let reader_action = if app.reader_popup_active {
-      app
-        .reader_popup_editor
-        .as_mut()
-        .map(|r| r.handle_event(Event::Key(key)))
+      app.reader_popup_editor.as_mut().map(|r| r.handle_event(Event::Key(key)))
     } else if app.focused_pane == PaneId::SecondaryReader {
-      app
-        .reader_secondary_editor_mut()
-        .map(|r| r.handle_event(Event::Key(key)))
+      app.reader_secondary_editor_mut().map(|r| r.handle_event(Event::Key(key)))
     } else {
-      app
-        .reader_editor_mut()
-        .map(|r| r.handle_event(Event::Key(key)))
+      app.reader_editor_mut().map(|r| r.handle_event(Event::Key(key)))
     };
     drop(reader_action);
     return;
@@ -197,13 +190,10 @@ fn is_text_entry_context(app: &App) -> bool {
   if app.chat_active && app.focused_pane == PaneId::Chat {
     return true;
   }
-  if app.notes_active
-    && app.focused_pane == PaneId::Notes
-  {
+  if app.notes_active && app.focused_pane == PaneId::Notes {
     return true;
   }
-  if app.secondary_notes_active && app.focused_pane == PaneId::SecondaryNotes
-  {
+  if app.secondary_notes_active && app.focused_pane == PaneId::SecondaryNotes {
     return true;
   }
   app.custom_theme_editor.as_ref().is_some_and(|editor| {
@@ -461,10 +451,9 @@ fn visible_note_ids(app: &App, side: FocusedReader) -> Vec<String> {
   };
   match app.notes_mode_for_side(side) {
     NotesMode::Capture => Vec::new(),
-    NotesMode::Library => notes_app
-      .get_active_notes()
-      .map(|note| note.note_id.clone())
-      .collect(),
+    NotesMode::Library => {
+      notes_app.get_active_notes().map(|note| note.note_id.clone()).collect()
+    }
     NotesMode::PaperNotes => {
       let Some(context) = app.notes_context_for_side(side) else {
         return Vec::new();
@@ -493,7 +482,9 @@ fn ensure_notes_browser_selection(app: &mut App, side: FocusedReader) {
   }
 
   let current = notes_app.current_note_id.clone();
-  if current.as_ref().is_some_and(|id| visible_ids.iter().any(|visible| visible == id))
+  if current
+    .as_ref()
+    .is_some_and(|id| visible_ids.iter().any(|visible| visible == id))
   {
     return;
   }
@@ -517,10 +508,9 @@ fn sync_notes_tabs_for_paper_mode(
       FocusedReader::Primary => {
         app.notes_tabs.iter().any(|tab| &tab.note_id == note_id)
       }
-      FocusedReader::Secondary => app
-        .secondary_notes_tabs
-        .iter()
-        .any(|tab| &tab.note_id == note_id),
+      FocusedReader::Secondary => {
+        app.secondary_notes_tabs.iter().any(|tab| &tab.note_id == note_id)
+      }
     };
     if exists {
       continue;
@@ -543,7 +533,10 @@ fn sync_notes_tabs_for_paper_mode(
   }
 }
 
-fn sync_notes_tab_selection_to_current_note(app: &mut App, side: FocusedReader) {
+fn sync_notes_tab_selection_to_current_note(
+  app: &mut App,
+  side: FocusedReader,
+) {
   let current_id = app
     .notes_app
     .as_ref()
@@ -630,7 +623,11 @@ fn begin_capture_note(app: &mut App, side: FocusedReader) {
   notes_app.apply_initial_focus();
 }
 
-fn select_notes_browser_index(app: &mut App, side: FocusedReader, index: usize) {
+fn select_notes_browser_index(
+  app: &mut App,
+  side: FocusedReader,
+  index: usize,
+) {
   let visible_ids = visible_note_ids(app, side);
   let Some(note_id) = visible_ids.get(index).cloned() else {
     return;
@@ -676,8 +673,8 @@ fn move_notes_browser_selection(
     (current_idx as isize + delta * page_size as isize)
       .clamp(0, (visible_ids.len() - 1) as isize) as usize
   } else {
-    (current_idx as isize + delta)
-      .clamp(0, (visible_ids.len() - 1) as isize) as usize
+    (current_idx as isize + delta).clamp(0, (visible_ids.len() - 1) as isize)
+      as usize
   };
 
   select_notes_browser_index(app, side, target);
@@ -703,11 +700,15 @@ fn mutate_note_links_for_context(
   let already_linked =
     note.linked_papers.iter().any(|paper| paper.id == context.paper.id);
   if detach && !already_linked {
-    app.set_notification("Current paper is not linked to this note.".to_string());
+    app.set_notification(
+      "Current paper is not linked to this note.".to_string(),
+    );
     return;
   }
   if !detach && already_linked {
-    app.set_notification("Current paper is already linked to this note.".to_string());
+    app.set_notification(
+      "Current paper is already linked to this note.".to_string(),
+    );
     return;
   }
 
@@ -903,32 +904,26 @@ fn find_item_by_url<'a>(
   app: &'a App,
   url: &str,
 ) -> Option<&'a crate::models::FeedItem> {
-  app
-    .url_index
-    .get(url)
-    .and_then(|&idx| app.items.get(idx))
-    .or_else(|| {
-      app
-        .discovery_url_index
-        .get(url)
-        .and_then(|&idx| app.discovery_items.get(idx))
-    })
+  app.url_index.get(url).and_then(|&idx| app.items.get(idx)).or_else(|| {
+    app
+      .discovery_url_index
+      .get(url)
+      .and_then(|&idx| app.discovery_items.get(idx))
+  })
 }
 
 fn find_item_by_arxiv_id<'a>(
   app: &'a App,
   arxiv_id: &str,
 ) -> Option<&'a crate::models::FeedItem> {
-  app
-    .arxiv_id_index
-    .get(arxiv_id)
-    .and_then(|&idx| app.items.get(idx))
-    .or_else(|| {
+  app.arxiv_id_index.get(arxiv_id).and_then(|&idx| app.items.get(idx)).or_else(
+    || {
       app
         .discovery_arxiv_id_index
         .get(arxiv_id)
         .and_then(|&idx| app.discovery_items.get(idx))
-    })
+    },
+  )
 }
 
 fn notes_context_from_history_entry(
@@ -976,7 +971,9 @@ fn resolve_notes_paper_context(
 ) -> Option<crate::app::NotesContext> {
   match app.focused_pane {
     PaneId::Reader => app.reader_notes_context(FocusedReader::Primary),
-    PaneId::SecondaryReader => app.reader_notes_context(FocusedReader::Secondary),
+    PaneId::SecondaryReader => {
+      app.reader_notes_context(FocusedReader::Secondary)
+    }
     PaneId::Notes | PaneId::SecondaryNotes => app
       .notes_context_for_side(side)
       .cloned()
@@ -1456,10 +1453,8 @@ fn handle_notes_pane(key: KeyEvent, app: &mut App) -> bool {
   };
   sync_notes_app_to_side(app, side);
   log::debug!("routing to notes pane");
-  let allows_shell_shortcuts = app
-    .notes_app
-    .as_ref()
-    .is_some_and(notes_shell_shortcuts_allowed);
+  let allows_shell_shortcuts =
+    app.notes_app.as_ref().is_some_and(notes_shell_shortcuts_allowed);
   if allows_shell_shortcuts {
     if let Some(notes_app) = app.notes_app.as_mut() {
       notes_app.notes_state = notes::app::NotesState::List;
@@ -1473,15 +1468,21 @@ fn handle_notes_pane(key: KeyEvent, app: &mut App) -> bool {
         cycle_notes_mode(app, side, 1);
         return true;
       }
-      KeyCode::Char('a') if app.notes_mode_for_side(side) != NotesMode::Capture => {
+      KeyCode::Char('a')
+        if app.notes_mode_for_side(side) != NotesMode::Capture =>
+      {
         mutate_note_links_for_context(app, side, false);
         return true;
       }
-      KeyCode::Char('x') if app.notes_mode_for_side(side) != NotesMode::Capture => {
+      KeyCode::Char('x')
+        if app.notes_mode_for_side(side) != NotesMode::Capture =>
+      {
         mutate_note_links_for_context(app, side, true);
         return true;
       }
-      KeyCode::Char('n') if app.notes_mode_for_side(side) == NotesMode::Capture => {
+      KeyCode::Char('n')
+        if app.notes_mode_for_side(side) == NotesMode::Capture =>
+      {
         begin_capture_note(app, side);
         return true;
       }
@@ -1501,11 +1502,15 @@ fn handle_notes_pane(key: KeyEvent, app: &mut App) -> bool {
         move_notes_browser_selection(app, side, -1, 1, None);
         return true;
       }
-      KeyCode::Char('g') if app.notes_mode_for_side(side) != NotesMode::Capture => {
+      KeyCode::Char('g')
+        if app.notes_mode_for_side(side) != NotesMode::Capture =>
+      {
         move_notes_browser_selection(app, side, 0, 1, Some(0));
         return true;
       }
-      KeyCode::Char('G') if app.notes_mode_for_side(side) != NotesMode::Capture => {
+      KeyCode::Char('G')
+        if app.notes_mode_for_side(side) != NotesMode::Capture =>
+      {
         move_notes_browser_selection(app, side, 0, 1, Some(usize::MAX));
         return true;
       }
@@ -1515,7 +1520,9 @@ fn handle_notes_pane(key: KeyEvent, app: &mut App) -> bool {
         move_notes_browser_selection(app, side, 1, 8, None);
         return true;
       }
-      KeyCode::PageUp if app.notes_mode_for_side(side) != NotesMode::Capture => {
+      KeyCode::PageUp
+        if app.notes_mode_for_side(side) != NotesMode::Capture =>
+      {
         move_notes_browser_selection(app, side, -1, 8, None);
         return true;
       }
@@ -3193,6 +3200,7 @@ fn handle_history_tab(key: KeyEvent, app: &mut App) -> bool {
       };
       let key_to_delete = (target.kind, target.key.clone());
       app.history.retain(|e| (e.kind, e.key.clone()) != key_to_delete);
+      app.rebuild_history_paper_index();
       crate::store::history::save(&app.history);
       let len = app.filtered_history().len();
       if len > 0 && app.history_selected_index >= len {

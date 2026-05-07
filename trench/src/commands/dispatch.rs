@@ -17,6 +17,7 @@ pub fn dispatch_slash_command(app: &mut App, cmd: SlashCommandInvocation) {
     }
     SlashCommandInvocation::ClearHistory => {
       app.history.clear();
+      app.rebuild_history_paper_index();
       app.history_selected_index = 0;
       app.history_list_offset = 0;
       crate::store::history::save(&app.history);
@@ -84,26 +85,59 @@ pub fn dispatch_slash_command(app: &mut App, cmd: SlashCommandInvocation) {
       }
     }
     SlashCommandInvocation::Sota { topic } => {
-      dispatch_discovery_with_intent(app, topic, QueryIntent::SotaLookup, "/sota");
+      dispatch_discovery_with_intent(
+        app,
+        topic,
+        QueryIntent::SotaLookup,
+        "/sota",
+      );
     }
     SlashCommandInvocation::ReadingList { topic } => {
-      dispatch_discovery_with_intent(app, topic, QueryIntent::ReadingList, "/reading-list");
+      dispatch_discovery_with_intent(
+        app,
+        topic,
+        QueryIntent::ReadingList,
+        "/reading-list",
+      );
     }
     SlashCommandInvocation::Code { topic } => {
-      dispatch_discovery_with_intent(app, topic, QueryIntent::CodeSearch, "/code");
+      dispatch_discovery_with_intent(
+        app,
+        topic,
+        QueryIntent::CodeSearch,
+        "/code",
+      );
     }
     SlashCommandInvocation::Compare { topic } => {
-      dispatch_discovery_with_intent(app, topic, QueryIntent::Compare, "/compare");
+      dispatch_discovery_with_intent(
+        app,
+        topic,
+        QueryIntent::Compare,
+        "/compare",
+      );
     }
     SlashCommandInvocation::Digest => {
       app.discovery_forced_intent = Some(QueryIntent::Digest);
-      crate::workflows::discover::start(app, "what happened in AI/ML this week".to_string());
+      crate::workflows::discover::start(
+        app,
+        "what happened in AI/ML this week".to_string(),
+      );
     }
     SlashCommandInvocation::Author { name } => {
-      dispatch_discovery_with_intent(app, name, QueryIntent::AuthorSearch, "/author");
+      dispatch_discovery_with_intent(
+        app,
+        name,
+        QueryIntent::AuthorSearch,
+        "/author",
+      );
     }
     SlashCommandInvocation::Trending { topic } => {
-      dispatch_discovery_with_intent(app, topic, QueryIntent::Trending, "/trending");
+      dispatch_discovery_with_intent(
+        app,
+        topic,
+        QueryIntent::Trending,
+        "/trending",
+      );
     }
     SlashCommandInvocation::Watch { .. } => {
       app.push_chat_assistant_message(
@@ -120,7 +154,8 @@ pub fn dispatch_slash_command(app: &mut App, cmd: SlashCommandInvocation) {
       let entries = app.filtered_history();
       match crate::export::export_history(&entries, fmt) {
         Ok(path) => {
-          let msg = format!("Exported {} entries to {}", entries.len(), path.display());
+          let msg =
+            format!("Exported {} entries to {}", entries.len(), path.display());
           app.push_chat_assistant_message(msg.clone());
           app.status_message = Some(msg);
         }
@@ -140,7 +175,8 @@ pub fn dispatch_slash_command(app: &mut App, cmd: SlashCommandInvocation) {
       let items = app.visible_items();
       match crate::export::export_library(&items, &label, fmt) {
         Ok(path) => {
-          let msg = format!("Exported {} items to {}", items.len(), path.display());
+          let msg =
+            format!("Exported {} items to {}", items.len(), path.display());
           app.push_chat_assistant_message(msg.clone());
           app.status_message = Some(msg);
         }
