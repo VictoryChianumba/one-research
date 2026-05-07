@@ -22,7 +22,13 @@ pub fn load() -> Vec<FeedItem> {
     Err(_) => return Vec::new(),
   };
 
-  serde_json::from_slice(&bytes).unwrap_or_default()
+  match serde_json::from_slice(&bytes) {
+    Ok(v) => v,
+    Err(e) => {
+      super::quarantine_corrupted(&path, "trench/discovery_cache", &e);
+      Vec::new()
+    }
+  }
 }
 
 pub fn save(items: &[FeedItem]) {

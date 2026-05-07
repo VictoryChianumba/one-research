@@ -61,8 +61,10 @@ impl EntriesList {
         }
 
         // Text wrapping
-        let title_lines =
-          textwrap::wrap(&title, area.width as usize - LIST_INNER_MARGIN);
+        let title_lines = textwrap::wrap(
+          &title,
+          (area.width as usize).saturating_sub(LIST_INNER_MARGIN),
+        );
 
         // title lines
         lines_count += title_lines.len();
@@ -101,7 +103,8 @@ impl EntriesList {
 
           for tag in note.tags.iter() {
             let mut last_line = spans.last_mut().unwrap();
-            let allowed_width = area.width as usize - LIST_INNER_MARGIN;
+            let allowed_width =
+              (area.width as usize).saturating_sub(LIST_INNER_MARGIN);
             if !last_line.spans.is_empty() {
               if last_line.width() + TAGS_SEPARATOR.len() > allowed_width {
                 added_lines += 1;

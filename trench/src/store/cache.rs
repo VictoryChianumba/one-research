@@ -33,8 +33,13 @@ pub fn load() -> Vec<FeedItem> {
     Err(_) => return Vec::new(),
   };
 
-  let mut items: Vec<FeedItem> =
-    serde_json::from_slice(&bytes).unwrap_or_default();
+  let mut items: Vec<FeedItem> = match serde_json::from_slice(&bytes) {
+    Ok(v) => v,
+    Err(e) => {
+      super::quarantine_corrupted(&path, "trench/cache", &e);
+      return Vec::new();
+    }
+  };
   // Defense-in-depth: items persisted before sanitize-at-ingestion shipped
   // may have raw escape sequences baked into their string fields. Idempotent
   // re-sanitize protects against terminal-hijack via the cache.

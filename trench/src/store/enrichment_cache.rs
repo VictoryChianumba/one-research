@@ -29,7 +29,13 @@ pub fn load() -> HashMap<String, EnrichmentEntry> {
     Err(_) => return HashMap::new(),
   };
   let mut cache: HashMap<String, EnrichmentEntry> =
-    serde_json::from_slice(&bytes).unwrap_or_default();
+    match serde_json::from_slice(&bytes) {
+      Ok(v) => v,
+      Err(e) => {
+        super::quarantine_corrupted(&path, "trench/enrichment_cache", &e);
+        return HashMap::new();
+      }
+    };
   // Invalidate entries with no field data so they are re-fetched once an API
   // key is configured.
   for entry in cache.values_mut() {

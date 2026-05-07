@@ -30,6 +30,28 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
   fs::rename(&tmp_path, path)
 }
 
+/// On parse failure, rename `<path>` to `<path>.broken-<unix_ts>` so the next
+/// save doesn't clobber the user's only recovery copy. Best-effort.
+fn quarantine_corrupted(
+  path: &Path,
+  label: &str,
+  err: &dyn std::fmt::Display,
+) {
+  let ts = std::time::SystemTime::now()
+    .duration_since(std::time::UNIX_EPOCH)
+    .map(|d| d.as_secs())
+    .unwrap_or(0);
+  let mut new_name: OsString = path.as_os_str().to_owned();
+  new_name.push(format!(".broken-{ts}"));
+  let new_path = PathBuf::from(&new_name);
+  log::error!(
+    "{label}: parse failed at {} — quarantined to {}: {err}",
+    path.display(),
+    new_path.display()
+  );
+  let _ = fs::rename(path, &new_path);
+}
+
 fn chats_dir() -> PathBuf {
   let base = dirs::config_dir()
     .unwrap_or_else(|| PathBuf::from("."))
@@ -77,10 +99,16 @@ pub fn load_index() -> ChatIndex {
     };
   }
   let data = fs::read_to_string(&path).unwrap_or_default();
-  serde_json::from_str(&data).unwrap_or(ChatIndex {
-    sessions: Vec::new(),
-    default_provider: "claude".to_string(),
-  })
+  match serde_json::from_str(&data) {
+    Ok(v) => v,
+    Err(e) => {
+      quarantine_corrupted(&path, "trench/chat/index", &e);
+      ChatIndex {
+        sessions: Vec::new(),
+        default_provider: "claude".to_string(),
+      }
+    }
+  }
 }
 
 pub fn save_index(index: &ChatIndex) -> Result<()> {
@@ -100,7 +128,13 @@ pub fn load_session(id: &str) -> Option<ChatSession> {
     return None;
   }
   let data = fs::read_to_string(&path).ok()?;
-  serde_json::from_str(&data).ok()
+  match serde_json::from_str(&data) {
+    Ok(v) => Some(v),
+    Err(e) => {
+      quarantine_corrupted(&path, "trench/chat/session", &e);
+      None
+    }
+  }
 }
 
 pub fn save_session(session: &ChatSession) -> Result<()> {

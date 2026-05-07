@@ -6,7 +6,13 @@ use crate::tags::ItemTags;
 pub fn load() -> ItemTags {
   let Some(path) = path() else { return ItemTags::default() };
   let Ok(bytes) = fs::read(&path) else { return ItemTags::default() };
-  serde_json::from_slice(&bytes).unwrap_or_default()
+  match serde_json::from_slice(&bytes) {
+    Ok(v) => v,
+    Err(e) => {
+      super::quarantine_corrupted(&path, "trench/tags", &e);
+      ItemTags::default()
+    }
+  }
 }
 
 pub fn save(tags: &ItemTags) {

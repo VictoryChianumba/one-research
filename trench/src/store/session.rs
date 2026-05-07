@@ -12,7 +12,13 @@ pub fn load() -> SessionHistory {
     Ok(b) => b,
     Err(_) => return SessionHistory::default(),
   };
-  serde_json::from_slice(&bytes).unwrap_or_default()
+  match serde_json::from_slice(&bytes) {
+    Ok(v) => v,
+    Err(e) => {
+      super::quarantine_corrupted(&path, "trench/discovery_session", &e);
+      SessionHistory::default()
+    }
+  }
 }
 
 pub fn save(session: &SessionHistory) {

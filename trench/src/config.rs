@@ -324,7 +324,13 @@ impl Config {
       Ok(b) => b,
       Err(_) => return Config::default(),
     };
-    serde_json::from_slice(&bytes).unwrap_or_default()
+    match serde_json::from_slice(&bytes) {
+      Ok(v) => v,
+      Err(e) => {
+        crate::store::quarantine_corrupted(&path, "trench/config", &e);
+        Config::default()
+      }
+    }
   }
 
   pub fn save(&self) {

@@ -6,7 +6,13 @@ use crate::history::{HistoryEntry, HISTORY_CAP};
 pub fn load() -> Vec<HistoryEntry> {
   let Some(path) = path() else { return Vec::new() };
   let Ok(bytes) = fs::read(&path) else { return Vec::new() };
-  let mut entries: Vec<HistoryEntry> = serde_json::from_slice(&bytes).unwrap_or_default();
+  let mut entries: Vec<HistoryEntry> = match serde_json::from_slice(&bytes) {
+    Ok(v) => v,
+    Err(e) => {
+      super::quarantine_corrupted(&path, "trench/history", &e);
+      return Vec::new();
+    }
+  };
   entries.sort_by(|a, b| b.opened_at.cmp(&a.opened_at));
   entries.truncate(HISTORY_CAP);
   entries

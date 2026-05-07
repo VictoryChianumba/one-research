@@ -54,6 +54,31 @@ pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
   fs::rename(&tmp_path, path)
 }
 
+/// On parse failure, rename `<path>` to `<path>.broken-<unix_ts>` so the next
+/// save doesn't clobber the user's only recovery copy. Best-effort — rename
+/// failure is non-fatal and the caller still returns Default. Pairs with
+/// `atomic_write` to close the data-loss class: torn writes can't happen, and
+/// pre-existing corruption no longer silently nukes state.
+pub(crate) fn quarantine_corrupted(
+  path: &Path,
+  label: &str,
+  err: &dyn std::fmt::Display,
+) {
+  let ts = std::time::SystemTime::now()
+    .duration_since(std::time::UNIX_EPOCH)
+    .map(|d| d.as_secs())
+    .unwrap_or(0);
+  let mut new_name: OsString = path.as_os_str().to_owned();
+  new_name.push(format!(".broken-{ts}"));
+  let new_path = PathBuf::from(&new_name);
+  log::error!(
+    "{label}: parse failed at {} — quarantined to {}: {err}",
+    path.display(),
+    new_path.display()
+  );
+  let _ = fs::rename(path, &new_path);
+}
+
 fn state_path() -> Option<PathBuf> {
   let mut p = dirs_home()?;
   p.push(".config");
@@ -83,7 +108,10 @@ pub fn load() -> HashMap<String, WorkflowState> {
   let raw: HashMap<String, serde_json::Value> =
     match serde_json::from_slice(&bytes) {
       Ok(m) => m,
-      Err(_) => return HashMap::new(),
+      Err(e) => {
+        quarantine_corrupted(&path, "trench/state", &e);
+        return HashMap::new();
+      }
     };
 
   raw
@@ -146,7 +174,13 @@ pub fn load_ui() -> UiState {
     Ok(b) => b,
     Err(_) => return UiState::default(),
   };
-  serde_json::from_slice(&bytes).unwrap_or_default()
+  match serde_json::from_slice(&bytes) {
+    Ok(s) => s,
+    Err(e) => {
+      quarantine_corrupted(&path, "trench/ui", &e);
+      UiState::default()
+    }
+  }
 }
 
 pub fn save_ui(state: &UiState) {
