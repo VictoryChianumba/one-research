@@ -157,7 +157,11 @@ fn perplexity_search(query: &str, api_key: &str) -> Result<String, String> {
     return Err(format!("Perplexity API error {status}"));
   }
 
-  let json: Value = resp.json().map_err(|e| e.to_string())?;
+  // Route through read_body so the workspace 10 MB body cap applies — bare
+  // resp.json() would let a hostile/compromised endpoint return arbitrarily
+  // large JSON and exhaust memory on this thread.
+  let body = crate::http::read_body(resp)?;
+  let json: Value = serde_json::from_str(&body).map_err(|e| e.to_string())?;
   Ok(
     json["choices"][0]["message"]["content"]
       .as_str()

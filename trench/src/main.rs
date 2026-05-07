@@ -38,7 +38,22 @@ use ratatui::{Terminal, backend::CrosstermBackend};
 use std::io;
 use std::sync::mpsc;
 
+/// Allowlist for URL schemes handed to the OS opener. macOS `open` and
+/// Linux `xdg-open` will dispatch any registered scheme — including local
+/// handlers like `vscode://`, `slack://`, `mailto:`, or browser-side
+/// `javascript:` — so an attacker-controlled `item.url` could pivot into
+/// whichever application the user has installed. Restrict to plain web
+/// schemes; non-https paper hosts (older proceedings, university servers)
+/// are still legitimate, so http is included alongside https.
+fn is_safe_url_scheme(url: &str) -> bool {
+  url.starts_with("https://") || url.starts_with("http://")
+}
+
 pub(crate) fn open_url(url: &str) {
+  if !is_safe_url_scheme(url) {
+    log::warn!("open_url: rejecting non-http(s) scheme: {url}");
+    return;
+  }
   #[cfg(target_os = "macos")]
   let _ = std::process::Command::new("open").arg(url).spawn();
   #[cfg(not(target_os = "macos"))]
@@ -123,6 +138,43 @@ mod panic_msg_tests {
       Err(s) => assert!(s.contains("simulated worker failure"), "got: {s}"),
       Ok(n) => panic!("expected Err, got Ok({n})"),
     }
+  }
+}
+
+#[cfg(test)]
+mod url_scheme_tests {
+  use super::is_safe_url_scheme;
+
+  #[test]
+  fn accepts_https_and_http() {
+    assert!(is_safe_url_scheme("https://arxiv.org/abs/2603.00001"));
+    assert!(is_safe_url_scheme("https://github.com/owner/repo"));
+    assert!(is_safe_url_scheme("http://legacy.example.edu/proceedings"));
+  }
+
+  #[test]
+  fn rejects_local_handler_schemes() {
+    // These would dispatch to whatever handler the user has registered.
+    assert!(!is_safe_url_scheme("javascript:alert(1)"));
+    assert!(!is_safe_url_scheme("file:///etc/passwd"));
+    assert!(!is_safe_url_scheme("vscode://settings"));
+    assert!(!is_safe_url_scheme("slack://channel?id=abc"));
+    assert!(!is_safe_url_scheme("mailto:user@example.com"));
+  }
+
+  #[test]
+  fn rejects_empty_and_scheme_only() {
+    assert!(!is_safe_url_scheme(""));
+    assert!(!is_safe_url_scheme("https"));
+    assert!(!is_safe_url_scheme("http"));
+  }
+
+  #[test]
+  fn case_sensitive_match_keeps_things_simple() {
+    // `Https://` is technically valid per RFC 3986 §3.1 but we don't go out
+    // of our way to accept odd casing — the URLs we open come from feed
+    // ingestion, which normalizes to lowercase scheme.
+    assert!(!is_safe_url_scheme("HTTPS://arxiv.org/abs/2603.00001"));
   }
 }
 
@@ -1549,17 +1601,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if app.should_quit {
       break;
-    }
-  }
-
-  // Clean up temp files before restoring the terminal.
-  if let Ok(entries) = std::fs::read_dir("/tmp") {
-    for entry in entries.flatten() {
-      let name = entry.file_name();
-      let name_str = name.to_string_lossy();
-      if name_str.starts_with("trench_") && name_str.ends_with(".txt") {
-        let _ = std::fs::remove_file(entry.path());
-      }
     }
   }
 
