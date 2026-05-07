@@ -280,10 +280,7 @@ fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
     KeyCode::Enter => {
       if !app.reader_bottom_details && !app.fulltext_loading {
         let idx = app.reader_feed_popup_selected;
-        let item = {
-          let visible = app.visible_items();
-          visible.get(idx).map(|item| (*item).clone())
-        };
+        let item = app.visible_get(idx).cloned();
         if let Some(item) = item {
           let (tx, rx) = mpsc::channel();
           app.fulltext_rx = Some(rx);

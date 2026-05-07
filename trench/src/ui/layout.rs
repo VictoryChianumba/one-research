@@ -2116,11 +2116,14 @@ fn draw_narrow_feed(frame: &mut Frame, app: &mut App, area: Rect) {
 
   let mut offset = app.active_list_offset();
   {
-    let visible = app.visible_items();
-    let total = visible.len();
+    let total = app.visible_count();
     if selected < offset {
       offset = selected;
     } else {
+      // Reverse-walk only needs items 0..=selected to find the offset, so
+      // grab a bounded window instead of allocating Vec<&FeedItem> for the
+      // entire visible set every redraw.
+      let visible = app.visible_window(0, selected.saturating_add(1));
       let vc = count_reader_feed_visible_items(
         &visible,
         offset,
@@ -2149,12 +2152,16 @@ fn draw_narrow_feed(frame: &mut Frame, app: &mut App, area: Rect) {
     header_area,
   );
 
-  let visible = app.visible_items();
+  // Each visible row consumes at least 1 terminal row, so capping the
+  // window at viewport_rows is a safe upper bound for what gets drawn.
+  let visible =
+    app.visible_window(offset, offset.saturating_add(viewport_rows));
   let mut y = list_area.y;
-  for (abs_i, item) in visible.iter().enumerate().skip(offset) {
+  for (rel_i, item) in visible.iter().enumerate() {
     if y >= list_area.y + list_area.height {
       break;
     }
+    let abs_i = offset + rel_i;
     let is_selected = abs_i == selected;
     let row_lines =
       reader_feed_row_lines(item, list_area.width as usize, is_selected, &t);
@@ -4230,8 +4237,7 @@ fn draw_reader_bottom_pane(frame: &mut Frame, app: &mut App, area: Rect) {
 fn draw_bottom_pane_details(frame: &mut Frame, app: &App, area: Rect) {
   let t = app.theme();
   let sel = app.reader_feed_popup_selected;
-  let items = app.visible_items();
-  let Some(item) = items.get(sel) else { return };
+  let Some(item) = app.visible_get(sel) else { return };
 
   let rows =
     Layout::vertical([Constraint::Length(3), Constraint::Min(0)]).split(area);
@@ -4294,8 +4300,7 @@ fn draw_bottom_pane_feed(frame: &mut Frame, app: &mut App, area: Rect) {
     header_area,
   );
 
-  let items = app.visible_items();
-  if items.is_empty() {
+  if total == 0 {
     let empty =
       if app.search_query.is_empty() { "No items" } else { "No matches" };
     frame.render_widget(
@@ -4307,9 +4312,12 @@ fn draw_bottom_pane_feed(frame: &mut Frame, app: &mut App, area: Rect) {
     return;
   }
 
-  for (i, item) in items.iter().enumerate().skip(offset).take(viewport_rows) {
+  let window =
+    app.visible_window(offset, offset.saturating_add(viewport_rows));
+  for (rel_i, item) in window.iter().enumerate() {
+    let i = offset + rel_i;
     let is_selected = i == sel;
-    let row_y = list_area.y + (i - offset) as u16;
+    let row_y = list_area.y + rel_i as u16;
     let row_rect = Rect::new(list_area.x, row_y, list_area.width, 1);
     let row =
       drawer_feed_row_line(item, list_area.width as usize, is_selected, &t);

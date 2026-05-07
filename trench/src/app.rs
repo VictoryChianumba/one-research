@@ -1304,13 +1304,9 @@ impl App {
     let anchor = self.library_visual_anchor;
     let (lo, hi) =
       if cursor <= anchor { (cursor, anchor) } else { (anchor, cursor) };
-    let visible = self.visible_items();
-    self.library_selected_urls = visible
-      .iter()
-      .enumerate()
-      .filter(|(i, _)| *i >= lo && *i <= hi)
-      .map(|(_, it)| it.url.clone())
-      .collect();
+    let window = self.visible_window(lo, hi.saturating_add(1));
+    self.library_selected_urls =
+      window.iter().map(|it| it.url.clone()).collect();
   }
 
   pub fn library_exit_visual(&mut self) {
@@ -2298,10 +2294,9 @@ impl App {
 
   pub fn set_workflow_state(&mut self, state: WorkflowState) {
     // Collect the URL of the currently selected visible item
-    let url = {
-      let visible = self.visible_items();
-      visible.get(self.active_selected_index()).map(|item| item.url.clone())
-    };
+    let url = self
+      .visible_get(self.active_selected_index())
+      .map(|item| item.url.clone());
 
     if let Some(url) = url {
       if let Some(item) =
