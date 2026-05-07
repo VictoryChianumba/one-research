@@ -304,6 +304,31 @@ pub enum RepoEnterTarget {
   File(String, String), // path, filename
 }
 
+/// Memoized aggregate counts derived from `App.items`. Recomputed lazily on
+/// the first read after `invalidate_counts_cache` clears the cell. Pair the
+/// invalidation hook with every site that mutates a workflow_state, the
+/// items length, or a published_at field — otherwise the cache will drift.
+/// Replaces the 4 separate full-iter scans inside `draw_details_panel` and
+/// the per-chip O(N) closure inside `draw_library_chip_bar`.
+#[derive(Default, Clone)]
+pub struct ItemCounts {
+  pub inbox: usize,
+  pub queued: usize,
+  pub deep_read: usize,
+  pub archived: usize,
+  pub total: usize,
+
+  pub recent_total: usize,
+  pub recent_today: usize,
+  pub recent_hf: usize,
+  pub recent_arxiv: usize,
+  pub recent_other: usize,
+
+  /// First two queued paper titles, cloned so the memoized struct doesn't
+  /// hold a borrow back into `App.items`.
+  pub queue_preview: Vec<String>,
+}
+
 pub struct App {
   /// True when the UI needs to be redrawn. Set by `mark_dirty()`, cleared by
   /// `check_needs_redraw()`. Mirrors the cli-text-reader pattern at
@@ -555,6 +580,10 @@ pub struct App {
   // Cached indices of items visible under the current search/filter.
   // Keyed by (FeedTab) so a tab switch automatically misses the cache.
   visible_cache: RefCell<Option<(FeedTab, Vec<usize>)>>,
+  /// Lazy memo of aggregate item counts (workflow breakdown + recent-48h
+  /// fused + 2 queue-preview titles). Invalidated by every items/workflow
+  /// mutation site via `invalidate_counts_cache`.
+  counts_cache: RefCell<Option<ItemCounts>>,
 }
 
 // Filter panel cursor positions are computed dynamically in
@@ -708,6 +737,7 @@ impl App {
       help_section: 0,
       help_scroll: 0,
       visible_cache: RefCell::new(None),
+      counts_cache: RefCell::new(None),
       panes: [
         PaneInfo::new(PaneId::Feed),
         PaneInfo::new(PaneId::Reader),
@@ -1151,6 +1181,56 @@ impl App {
     *self.visible_cache.borrow_mut() = None;
   }
 
+  pub(crate) fn invalidate_counts_cache(&self) {
+    *self.counts_cache.borrow_mut() = None;
+  }
+
+  /// Cheap O(1) read from the memoized count cache. On miss, runs a single
+  /// fused pass over `self.items` that produces every counter the dashboard
+  /// and chip bar need.
+  pub fn item_counts(&self) -> ItemCounts {
+    if let Some(c) = self.counts_cache.borrow().as_ref() {
+      return c.clone();
+    }
+    let counts = self.compute_item_counts();
+    *self.counts_cache.borrow_mut() = Some(counts.clone());
+    counts
+  }
+
+  fn compute_item_counts(&self) -> ItemCounts {
+    let today = crate::store::enrichment_cache::today_str();
+    let yesterday = (chrono::Utc::now() - chrono::Duration::days(1))
+      .format("%Y-%m-%d")
+      .to_string();
+    let mut counts = ItemCounts::default();
+    for item in &self.items {
+      counts.total += 1;
+      match item.workflow_state {
+        WorkflowState::Inbox => counts.inbox += 1,
+        WorkflowState::Queued => {
+          counts.queued += 1;
+          if counts.queue_preview.len() < 2 {
+            counts.queue_preview.push(item.title.clone());
+          }
+        }
+        WorkflowState::DeepRead => counts.deep_read += 1,
+        WorkflowState::Archived => counts.archived += 1,
+      }
+      if item.published_at == today || item.published_at == yesterday {
+        counts.recent_total += 1;
+        if item.published_at == today {
+          counts.recent_today += 1;
+        }
+        match item.source_platform {
+          crate::models::SourcePlatform::HuggingFace => counts.recent_hf += 1,
+          crate::models::SourcePlatform::ArXiv => counts.recent_arxiv += 1,
+          _ => counts.recent_other += 1,
+        }
+      }
+    }
+    counts
+  }
+
   pub fn items_for_tab(&self) -> &[FeedItem] {
     match self.feed_tab {
       FeedTab::Inbox => &self.items,
@@ -1339,6 +1419,7 @@ impl App {
     }
     crate::store::save(&self.persisted_states);
     self.invalidate_visible_cache();
+    self.invalidate_counts_cache();
     count
   }
 
@@ -2001,6 +2082,7 @@ impl App {
       // Sort invalidated every position; indices must reflect the new order.
       self.rebuild_indices();
       self.invalidate_visible_cache();
+      self.invalidate_counts_cache();
       // Hand off to the background writer — UI thread used to hitch for
       // 100-300 ms here while the 3.8 MB cache.json was serialized + fsynced.
       crate::store::cache::queue_save(self.items.clone());
@@ -2010,10 +2092,12 @@ impl App {
       self.mark_dirty();
     } else if had_source_updates {
       self.invalidate_visible_cache();
+      self.invalidate_counts_cache();
       crate::store::cache::queue_save(self.items.clone());
       self.mark_dirty();
     } else if had_enriched_updates {
       self.invalidate_visible_cache();
+      self.invalidate_counts_cache();
       crate::store::cache::queue_save(self.items.clone());
       self.mark_dirty();
     }
@@ -2306,6 +2390,7 @@ impl App {
       }
       self.persisted_states.insert(url, state);
       crate::store::save(&self.persisted_states);
+      self.invalidate_counts_cache();
     }
   }
 }
@@ -2457,6 +2542,53 @@ mod tests {
     app.items.truncate(prior / 2);
     app.rebuild_indices();
     assert_eq!(app.url_index.len(), prior / 2);
+  }
+
+  #[test]
+  fn item_counts_breaks_down_workflow_states() {
+    let mut app = App::new();
+    app.items = mock_items();
+    let counts = app.item_counts();
+    assert_eq!(counts.total, app.items.len());
+    // Sum invariant: every item lives in exactly one workflow bucket.
+    assert_eq!(
+      counts.inbox + counts.queued + counts.deep_read + counts.archived,
+      counts.total
+    );
+    // mock_items() is the source of truth; just spot-check that all four
+    // buckets have at least one entry, otherwise the fused-pass match
+    // would have a silent fall-through bug.
+    assert!(counts.inbox > 0 && counts.queued > 0);
+    assert!(counts.deep_read > 0 && counts.archived > 0);
+  }
+
+  #[test]
+  fn item_counts_queue_preview_caps_at_two() {
+    let mut app = App::new();
+    app.items = mock_items();
+    let counts = app.item_counts();
+    assert!(counts.queued >= 2, "fixture must have at least 2 queued items");
+    assert_eq!(
+      counts.queue_preview.len(),
+      2,
+      "queue_preview must cap at the first 2 queued titles"
+    );
+  }
+
+  #[test]
+  fn invalidate_counts_cache_forces_recompute() {
+    let mut app = App::new();
+    app.items = mock_items();
+    let before = app.item_counts();
+    // Mutate items directly, bypassing the public mutators that would
+    // normally call invalidate_counts_cache. The cache should still hold
+    // the stale value until we invalidate by hand.
+    app.items.clear();
+    let stale = app.item_counts();
+    assert_eq!(stale.total, before.total, "cache survives raw mutation");
+    app.invalidate_counts_cache();
+    let fresh = app.item_counts();
+    assert_eq!(fresh.total, 0, "post-invalidation, recompute sees empty items");
   }
 
   #[test]

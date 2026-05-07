@@ -1749,9 +1749,16 @@ fn draw_library_tab(frame: &mut Frame, app: &mut App, area: Rect) {
   let time_area = Rect { y: area.y + 1, height: 1, ..area };
   let chips_sep_area = Rect { y: area.y + 2, height: 1, ..area };
 
-  // Per-chip count: how many items match if this chip were active.
+  // Per-chip count via the memoized aggregate. Eliminates the ~6 full
+  // O(N) scans of `app.items` that previously ran on every draw.
+  let counts = app.item_counts();
   let chip_count = |filter: crate::library::LibraryFilter| -> usize {
-    app.items.iter().filter(|i| filter.matches(i.workflow_state)).count()
+    match filter {
+      crate::library::LibraryFilter::All => counts.queued + counts.deep_read,
+      crate::library::LibraryFilter::Queue => counts.queued,
+      crate::library::LibraryFilter::Read => counts.deep_read,
+      crate::library::LibraryFilter::Archived => counts.archived,
+    }
   };
 
   let mut chip_spans: Vec<Span> = vec![Span::raw("  ")];
@@ -2891,22 +2898,18 @@ fn draw_details_panel(frame: &mut Frame, app: &mut App, area: Rect) {
     };
     let w = dash_inner.width as usize;
 
-    let queued = app
-      .items
-      .iter()
-      .filter(|i| i.workflow_state == WorkflowState::Queued)
-      .count();
-    let read = app
-      .items
-      .iter()
-      .filter(|i| i.workflow_state == WorkflowState::DeepRead)
-      .count();
-    let archived = app
-      .items
-      .iter()
-      .filter(|i| i.workflow_state == WorkflowState::Archived)
-      .count();
-    let total = app.items.len();
+    // Single memoized read replaces 4 workflow-state scans, the queue-titles
+    // scan, and the recent-48h fused pass that previously ran on every draw.
+    let counts = app.item_counts();
+    let queued = counts.queued;
+    let read = counts.deep_read;
+    let archived = counts.archived;
+    let total = counts.total;
+    let recent_count = counts.recent_total;
+    let today_count = counts.recent_today;
+    let recent_hf = counts.recent_hf;
+    let recent_arxiv = counts.recent_arxiv;
+    let recent_other = counts.recent_other;
 
     let activity_label_style =
       Style::default().fg(t.text_dim).add_modifier(Modifier::BOLD);
@@ -2917,44 +2920,6 @@ fn draw_details_panel(frame: &mut Frame, app: &mut App, area: Rect) {
     let continue_title =
       app.last_read.as_deref().unwrap_or("─ nothing opened yet ─");
     let continue_source = app.last_read_source.as_deref().unwrap_or("");
-
-    // Your Queue: first two queued paper titles
-    let queue_items: Vec<&str> = app
-      .items
-      .iter()
-      .filter(|i| i.workflow_state == WorkflowState::Queued)
-      .map(|i| i.title.as_str())
-      .take(2)
-      .collect();
-
-    // Recent (last 48 h): items published today or yesterday
-    let (recent_count, today_count, recent_hf, recent_arxiv, recent_other) = {
-      let today = crate::store::enrichment_cache::today_str();
-      let yesterday = (chrono::Utc::now() - chrono::Duration::days(1))
-        .format("%Y-%m-%d")
-        .to_string();
-      let mut recent_count = 0;
-      let mut today_count = 0;
-      let mut recent_hf = 0;
-      let mut recent_arxiv = 0;
-      let mut recent_other = 0;
-      for item in app
-        .items
-        .iter()
-        .filter(|i| i.published_at == today || i.published_at == yesterday)
-      {
-        recent_count += 1;
-        if item.published_at == today {
-          today_count += 1;
-        }
-        match item.source_platform {
-          SourcePlatform::HuggingFace => recent_hf += 1,
-          SourcePlatform::ArXiv => recent_arxiv += 1,
-          _ => recent_other += 1,
-        }
-      }
-      (recent_count, today_count, recent_hf, recent_arxiv, recent_other)
-    };
 
     let label_w = 11;
     let value_w = w.saturating_sub(label_w).max(1);
@@ -2988,13 +2953,13 @@ fn draw_details_panel(frame: &mut Frame, app: &mut App, area: Rect) {
       Span::styled("Queue      ", activity_label_style),
       Span::styled(queue_summary, val_style),
     ]));
-    if queue_items.is_empty() {
+    if counts.queue_preview.is_empty() {
       lines.push(Line::from(vec![
         Span::styled("           ", label_style),
         Span::styled("─ empty ─", label_style),
       ]));
     } else {
-      for title in queue_items {
+      for title in counts.queue_preview.iter() {
         push_activity_continuation(&mut lines, title, val_style, value_w, 2);
       }
     }
