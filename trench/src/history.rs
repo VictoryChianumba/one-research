@@ -29,6 +29,11 @@ pub struct HistoryEntry {
   pub paper_meta: Option<HistoryPaperMeta>,
   pub opened_at: DateTime<Utc>,
   pub visit_count: u32,
+  /// Lowercased title cached for the history search filter. `#[serde(skip)]`
+  /// keeps `history.json` unchanged; populated by the constructors below
+  /// and backfilled in `store::history::load`. Mirror of `FeedItem.title_lower`.
+  #[serde(skip)]
+  pub title_lower: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -104,17 +109,20 @@ pub fn record_paper(
     let mut entry = history.remove(pos);
     entry.opened_at = now;
     entry.visit_count = entry.visit_count.saturating_add(1);
+    entry.title_lower = title.to_lowercase();
     entry.title = title;
     entry.source = source;
     entry.paper_meta = Some(meta);
     history.insert(0, entry);
   } else {
+    let title_lower = title.to_lowercase();
     history.insert(
       0,
       HistoryEntry {
         kind: HistoryKind::Paper,
         key: url,
         title,
+        title_lower,
         source,
         paper_meta: Some(meta),
         opened_at: now,
@@ -149,12 +157,14 @@ pub fn record_query(history: &mut Vec<HistoryEntry>, topic: String, intent_label
     entry.source = intent_label.to_string();
     history.insert(0, entry);
   } else {
+    let title_lower = topic.to_lowercase();
     history.insert(
       0,
       HistoryEntry {
         kind: HistoryKind::Query,
         key: topic.clone(),
         title: topic,
+        title_lower,
         source: intent_label.to_string(),
         paper_meta: None,
         opened_at: now,

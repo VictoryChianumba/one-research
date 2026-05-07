@@ -209,7 +209,7 @@ fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
     match key.code {
       KeyCode::Esc => {
         app.search_active = false;
-        app.search_query.clear();
+        app.clear_search_query();
         app.reader_feed_popup_selected = 0;
         app.invalidate_visible_cache();
       }
@@ -255,7 +255,7 @@ fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
     }
     KeyCode::Char('/') => {
       app.search_active = true;
-      app.search_query.clear();
+      app.clear_search_query();
       app.reader_feed_popup_selected = 0;
       app.invalidate_visible_cache();
     }
@@ -2711,7 +2711,7 @@ fn handle_feed_view(key: KeyEvent, app: &mut App) {
     match key.code {
       KeyCode::Esc => {
         app.search_active = false;
-        app.search_query.clear();
+        app.clear_search_query();
         app.reset_active_feed_position();
       }
       KeyCode::Enter => {
@@ -2780,7 +2780,7 @@ fn handle_feed_view(key: KeyEvent, app: &mut App) {
         }
         KeyCode::Char('/') => {
           app.search_active = true;
-          app.search_query.clear();
+          app.clear_search_query();
           app.reset_active_feed_position();
         }
         KeyCode::Char('j') | KeyCode::Down => {
@@ -2899,7 +2899,7 @@ fn handle_feed_view(key: KeyEvent, app: &mut App) {
       }
       KeyCode::Char('/') => {
         app.search_active = true;
-        app.search_query.clear();
+        app.clear_search_query();
         app.reset_active_feed_position();
       }
       KeyCode::Char('i') => app.set_workflow_state(WorkflowState::Inbox),

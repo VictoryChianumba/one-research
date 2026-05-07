@@ -383,6 +383,11 @@ pub struct App {
   pub tag_picker_selected: usize,
   pub tag_picker_target_urls: Vec<String>,
   pub search_query: String,
+  /// Lowercased mirror of `search_query`. Populated by the search-mutator
+  /// helpers (`push_search_char`, `pop_search_char`, `clear_search_query`).
+  /// Read by every visible-items / filtered-history filter pass — caching it
+  /// here avoids a `to_lowercase` heap alloc on every cache miss.
+  pub search_query_lower: String,
   pub search_active: bool,
   pub status_message: Option<String>,
   pub persisted_states: HashMap<String, WorkflowState>,
@@ -603,6 +608,7 @@ impl App {
       tag_picker_selected: 0,
       tag_picker_target_urls: Vec::new(),
       search_query: String::new(),
+      search_query_lower: String::new(),
       search_active: false,
       status_message: None,
       persisted_states: HashMap::new(),
@@ -1057,7 +1063,7 @@ impl App {
         }
       }
     }
-    let q = self.search_query.to_lowercase();
+    let q = self.search_query_lower.as_str();
     let items = self.items_for_tab();
     let indices: Vec<usize> = items
       .iter()
@@ -1265,12 +1271,22 @@ impl App {
 
   pub fn push_search_char(&mut self, c: char) {
     self.search_query.push(c);
+    self.search_query_lower = self.search_query.to_lowercase();
     self.reset_active_feed_position();
   }
 
   pub fn pop_search_char(&mut self) {
     self.search_query.pop();
+    self.search_query_lower = self.search_query.to_lowercase();
     self.reset_active_feed_position();
+  }
+
+  /// Clear the search bar. Pairs with `push_search_char` / `pop_search_char`
+  /// so the lowercased mirror never drifts out of sync with `search_query`.
+  /// Callers are still responsible for invalidating the visible-items cache.
+  pub fn clear_search_query(&mut self) {
+    self.search_query.clear();
+    self.search_query_lower.clear();
   }
 
   pub fn selected_item(&self) -> Option<&FeedItem> {
@@ -1426,13 +1442,13 @@ impl App {
 
   pub fn filtered_history(&self) -> Vec<&crate::history::HistoryEntry> {
     let now = chrono::Utc::now();
-    let q = self.search_query.to_lowercase();
+    let q = self.search_query_lower.as_str();
     let src_filter = &self.active_filters.sources;
     self
       .history
       .iter()
       .filter(|e| self.history_filter.matches(e, now))
-      .filter(|e| q.is_empty() || e.title.to_lowercase().contains(&q))
+      .filter(|e| q.is_empty() || e.title_lower.contains(q))
       .filter(|e| src_filter.is_empty() || src_filter.contains(&e.source))
       .collect()
   }

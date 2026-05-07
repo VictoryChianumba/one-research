@@ -15,6 +15,11 @@ pub fn load() -> Vec<HistoryEntry> {
   };
   entries.sort_by(|a, b| b.opened_at.cmp(&a.opened_at));
   entries.truncate(HISTORY_CAP);
+  // title_lower is `#[serde(skip)]` — backfill so the search filter doesn't
+  // see empty strings on entries persisted from prior sessions.
+  for entry in &mut entries {
+    entry.title_lower = entry.title.to_lowercase();
+  }
   entries
 }
 
