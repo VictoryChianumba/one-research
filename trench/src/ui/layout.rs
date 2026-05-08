@@ -1653,11 +1653,11 @@ fn draw_discovery_palette(frame: &mut Frame, app: &App, list_area: Rect) {
   }
 
   let all_specs = crate::commands::registry::discovery_slash_specs();
-  let query_lower = app.discovery_query.to_lowercase();
+  let query_lower = app.discovery_query_lower.as_str();
   let suggestions: Vec<_> = all_specs
     .iter()
     .filter(|s| {
-      query_lower == "/" || s.command.starts_with(query_lower.as_str())
+      query_lower == "/" || s.command.starts_with(query_lower)
     })
     .collect();
 

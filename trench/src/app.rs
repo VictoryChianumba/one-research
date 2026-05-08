@@ -363,6 +363,10 @@ pub struct App {
   /// Last status line from the agent ("Searching…", "Found N papers", etc.).
   pub discovery_status: String,
   pub discovery_query: String,
+  /// Lowercased mirror of `discovery_query`. Refreshed by the discovery
+  /// mutator helpers below. Avoids the per-frame `to_lowercase` heap
+  /// allocation in `draw_discovery_palette` (audit Perf MED #3).
+  pub discovery_query_lower: String,
   /// Whether the persistent search bar at the bottom of Discoveries has focus.
   pub discovery_search_focused: bool,
   pub feed_tab: FeedTab,
@@ -609,6 +613,7 @@ impl App {
       discovery_rx: None,
       discovery_status: String::new(),
       discovery_query: String::new(),
+      discovery_query_lower: String::new(),
       discovery_search_focused: false,
       feed_tab: FeedTab::Inbox,
       discovery_loading: false,
@@ -1383,6 +1388,29 @@ impl App {
     self.search_query.clear();
     self.search_query_lower.clear();
     self.invalidate_visible_cache();
+  }
+
+  /// Mirror of `push_search_char` for the discovery palette.
+  pub fn push_discovery_char(&mut self, c: char) {
+    self.discovery_query.push(c);
+    self.discovery_query_lower = self.discovery_query.to_lowercase();
+  }
+
+  pub fn pop_discovery_char(&mut self) {
+    self.discovery_query.pop();
+    self.discovery_query_lower = self.discovery_query.to_lowercase();
+  }
+
+  pub fn clear_discovery_query(&mut self) {
+    self.discovery_query.clear();
+    self.discovery_query_lower.clear();
+  }
+
+  /// Set the discovery query to an arbitrary string (used by slash-palette
+  /// completion). Refreshes the lowercased mirror.
+  pub fn set_discovery_query(&mut self, s: String) {
+    self.discovery_query = s;
+    self.discovery_query_lower = self.discovery_query.to_lowercase();
   }
 
   pub fn selected_item(&self) -> Option<&FeedItem> {

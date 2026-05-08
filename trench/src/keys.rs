@@ -2635,7 +2635,7 @@ fn handle_feed_view(key: KeyEvent, app: &mut App) {
           &app.discovery_query,
           app.discovery_palette_selected,
         ) {
-          app.discovery_query = completion;
+          app.set_discovery_query(completion);
           app.discovery_palette_selected = 0;
           app.discovery_palette_scroll = 0;
         }
@@ -2647,7 +2647,7 @@ fn handle_feed_view(key: KeyEvent, app: &mut App) {
           app.discovery_palette_scroll = 0;
           if query.starts_with('/') {
             app.discovery_search_focused = false;
-            app.discovery_query.clear();
+            app.clear_discovery_query();
             let cmd = crate::commands::parser::parse_slash_command(&query);
             crate::commands::dispatch::dispatch_slash_command(app, cmd);
           } else {
@@ -2658,19 +2658,19 @@ fn handle_feed_view(key: KeyEvent, app: &mut App) {
       }
       KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
         app.discovery_force_new = true;
-        app.discovery_query.clear();
+        app.clear_discovery_query();
         app.discovery_palette_selected = 0;
         app.discovery_palette_scroll = 0;
       }
       KeyCode::Backspace => {
-        app.discovery_query.pop();
+        app.pop_discovery_char();
         if !app.discovery_query.starts_with('/') {
           app.discovery_palette_selected = 0;
           app.discovery_palette_scroll = 0;
         }
       }
       KeyCode::Char(c) => {
-        app.discovery_query.push(c);
+        app.push_discovery_char(c);
         app.discovery_palette_selected = 0;
         app.discovery_palette_scroll = 0;
       }
@@ -2684,7 +2684,7 @@ fn handle_feed_view(key: KeyEvent, app: &mut App) {
     if let KeyCode::Char(c) = key.code {
       if c != 'q' {
         app.discovery_search_focused = true;
-        app.discovery_query.push(c);
+        app.push_discovery_char(c);
         return;
       }
     }
