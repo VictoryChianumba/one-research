@@ -4,8 +4,11 @@
 //! their impl block lives in.
 
 mod cache;
+mod history;
 mod library_filter;
 mod notes;
+mod panes;
 mod process;
 mod reader;
 mod repo;
+mod sources_popup;
