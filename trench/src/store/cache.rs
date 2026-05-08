@@ -82,50 +82,76 @@ fn writer_handle() -> &'static Sender<WriterMsg> {
     let (tx, rx) = mpsc::channel::<WriterMsg>();
     let _ = thread::Builder::new().name("trench-cache-writer".into()).spawn(
       move || {
-        // Single-slot coalesce: latest snapshot wins. While `pending` is
-        // Some we cap waits at DEBOUNCE_MS so a burst flushes promptly;
-        // while empty we block forever to avoid spinning.
-        let mut pending: Option<Vec<FeedItem>> = None;
-        loop {
-          let msg = if pending.is_some() {
-            match rx.recv_timeout(Duration::from_millis(DEBOUNCE_MS)) {
-              Ok(m) => Some(m),
-              Err(RecvTimeoutError::Timeout) => None,
-              Err(RecvTimeoutError::Disconnected) => {
-                if let Some(items) = pending.take() {
-                  save(&items);
-                }
-                return;
-              }
-            }
+        // Wrap the loop body in catch_unwind so a panic in serde_json /
+        // fs / atomic_write surfaces a diagnostic instead of dying
+        // silently. Without this, a panicking writer leaves WRITER_TX
+        // holding a stale Sender — every subsequent queue_save returns
+        // Ok but the saves vanish (audit Rel HIGH H5).
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+          move || writer_loop(rx),
+        ));
+        if let Err(payload) = result {
+          let msg = if let Some(s) = payload.downcast_ref::<&'static str>() {
+            (*s).to_string()
+          } else if let Some(s) = payload.downcast_ref::<String>() {
+            s.clone()
           } else {
-            match rx.recv() {
-              Ok(m) => Some(m),
-              Err(_) => return,
-            }
+            "non-string payload".to_string()
           };
-          match msg {
-            Some(WriterMsg::Items(items)) => {
-              pending = Some(items);
-            }
-            Some(WriterMsg::Flush(ack)) => {
-              if let Some(items) = pending.take() {
-                save(&items);
-              }
-              let _ = ack.send(());
-            }
-            None => {
-              // Debounce window expired — flush.
-              if let Some(items) = pending.take() {
-                save(&items);
-              }
-            }
-          }
+          log::error!(
+            "trench-cache-writer thread panicked: {msg} — subsequent \
+             queue_save calls will send to a closed channel and saves \
+             will silently fail. Restart trench to recover."
+          );
         }
       },
     );
     tx
   })
+}
+
+/// Inner loop body extracted so `catch_unwind` can wrap it cleanly.
+/// Single-slot coalesce: latest snapshot wins. While `pending` is Some we
+/// cap waits at DEBOUNCE_MS so a burst flushes promptly; while empty we
+/// block forever to avoid spinning.
+fn writer_loop(rx: std::sync::mpsc::Receiver<WriterMsg>) {
+  let mut pending: Option<Vec<FeedItem>> = None;
+  loop {
+    let msg = if pending.is_some() {
+      match rx.recv_timeout(Duration::from_millis(DEBOUNCE_MS)) {
+        Ok(m) => Some(m),
+        Err(RecvTimeoutError::Timeout) => None,
+        Err(RecvTimeoutError::Disconnected) => {
+          if let Some(items) = pending.take() {
+            save(&items);
+          }
+          return;
+        }
+      }
+    } else {
+      match rx.recv() {
+        Ok(m) => Some(m),
+        Err(_) => return,
+      }
+    };
+    match msg {
+      Some(WriterMsg::Items(items)) => {
+        pending = Some(items);
+      }
+      Some(WriterMsg::Flush(ack)) => {
+        if let Some(items) = pending.take() {
+          save(&items);
+        }
+        let _ = ack.send(());
+      }
+      None => {
+        // Debounce window expired — flush.
+        if let Some(items) = pending.take() {
+          save(&items);
+        }
+      }
+    }
+  }
 }
 
 /// Hand a snapshot off to the background writer. Returns immediately.
@@ -136,11 +162,26 @@ pub fn queue_save(items: Vec<FeedItem>) {
 
 /// Wait for the writer to finish any pending work. Call once on shutdown so
 /// the on-disk cache reflects the final in-memory state. Bounded so a wedged
-/// I/O can't hang process exit.
+/// I/O can't hang process exit. Logs both failure modes loudly — silent
+/// final-batch loss is the symptom audit Rel MED #3 / HIGH H5 cluster
+/// describes.
 pub fn flush_blocking() {
   let (ack_tx, ack_rx) = mpsc::channel();
-  if writer_handle().send(WriterMsg::Flush(ack_tx)).is_ok() {
-    let _ = ack_rx.recv_timeout(Duration::from_secs(5));
+  match writer_handle().send(WriterMsg::Flush(ack_tx)) {
+    Err(_) => {
+      log::error!(
+        "trench-cache-writer: flush send failed — writer thread is gone, \
+         the final cache.json snapshot was not written."
+      );
+    }
+    Ok(()) => {
+      if ack_rx.recv_timeout(Duration::from_secs(5)).is_err() {
+        log::error!(
+          "trench-cache-writer: flush ack timeout (5s) — disk wedged or \
+           writer stuck, final cache snapshot may not be on disk."
+        );
+      }
+    }
   }
 }
 
