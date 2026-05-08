@@ -1545,19 +1545,46 @@ impl App {
       self.library_selected_urls.iter().cloned().collect();
     let mut count = 0;
     for url in urls {
-      for item in self.items.iter_mut() {
+      if self.set_workflow_state_for_url(&url, state) {
+        count += 1;
+      }
+    }
+    crate::store::save(&self.persisted_states);
+    count
+  }
+
+  /// Set a single item's workflow_state (in items or discovery_items by URL),
+  /// update the persisted-state override, and invalidate the caches that
+  /// depend on workflow_state. Does NOT save persisted_states to disk —
+  /// caller batches the save.
+  fn set_workflow_state_for_url(
+    &mut self,
+    url: &str,
+    state: WorkflowState,
+  ) -> bool {
+    let mut found = false;
+    for item in self.items.iter_mut() {
+      if item.url == url {
+        item.workflow_state = state;
+        found = true;
+        break;
+      }
+    }
+    if !found {
+      for item in self.discovery_items.iter_mut() {
         if item.url == url {
           item.workflow_state = state;
-          self.persisted_states.insert(url.clone(), state);
-          count += 1;
+          found = true;
           break;
         }
       }
     }
-    crate::store::save(&self.persisted_states);
-    self.invalidate_visible_cache();
-    self.invalidate_items_derived_caches();
-    count
+    if found {
+      self.persisted_states.insert(url.to_string(), state);
+      self.invalidate_visible_cache();
+      self.invalidate_counts_cache();
+    }
+    found
   }
 
   /// Open the tag picker for a list of target URLs (single item or multi-select).
@@ -2576,25 +2603,12 @@ impl App {
   }
 
   pub fn set_workflow_state(&mut self, state: WorkflowState) {
-    // Collect the URL of the currently selected visible item
     let url = self
       .visible_get(self.active_selected_index())
       .map(|item| item.url.clone());
-
     if let Some(url) = url {
-      if let Some(item) =
-        self.items_for_tab_mut().iter_mut().find(|i| i.url == url)
-      {
-        item.workflow_state = state;
-      }
-      self.persisted_states.insert(url, state);
+      self.set_workflow_state_for_url(&url, state);
       crate::store::save(&self.persisted_states);
-      // Unconditional invalidate even when the mutation lands on
-      // discovery_items: counts_cache reads only from app.items today,
-      // so the call is technically redundant on the Discoveries tab.
-      // Keeping it unconditional preserves invariant safety if anyone
-      // later folds discovery_items into counts.
-      self.invalidate_items_derived_caches();
     }
   }
 }
