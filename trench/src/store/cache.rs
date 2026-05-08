@@ -88,7 +88,7 @@ fn writer_handle() -> &'static Sender<WriterMsg> {
         // fs / atomic_write surfaces a diagnostic instead of dying
         // silently. Without this, a panicking writer leaves WRITER_TX
         // holding a stale Sender — every subsequent queue_save returns
-        // Ok but the saves vanish (audit Rel HIGH H5).
+        // Ok but the saves vanish.
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
           move || writer_loop(rx),
         ));
@@ -165,8 +165,7 @@ pub fn queue_save(items: Vec<FeedItem>) {
 /// Wait for the writer to finish any pending work. Call once on shutdown so
 /// the on-disk cache reflects the final in-memory state. Bounded so a wedged
 /// I/O can't hang process exit. Logs both failure modes loudly — silent
-/// final-batch loss is the symptom audit Rel MED #3 / HIGH H5 cluster
-/// describes.
+/// final-batch loss otherwise.
 pub fn flush_blocking() {
   let (ack_tx, ack_rx) = mpsc::channel();
   match writer_handle().send(WriterMsg::Flush(ack_tx)) {
