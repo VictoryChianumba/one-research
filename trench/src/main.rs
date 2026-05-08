@@ -1070,6 +1070,21 @@ fn migrate_legacy_config_dir() {
     if !old_path.exists() || new_path.exists() {
       continue;
     }
+    // Reject pre-planted symlinks. If a hostile process briefly had write
+    // access to ~/.config/tentative/, planting `state.json` as a symlink
+    // pointing to a victim file would let our rename move that file
+    // unexpectedly. Skip symlinks; the legacy dir is ephemeral and a
+    // subsequent launch can retry (audit Sec MED #17).
+    match std::fs::symlink_metadata(&old_path) {
+      Ok(m) if m.file_type().is_symlink() => {
+        eprintln!(
+          "trench: refusing to migrate symlink at {}; skipping",
+          old_path.display()
+        );
+        continue;
+      }
+      _ => {}
+    }
     if let Err(e) = std::fs::rename(&old_path, &new_path) {
       eprintln!(
         "trench: could not migrate {} to new config dir ({e}); continuing",

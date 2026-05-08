@@ -65,6 +65,36 @@ pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
   std::fs::rename(&tmp_path, path)
 }
 
+/// Move a corrupt note file aside (`<path>.broken-<unix_nanos>-<pid>`) so
+/// the user keeps a recovery copy and the next save_note doesn't overwrite
+/// it. Mirrors the trench-side `quarantine_corrupted` helper. Best-effort:
+/// rename failure is non-fatal.
+fn quarantine_corrupt_note(path: &Path, err: &dyn std::fmt::Display) {
+  use std::sync::atomic::{AtomicU64, Ordering};
+  static COUNTER: AtomicU64 = AtomicU64::new(0);
+  let ts_nanos = std::time::SystemTime::now()
+    .duration_since(std::time::UNIX_EPOCH)
+    .map(|d| d.as_nanos())
+    .unwrap_or(0);
+  let pid = std::process::id();
+  let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+  let mut new_name: std::ffi::OsString = path.as_os_str().to_owned();
+  new_name.push(format!(".broken-{ts_nanos}-{pid}-{n}"));
+  let new_path = PathBuf::from(&new_name);
+  log::error!(
+    "notes: parse failed at {} — quarantining to {}: {err}",
+    path.display(),
+    new_path.display()
+  );
+  if let Err(rename_err) = std::fs::rename(path, &new_path) {
+    log::error!(
+      "notes: quarantine rename failed at {} — corrupt file remains \
+       and may be overwritten on next save: {rename_err}",
+      path.display()
+    );
+  }
+}
+
 /// Cap on per-file load size for notes. Defends against an attacker-planted
 /// 4-GB JSON OOMing trench at startup (audit Sec MED #11). Notes are
 /// user-authored content so the legit upper bound is small; 8 MB is
@@ -95,23 +125,32 @@ pub fn load_all_notes() -> anyhow::Result<Vec<Note>> {
     let entry = entry?;
     let path = entry.path();
     if path.extension().and_then(|e| e.to_str()) == Some("json") {
-      if let Ok(bytes) = read_capped_bytes(&path) {
-        if let Ok(note) = serde_json::from_slice::<Note>(&bytes) {
-          // Reject deserialized notes whose `note_id` field would resolve
-          // outside notes_dir on the next save_note call. The deserialize
-          // succeeded but the note is unsafe to round-trip through disk.
-          if validate_id(&note.note_id).is_err() {
-            log::warn!(
-              "Skipping note with unsafe id at {}: {:?}",
-              path.display(),
-              note.note_id
-            );
-            continue;
-          }
-          notes.push(note);
-        } else {
-          log::warn!("Failed to parse note at {}", path.display());
+      match read_capped_bytes(&path) {
+        Err(e) => {
+          log::warn!("Failed to read note at {}: {e}", path.display());
         }
+        Ok(bytes) => match serde_json::from_slice::<Note>(&bytes) {
+          Ok(note) => {
+            // Reject deserialized notes whose `note_id` field would resolve
+            // outside notes_dir on the next save_note call. The deserialize
+            // succeeded but the note is unsafe to round-trip through disk.
+            if validate_id(&note.note_id).is_err() {
+              log::warn!(
+                "Skipping note with unsafe id at {}: {:?}",
+                path.display(),
+                note.note_id
+              );
+              continue;
+            }
+            notes.push(note);
+          }
+          Err(parse_err) => {
+            // Quarantine the corrupt file so the user keeps a recovery
+            // copy and the next save_note doesn't overwrite it
+            // (audit Rel MED #4).
+            quarantine_corrupt_note(&path, &parse_err);
+          }
+        },
       }
     }
   }
