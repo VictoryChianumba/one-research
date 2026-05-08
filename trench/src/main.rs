@@ -42,15 +42,16 @@ use ratatui::{Terminal, backend::CrosstermBackend};
 use std::io;
 use std::sync::mpsc;
 
-/// Allowlist for URL schemes handed to the OS opener. macOS `open` and
-/// Linux `xdg-open` will dispatch any registered scheme — including local
-/// handlers like `vscode://`, `slack://`, `mailto:`, or browser-side
-/// `javascript:` — so an attacker-controlled `item.url` could pivot into
-/// whichever application the user has installed. Restrict to plain web
-/// schemes; non-https paper hosts (older proceedings, university servers)
-/// are still legitimate, so http is included alongside https.
+/// Allowlist for URL schemes handed to the OS opener — `xdg-open` / `open`
+/// will dispatch any registered scheme (including `javascript:`,
+/// `vscode://`, `mailto:`). Restricting to http(s) blocks the local-handler
+/// attack surface; http is kept because some legitimate paper hosts are
+/// http-only. Case-insensitive: per RFC 3986 §3.1 schemes are
+/// case-insensitive, and RSS feeds in the wild ship `Https://` URLs that
+/// are not normalized at ingestion (audit Sec LOW #21).
 fn is_safe_url_scheme(url: &str) -> bool {
-  url.starts_with("https://") || url.starts_with("http://")
+  let lower = url.to_ascii_lowercase();
+  lower.starts_with("https://") || lower.starts_with("http://")
 }
 
 pub(crate) fn open_url(url: &str) {
@@ -174,11 +175,12 @@ mod url_scheme_tests {
   }
 
   #[test]
-  fn case_sensitive_match_keeps_things_simple() {
-    // `Https://` is technically valid per RFC 3986 §3.1 but we don't go out
-    // of our way to accept odd casing — the URLs we open come from feed
-    // ingestion, which normalizes to lowercase scheme.
-    assert!(!is_safe_url_scheme("HTTPS://arxiv.org/abs/2603.00001"));
+  fn accepts_mixed_case_schemes() {
+    // Per RFC 3986 §3.1 schemes are case-insensitive; RSS feeds in the
+    // wild do ship `Https://` URLs that we shouldn't silently refuse.
+    assert!(is_safe_url_scheme("HTTPS://arxiv.org/abs/2603.00001"));
+    assert!(is_safe_url_scheme("Http://example.com"));
+    assert!(is_safe_url_scheme("hTTpS://github.com/owner/repo"));
   }
 }
 

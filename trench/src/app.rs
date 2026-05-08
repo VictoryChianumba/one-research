@@ -1306,7 +1306,10 @@ impl App {
 
   pub fn set_notification(&mut self, msg: String) {
     let url = self.selected_item().map(|i| i.url.clone());
-    self.notification = Some(msg);
+    // Sanitize at the chokepoint — set_notification is called from many
+    // sites including ones that interpolate reqwest errors / GitHub
+    // tree paths / API messages (audit Sec MED #18 cluster).
+    self.notification = Some(crate::sanitize::sanitize_terminal_text(&msg));
     self.notification_item_id = url;
   }
 
@@ -1672,7 +1675,11 @@ impl App {
 
   pub fn set_repo_status(&mut self, msg: impl Into<String>) {
     if let Some(ctx) = &mut self.repo_context {
-      ctx.status_message = Some(msg.into());
+      // Sanitize at the setter chokepoint — repo status renders into a
+      // styled Span and reqwest error strings include URLs that may
+      // carry attacker-supplied bytes via redirects (audit Sec MED #18).
+      ctx.status_message =
+        Some(crate::sanitize::sanitize_terminal_text(&msg.into()));
     }
   }
 
@@ -1724,7 +1731,9 @@ impl App {
         ctx.status_message = None;
       }
       Err(e) => {
-        ctx.status_message = Some(format!("Error: {e}"));
+        ctx.status_message = Some(crate::sanitize::sanitize_terminal_text(
+          &format!("Error: {e}"),
+        ));
       }
     }
   }
@@ -1767,7 +1776,9 @@ impl App {
         ctx.status_message = None;
       }
       Err(e) => {
-        ctx.status_message = Some(format!("Error: {e}"));
+        ctx.status_message = Some(crate::sanitize::sanitize_terminal_text(
+          &format!("Error: {e}"),
+        ));
       }
     }
   }
@@ -1892,9 +1903,14 @@ impl App {
       return;
     };
 
+    // Strip any terminal-control bytes embedded in the GitHub-derived path
+    // before writing to the OS clipboard. Otherwise a hostile repo could
+    // ship ESC bytes that survive into whichever terminal the user later
+    // pastes into (audit Sec MED #10).
+    let safe_path = crate::sanitize::sanitize_terminal_text(&path);
     match arboard::Clipboard::new() {
-      Ok(mut cb) => match cb.set_text(&path) {
-        Ok(()) => self.set_repo_status(format!("Copied: {path}")),
+      Ok(mut cb) => match cb.set_text(&safe_path) {
+        Ok(()) => self.set_repo_status(format!("Copied: {safe_path}")),
         Err(e) => self.set_repo_status(format!("Clipboard error: {e}")),
       },
       Err(e) => self.set_repo_status(format!("Clipboard unavailable: {e}")),
@@ -1907,9 +1923,12 @@ impl App {
       return;
     };
 
+    // Strip any terminal-control bytes from the GitHub-derived URL before
+    // writing to the OS clipboard (audit Sec MED #10).
+    let safe_url = crate::sanitize::sanitize_terminal_text(&url);
     match arboard::Clipboard::new() {
-      Ok(mut cb) => match cb.set_text(&url) {
-        Ok(()) => self.set_repo_status(format!("Copied URL: {url}")),
+      Ok(mut cb) => match cb.set_text(&safe_url) {
+        Ok(()) => self.set_repo_status(format!("Copied URL: {safe_url}")),
         Err(e) => self.set_repo_status(format!("Clipboard error: {e}")),
       },
       Err(e) => self.set_repo_status(format!("Clipboard unavailable: {e}")),

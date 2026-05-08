@@ -2151,10 +2151,12 @@ fn parse_api_error(err: &str) -> String {
   {
     return "quota exceeded — check billing".to_string();
   }
-  // Char-aware truncation: API error strings are user-facing and may
-  // include multi-byte chars; byte-slicing at byte 80 risks a mid-
-  // codepoint panic (Reliability HIGH #8 from the audit).
+  // Char-aware truncation guards the byte boundary; sanitize then strips
+  // any terminal-escape bytes the upstream API embedded in the error
+  // before it reaches log lines or the chat surface (audit Sec LOW #26;
+  // mirrors the providers' friendly_error pattern from T4b-A).
   let short = crate::sanitize::truncate_chars(err, 80);
+  let short = crate::sanitize::sanitize_terminal_text(&short);
   format!("API error — {short}")
 }
 
