@@ -31,7 +31,7 @@ fn validate_id(note_id: &str) -> anyhow::Result<()> {
 /// A panic, SIGINT, or power loss either leaves the original unchanged or
 /// replaces it atomically — never truncated. Notes are user-authored content,
 /// so torn writes are particularly costly here.
-fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
   let mut tmp_name: OsString = path.as_os_str().to_owned();
   tmp_name.push(".tmp");
   let tmp_path = PathBuf::from(tmp_name);
