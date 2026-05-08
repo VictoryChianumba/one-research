@@ -343,10 +343,13 @@ fn read_body(resp: reqwest::blocking::Response) -> Result<String, String> {
 fn friendly_error(status: u16, body: &str) -> String {
   if let Ok(v) = serde_json::from_str::<Value>(body) {
     if let Some(msg) = v["error"]["message"].as_str() {
-      // Char-aware truncation: API error bodies may contain multi-byte
-      // chars (em-dash, smart quotes, emoji) and byte-slicing at byte 100
-      // can land mid-codepoint, panicking the discovery thread.
+      // Char-aware truncation guards the byte boundary; sanitize then
+      // strips any terminal-escape bytes the upstream API embedded in the
+      // error message — a hostile/compromised endpoint could otherwise
+      // route OSC-52 / CSI sequences straight into discovery_status and
+      // hijack the user's terminal (audit Sec HIGH #3).
       let short = crate::sanitize::truncate_chars(msg, 100);
+      let short = crate::sanitize::sanitize_terminal_text(&short);
       return format!("Claude API — {short}");
     }
   }

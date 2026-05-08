@@ -332,15 +332,18 @@ impl FeedItem {
   ///
   /// Idempotent: re-sanitizing already-clean text leaves it unchanged.
   ///
-  /// `id` and `url` are app-constructed (we always interpolate them from
-  /// validated source IDs or known URL templates), so they're not sanitized
-  /// here — sanitizing them would mask construction bugs rather than fix the
-  /// real attack surface.
+  /// `url` and `id` are included even though they're typically app-constructed:
+  /// RSS ingestion writes the raw `<link>` href (or text body) directly into
+  /// `url`, so a hostile feed can ship ESC bytes that survive into the cache
+  /// and render in the details pane / clipboard / repo viewer (audit Sec
+  /// HIGH #2, LOW #19).
   pub fn sanitize_in_place(&mut self) {
     use crate::sanitize::sanitize_terminal_text;
     self.title = sanitize_terminal_text(&self.title);
     self.summary_short = sanitize_terminal_text(&self.summary_short);
     self.source_name = sanitize_terminal_text(&self.source_name);
+    self.url = sanitize_terminal_text(&self.url);
+    self.id = sanitize_terminal_text(&self.id);
     for author in &mut self.authors {
       *author = sanitize_terminal_text(author);
     }
