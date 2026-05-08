@@ -741,10 +741,15 @@ impl ChatUi {
         ),
       ])
     } else {
+      // Render cursor at input_cursor position so Left/Right/Home/End
+      // are visually reflected (audit Rel MED #13). split_at on a char
+      // boundary is safe because every cursor mutation steps by char.
+      let cursor = self.input_cursor.min(self.input.len());
+      let (before, after) = self.input.split_at(cursor);
       Line::from(vec![
         stripe,
         Span::styled(
-          format!("{}█", self.input),
+          format!("{before}█{after}"),
           Style::default().fg(t.text).bg(input_bg),
         ),
       ])
@@ -888,16 +893,40 @@ impl ChatUi {
         ChatAction::None
       }
 
-      KeyCode::Backspace => {
-        self.input.pop();
+      KeyCode::Left => {
+        self.input_cursor = step_cursor_back(&self.input, self.input_cursor);
+        ChatAction::None
+      }
+
+      KeyCode::Right => {
+        self.input_cursor = step_cursor_forward(&self.input, self.input_cursor);
+        ChatAction::None
+      }
+
+      KeyCode::Home => {
+        self.input_cursor = 0;
+        ChatAction::None
+      }
+
+      KeyCode::End => {
         self.input_cursor = self.input.len();
+        ChatAction::None
+      }
+
+      KeyCode::Backspace => {
+        // Delete the char immediately before the cursor and step the cursor
+        // back (audit Rel MED #13 — cursor was previously vestigial because
+        // Backspace always popped the tail regardless of cursor position).
+        self.input_cursor =
+          backspace_at_cursor(&mut self.input, self.input_cursor);
         self.clamp_slash_selection();
         ChatAction::None
       }
 
       KeyCode::Char(c) => {
-        self.input.push(c);
-        self.input_cursor = self.input.len();
+        // Insert at cursor, advance cursor by the char's UTF-8 byte width.
+        self.input.insert(self.input_cursor, c);
+        self.input_cursor += c.len_utf8();
         self.clamp_slash_selection();
         ChatAction::None
       }
@@ -2027,6 +2056,52 @@ mod normalize_markdown_tests {
   };
   use ui_theme::Theme;
 
+  use super::{backspace_at_cursor, step_cursor_back, step_cursor_forward};
+
+  #[test]
+  fn step_cursor_back_handles_ascii_and_emoji() {
+    assert_eq!(step_cursor_back("hello", 5), 4);
+    assert_eq!(step_cursor_back("hello", 1), 0);
+    assert_eq!(step_cursor_back("hello", 0), 0);
+    // Emoji "😀" is 4 bytes in UTF-8; cursor steps from 4 → 0.
+    assert_eq!(step_cursor_back("😀", 4), 0);
+    assert_eq!(step_cursor_back("a😀b", 5), 1);
+  }
+
+  #[test]
+  fn step_cursor_forward_handles_ascii_and_emoji() {
+    assert_eq!(step_cursor_forward("hello", 0), 1);
+    assert_eq!(step_cursor_forward("hello", 4), 5);
+    assert_eq!(step_cursor_forward("hello", 5), 5);
+    assert_eq!(step_cursor_forward("😀", 0), 4);
+    assert_eq!(step_cursor_forward("a😀b", 1), 5);
+  }
+
+  #[test]
+  fn backspace_at_cursor_removes_char_before_cursor() {
+    let mut s = String::from("hello");
+    let new_cursor = backspace_at_cursor(&mut s, 3);
+    assert_eq!(s, "helo");
+    assert_eq!(new_cursor, 2);
+  }
+
+  #[test]
+  fn backspace_at_cursor_at_start_is_noop() {
+    let mut s = String::from("hello");
+    let new_cursor = backspace_at_cursor(&mut s, 0);
+    assert_eq!(s, "hello");
+    assert_eq!(new_cursor, 0);
+  }
+
+  #[test]
+  fn backspace_at_cursor_handles_multibyte() {
+    let mut s = String::from("a😀b");
+    // Cursor at 5 (after 😀). Backspace removes the emoji.
+    let new_cursor = backspace_at_cursor(&mut s, 5);
+    assert_eq!(s, "ab");
+    assert_eq!(new_cursor, 1);
+  }
+
   #[test]
   fn injects_newline_before_inline_h3_with_number() {
     let got = normalize_markdown("foo bar ### 6. Heading more text");
@@ -2127,6 +2202,44 @@ mod normalize_markdown_tests {
   fn rendered_width(line: &ratatui::text::Line<'static>) -> usize {
     line.spans.iter().map(|span| span.content.chars().count()).sum()
   }
+}
+
+/// Step a cursor byte offset back by one char in `s`. Returns the new offset.
+/// Returns 0 if the cursor is already at the start. Char-aware so multi-byte
+/// codepoints are stepped over as a unit, not byte-by-byte.
+fn step_cursor_back(s: &str, cursor: usize) -> usize {
+  if cursor == 0 {
+    return 0;
+  }
+  s[..cursor]
+    .char_indices()
+    .next_back()
+    .map(|(i, _)| i)
+    .unwrap_or(0)
+}
+
+/// Step a cursor byte offset forward by one char in `s`. Returns the new
+/// offset. Returns `s.len()` if the cursor is already at the end.
+fn step_cursor_forward(s: &str, cursor: usize) -> usize {
+  if cursor >= s.len() {
+    return s.len();
+  }
+  s[cursor..]
+    .char_indices()
+    .nth(1)
+    .map(|(i, _)| cursor + i)
+    .unwrap_or(s.len())
+}
+
+/// Delete the char immediately before `cursor` from `s` and return the new
+/// cursor position. No-op when cursor is at 0.
+fn backspace_at_cursor(s: &mut String, cursor: usize) -> usize {
+  if cursor == 0 {
+    return 0;
+  }
+  let new_cursor = step_cursor_back(s, cursor);
+  s.replace_range(new_cursor..cursor, "");
+  new_cursor
 }
 
 /// Map a raw API error string to a friendly one-line message.
