@@ -1154,6 +1154,29 @@ impl App {
     *self.counts_cache.borrow_mut() = None;
   }
 
+  /// Reset the primary items vec and every parallel index/cache that mirrors
+  /// it. Replaces ad-hoc `app.items.clear()` callers, which used to leave
+  /// `url_index` / `arxiv_id_index` populated with stale offsets and panic on
+  /// the next `process_incoming` batch (audit Rel CRIT C1).
+  pub fn reset_items(&mut self) {
+    self.items.clear();
+    self.url_index.clear();
+    self.arxiv_id_index.clear();
+    self.invalidate_visible_cache();
+    self.invalidate_counts_cache();
+  }
+
+  /// Same shape as `reset_items` but for the discovery-side mirrors. Replaces
+  /// `app.discovery_items.clear()` callers that left `discovery_url_index` /
+  /// `discovery_arxiv_id_index` stale and panicked on the next merge (audit
+  /// Rel CRIT C2).
+  pub fn reset_discovery_items(&mut self) {
+    self.discovery_items.clear();
+    self.discovery_url_index.clear();
+    self.discovery_arxiv_id_index.clear();
+    self.invalidate_visible_cache();
+  }
+
   /// Cheap O(1) read from the memoized count cache. On miss, runs a single
   /// fused pass over `self.items` that produces every counter the dashboard
   /// and chip bar need.
@@ -2555,6 +2578,42 @@ mod tests {
     app.invalidate_counts_cache();
     let fresh = app.item_counts();
     assert_eq!(fresh.total, 0, "post-invalidation, recompute sees empty items");
+  }
+
+  #[test]
+  fn reset_items_clears_indices() {
+    let mut app = App::new();
+    app.items = mock_items();
+    app.rebuild_indices();
+    assert!(!app.url_index.is_empty(), "fixture must populate url_index");
+
+    app.reset_items();
+
+    assert!(app.items.is_empty());
+    assert!(app.url_index.is_empty(), "url_index must be cleared in lockstep");
+    assert!(
+      app.arxiv_id_index.is_empty(),
+      "arxiv_id_index must be cleared in lockstep"
+    );
+  }
+
+  #[test]
+  fn reset_discovery_items_clears_indices() {
+    let mut app = App::new();
+    app.discovery_items = mock_items();
+    // Manually populate the discovery indices to mirror what
+    // merge_discovery_items would do; rebuild_indices targets the primary
+    // items vec, not discovery_items.
+    for (idx, item) in app.discovery_items.iter().enumerate() {
+      app.discovery_url_index.insert(item.url.clone(), idx);
+    }
+    assert!(!app.discovery_url_index.is_empty());
+
+    app.reset_discovery_items();
+
+    assert!(app.discovery_items.is_empty());
+    assert!(app.discovery_url_index.is_empty());
+    assert!(app.discovery_arxiv_id_index.is_empty());
   }
 
   #[test]

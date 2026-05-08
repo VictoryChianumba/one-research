@@ -670,8 +670,7 @@ pub(crate) fn spawn_ai_discovery(
   };
 
   if !is_refinement {
-    app.discovery_items.clear();
-    app.invalidate_visible_cache();
+    app.reset_discovery_items();
   }
 
   app.discovery_force_new = false;
@@ -712,8 +711,7 @@ pub(crate) fn force_refresh(app: &mut App) {
   app.is_loading = false;
   app.is_refreshing = false;
   app.fetch_rx = None;
-  app.items.clear();
-  app.invalidate_visible_cache();
+  app.reset_items();
   do_refresh(app);
 }
 
@@ -1129,6 +1127,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   {
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
+      // Pop the kitty-keyboard flags + focus-change BEFORE leaving the alt
+      // screen, otherwise the responses to those sequences leak into the
+      // user's shell after the panic and corrupt input until manual `reset`
+      // (audit Rel CRIT C3).
+      let _ = crossterm::execute!(
+        std::io::stderr(),
+        crossterm::event::PopKeyboardEnhancementFlags,
+        crossterm::event::DisableFocusChange,
+      );
       let _ = crossterm::terminal::disable_raw_mode();
       let _ = crossterm::execute!(
         std::io::stderr(),

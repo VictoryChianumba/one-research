@@ -24,8 +24,7 @@ pub fn dispatch_slash_command(app: &mut App, cmd: SlashCommandInvocation) {
       app.status_message = Some("Cleared history".to_string());
     }
     SlashCommandInvocation::ClearDiscoveries => {
-      app.discovery_items.clear();
-      app.invalidate_visible_cache();
+      app.reset_discovery_items();
       app.discovery_selected_index = 0;
       app.discovery_list_offset = 0;
       app.discovery_status = String::new();
