@@ -1099,13 +1099,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path = home.join(".config/trench/trench.log");
     std::fs::create_dir_all(path.parent()?).ok()?;
     // Truncate on each startup — prevents unbounded growth from filling disk.
-    std::fs::OpenOptions::new()
-      .create(true)
-      .write(true)
-      .truncate(true)
-      .open(&path)
-      .ok()
+    let mut opts = std::fs::OpenOptions::new();
+    opts.create(true).write(true).truncate(true);
+    // Owner-read/write only on Unix. Default umask leaves trench.log
+    // world-readable, which leaks API error messages and partial system
+    // prompt fragments to other local users (audit Sec MED #14).
+    #[cfg(unix)]
+    {
+      use std::os::unix::fs::OpenOptionsExt;
+      opts.mode(0o600);
+    }
+    opts.open(&path).ok()
   });
+
+  // Surface a startup warning on Windows so users on multi-user systems
+  // know that cache.json, history, chat sessions, notes, and trench.log
+  // are written with default ACLs (typically world-readable). The
+  // Unix-only set_private 0o600 step is a no-op on Windows; a real DACL
+  // fix via windows-sys is tracked separately (audit Sec MED #8).
+  #[cfg(windows)]
+  log::warn!(
+    "trench on Windows: data files use default ACLs and may be \
+     readable by other local users. set_private is a no-op on Windows."
+  );
   match log_file {
     Some(f) => {
       env_logger::Builder::new()

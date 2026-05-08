@@ -37,6 +37,20 @@ pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
   // Best-effort cleanup of any stale tmp file from a previous crash.
   let _ = fs::remove_file(&tmp_path);
 
+  // Defense-in-depth against pre-planted symlinks at the tmp path: if
+  // the cleanup above failed (perm denied, etc.) and a symlink remains,
+  // refuse to follow it. Bounded TOCTOU between this check and the
+  // create — closes the easy attack while leaving the corner case open
+  // (audit Rel MED #10).
+  if let Ok(meta) = fs::symlink_metadata(&tmp_path) {
+    if meta.file_type().is_symlink() {
+      return Err(std::io::Error::new(
+        std::io::ErrorKind::PermissionDenied,
+        "atomic_write: refusing to write through pre-planted symlink",
+      ));
+    }
+  }
+
   {
     let mut f = fs::File::create(&tmp_path)?;
     f.write_all(bytes)?;
