@@ -3140,15 +3140,13 @@ fn handle_history_tab(key: KeyEvent, app: &mut App) -> bool {
   use crate::history::{HistoryFilter, HistoryKind};
   match key.code {
     KeyCode::Char(']') => {
-      app.history_filter = app.history_filter.next();
-      app.invalidate_filtered_history_cache();
+      app.mutate_history_filter(|f| *f = f.next());
       app.history_selected_index = 0;
       app.history_list_offset = 0;
       true
     }
     KeyCode::Char('[') => {
-      app.history_filter = app.history_filter.prev();
-      app.invalidate_filtered_history_cache();
+      app.mutate_history_filter(|f| *f = f.prev());
       app.history_selected_index = 0;
       app.history_list_offset = 0;
       true
@@ -3183,7 +3181,7 @@ fn handle_history_tab(key: KeyEvent, app: &mut App) -> bool {
         return true;
       };
       let key_to_delete = (target.kind, target.key.clone());
-      app.history.retain(|e| (e.kind, e.key.clone()) != key_to_delete);
+      app.mutate_history(|h| h.retain(|e| (e.kind, e.key.clone()) != key_to_delete));
       crate::store::history::save(&app.history);
       let len = app.filtered_history().len();
       if len > 0 && app.history_selected_index >= len {

@@ -1628,14 +1628,15 @@ impl App {
     } else {
       item.source_name.clone()
     };
-    crate::history::record_paper(
-      &mut self.history,
-      item.url.clone(),
-      item.title.clone(),
-      source,
-      meta,
-    );
-    self.invalidate_filtered_history_cache();
+    self.mutate_history(|h| {
+      crate::history::record_paper(
+        h,
+        item.url.clone(),
+        item.title.clone(),
+        source,
+        meta,
+      );
+    });
     crate::store::history::save(&self.history);
   }
 
@@ -1644,13 +1645,31 @@ impl App {
     topic: &str,
     intent: crate::discovery::intent::QueryIntent,
   ) {
-    crate::history::record_query(
-      &mut self.history,
-      topic.to_string(),
-      intent.label(),
-    );
-    self.invalidate_filtered_history_cache();
+    self.mutate_history(|h| {
+      crate::history::record_query(h, topic.to_string(), intent.label());
+    });
     crate::store::history::save(&self.history);
+  }
+
+  /// Mutator chokepoint for `history`. Invokes `f`, then invalidates the
+  /// filtered_history_cache so subsequent reads see the updated data.
+  pub fn mutate_history<R>(
+    &mut self,
+    f: impl FnOnce(&mut Vec<crate::history::HistoryEntry>) -> R,
+  ) -> R {
+    let r = f(&mut self.history);
+    self.invalidate_filtered_history_cache();
+    r
+  }
+
+  /// Mutator chokepoint for `history_filter`. The filtered_history_cache
+  /// depends on the time-window filter just as much as on history itself.
+  pub fn mutate_history_filter(
+    &mut self,
+    f: impl FnOnce(&mut crate::history::HistoryFilter),
+  ) {
+    f(&mut self.history_filter);
+    self.invalidate_filtered_history_cache();
   }
 
   pub fn filtered_history(&self) -> Vec<&crate::history::HistoryEntry> {
