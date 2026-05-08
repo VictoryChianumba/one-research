@@ -2439,7 +2439,10 @@ fn draw_item_table(frame: &mut Frame, app: &mut App, area: Rect) {
   // ── Single textwrap pass over visible window only ─────────────────────────
   // Produces (row_height, title_lines) together — no second wrap call needed.
   let t_heights = std::time::Instant::now();
-  let window_data: Vec<(u16, Vec<Line>)> = window
+  // Store raw title strings (not pre-wrapped Lines). Building the styled
+  // Lines directly at row time saves a Vec<Line>::clone + Span content
+  // into_owned re-conversion per row (audit Perf HIGH H5).
+  let window_data: Vec<(u16, Vec<String>)> = window
     .iter()
     .map(|item| {
       let mut raw_lines = textwrap::wrap(&item.title, title_wrap_w);
@@ -2453,8 +2456,8 @@ fn draw_item_table(frame: &mut Frame, app: &mut App, area: Rect) {
           *last = std::borrow::Cow::Owned(format!("{trimmed}…"));
         }
       }
-      let title_lines: Vec<Line> =
-        raw_lines.into_iter().map(|l| Line::from(l.into_owned())).collect();
+      let title_lines: Vec<String> =
+        raw_lines.into_iter().map(|l| l.into_owned()).collect();
       (row_height, title_lines)
     })
     .collect();
@@ -2520,13 +2523,19 @@ fn draw_item_table(frame: &mut Frame, app: &mut App, area: Rect) {
           },
           is_selected,
         ),
-        Cell::from(Text::from(feed_title_lines(
-          style_feed_title_lines(
-            title_lines.clone(),
-            if is_selected { selected_text_style } else { Style::default() },
-          ),
-          is_selected,
-        ))),
+        Cell::from(Text::from({
+          let title_style = if is_selected {
+            selected_text_style
+          } else {
+            Style::default()
+          };
+          let mut lines: Vec<Line<'static>> = title_lines
+            .iter()
+            .map(|s| Line::from(Span::styled(s.clone(), title_style)))
+            .collect();
+          lines.push(feed_spacer_line(is_selected));
+          lines
+        })),
         feed_cell(
           &author,
           if is_selected {
