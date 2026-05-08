@@ -1,0 +1,377 @@
+use ratatui::{
+  Frame,
+  layout::{Alignment, Constraint, Layout, Rect},
+  style::Style,
+  widgets::Paragraph,
+};
+
+use super::details::draw_details_panel;
+use super::feed::draw_feed_pane;
+use super::filter::draw_filter_panel;
+use super::notes::{draw_note_dock, draw_notes_surface};
+use super::reader::{
+  draw_narrow_feed_details_popup, draw_reader_tab_bar,
+  draw_reader_workspace_header, reader_workspace_split,
+};
+use super::widgets::{draw_horiz_split_box, draw_vert_split_box};
+use super::RIGHT_COL_WIDTH;
+use crate::app::{App, FocusedReader};
+
+/// Screen rects computed by draw_main_row, passed back to app.update_pane_rects.
+pub(super) struct MainRowRects {
+  pub feed: Option<Rect>,
+  pub reader: Option<Rect>,
+  pub secondary_reader: Option<Rect>,
+  pub notes: Option<Rect>,
+  pub secondary_notes: Option<Rect>,
+  pub details: Option<Rect>,
+}
+
+fn split_reader_note_dock(area: Rect) -> (Rect, Rect) {
+  if area.height < 16 {
+    return (
+      Rect { x: area.x, y: area.y, width: area.width, height: area.height },
+      Rect { x: area.x, y: area.y + area.height, width: area.width, height: 0 },
+    );
+  }
+  let dock_h = (area.height * 34 / 100).clamp(7, 16);
+  let rows = Layout::vertical([Constraint::Min(8), Constraint::Length(dock_h)])
+    .split(area);
+  (rows[0], rows[1])
+}
+
+
+pub fn draw_main_row(frame: &mut Frame, app: &mut App, area: Rect) -> MainRowRects {
+  let theme = app.theme();
+  let t = theme;
+  // Tread's `Theme` is a sibling type from a separate `ui_theme` crate
+  // — we can't pass `&t` directly.  Convert once per draw cycle.
+  let tread_theme = app.theme_for_tread();
+  // ── A2 State 3: dual-reader (left 50% | right 50%) ──────────────────────
+  if app.reader_dual_active && app.reader_active {
+    let (workspace_area, body_area) = reader_workspace_split(area);
+    draw_reader_workspace_header(frame, app, workspace_area, "Dual Reader");
+    let inner_w = body_area.width.saturating_sub(2);
+    let right_w = (inner_w / 2).max(1);
+    let (left_rect, right_rect) = draw_horiz_split_box(
+      frame,
+      body_area,
+      right_w,
+      "Primary",
+      "Secondary",
+      &t,
+    );
+    let (left_reader_rect, left_notes_rect) = if app.notes_active {
+      let (reader, notes) = split_reader_note_dock(left_rect);
+      (reader, Some(notes))
+    } else {
+      (left_rect, None)
+    };
+    let (right_reader_rect, right_notes_rect) = if app.secondary_notes_active {
+      let (reader, notes) = split_reader_note_dock(right_rect);
+      (reader, Some(notes))
+    } else {
+      (right_rect, None)
+    };
+    {
+      let rows = Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
+        .split(left_reader_rect);
+      let focused = app.focused_reader == FocusedReader::Primary;
+      draw_reader_tab_bar(
+        frame,
+        rows[0],
+        &app.reader_tabs,
+        app.reader_active_tab,
+        focused,
+        &t,
+      );
+      let kitty = app.kitty_supported;
+      if let Some(tab) = app.reader_active_tab_mut() {
+        let new_size = (rows[1].width, rows[1].height);
+        if tab.last_resize != Some(new_size) {
+          tab.reader.resize(new_size.0, new_size.1);
+          tab.last_resize = Some(new_size);
+        }
+        tread::draw(frame, rows[1], &tab.reader, &tread_theme);
+        tread::after_draw(&tab.reader, &mut tab.image_state, rows[1], kitty);
+      }
+    }
+    {
+      let rows = Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
+        .split(right_reader_rect);
+      let focused = app.focused_reader == FocusedReader::Secondary;
+      draw_reader_tab_bar(
+        frame,
+        rows[0],
+        &app.reader_secondary_tabs,
+        app.reader_secondary_active_tab,
+        focused,
+        &t,
+      );
+      let kitty = app.kitty_supported;
+      if let Some(tab) = app.reader_secondary_active_tab_mut() {
+        let new_size = (rows[1].width, rows[1].height);
+        if tab.last_resize != Some(new_size) {
+          tab.reader.resize(new_size.0, new_size.1);
+          tab.last_resize = Some(new_size);
+        }
+        tread::draw(frame, rows[1], &tab.reader, &tread_theme);
+        tread::after_draw(&tab.reader, &mut tab.image_state, rows[1], kitty);
+      } else {
+        let hint = Paragraph::new(
+          "No paper loaded\n\nLdr+f → open feed · Enter to load",
+        )
+        .alignment(Alignment::Center)
+        .style(Style::default().fg(t.text_dim));
+        frame.render_widget(hint, rows[1]);
+      }
+    }
+    if let Some(notes_rect) = left_notes_rect {
+      draw_note_dock(frame, app, notes_rect, FocusedReader::Primary, &theme);
+    }
+    if let Some(notes_rect) = right_notes_rect {
+      draw_note_dock(frame, app, notes_rect, FocusedReader::Secondary, &theme);
+    }
+    return MainRowRects {
+      feed: None,
+      reader: Some(left_reader_rect),
+      secondary_reader: Some(right_reader_rect),
+      notes: left_notes_rect,
+      secondary_notes: right_notes_rect,
+      details: None,
+    };
+  }
+
+  // ── A2 State 2: feed (40%) | reader (60%) ────────────────────────────────
+  if app.reader_split_active && app.reader_active {
+    let (workspace_area, body_area) = reader_workspace_split(area);
+    draw_reader_workspace_header(frame, app, workspace_area, "Reader + Feed");
+    let inner_w = body_area.width.saturating_sub(2);
+    let reader_w = (inner_w * 60 / 100).max(1);
+    let (feed_rect, reader_rect) = draw_horiz_split_box(
+      frame,
+      body_area,
+      reader_w,
+      "Reader Feed",
+      "Reader",
+      &t,
+    );
+    draw_feed_pane(frame, app, feed_rect);
+    {
+      let rows = Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
+        .split(reader_rect);
+      draw_reader_tab_bar(
+        frame,
+        rows[0],
+        &app.reader_tabs,
+        app.reader_active_tab,
+        true,
+        &t,
+      );
+      let kitty = app.kitty_supported;
+      if let Some(tab) = app.reader_active_tab_mut() {
+        let new_size = (rows[1].width, rows[1].height);
+        if tab.last_resize != Some(new_size) {
+          tab.reader.resize(new_size.0, new_size.1);
+          tab.last_resize = Some(new_size);
+        }
+        tread::draw(frame, rows[1], &tab.reader, &tread_theme);
+        tread::after_draw(&tab.reader, &mut tab.image_state, rows[1], kitty);
+      }
+    }
+    if app.narrow_feed_details_open {
+      draw_narrow_feed_details_popup(frame, app, reader_rect);
+    }
+    return MainRowRects {
+      feed: Some(feed_rect),
+      reader: Some(reader_rect),
+      secondary_reader: None,
+      notes: None,
+      secondary_notes: None,
+      details: None,
+    };
+  }
+
+  // ── Reader: always full-width or 60/40 split, regardless of terminal width ─
+  if app.reader_active && !app.notes_active {
+    let (workspace_area, body_area) = reader_workspace_split(area);
+    draw_reader_workspace_header(frame, app, workspace_area, "Reader");
+    let rows = Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
+      .split(body_area);
+    draw_reader_tab_bar(
+      frame,
+      rows[0],
+      &app.reader_tabs,
+      app.reader_active_tab,
+      true,
+      &t,
+    );
+    let kitty = app.kitty_supported;
+    if let Some(tab) = app.reader_active_tab_mut() {
+      let elapsed = std::time::Instant::now();
+      let new_size = (rows[1].width, rows[1].height);
+      if tab.last_resize != Some(new_size) {
+        tab.reader.resize(new_size.0, new_size.1);
+        tab.last_resize = Some(new_size);
+      }
+      tread::draw(frame, rows[1], &tab.reader, &tread_theme);
+      tread::after_draw(&tab.reader, &mut tab.image_state, rows[1], kitty);
+      log::debug!(
+        "draw_editor (full-width): {}ms",
+        elapsed.elapsed().as_millis()
+      );
+    }
+    return MainRowRects {
+      feed: None,
+      reader: Some(body_area),
+      secondary_reader: None,
+      notes: None,
+      secondary_notes: None,
+      details: None,
+    };
+  }
+
+  if app.reader_active {
+    let (workspace_area, body_area) = reader_workspace_split(area);
+    draw_reader_workspace_header(frame, app, workspace_area, "Reader + Notes");
+    let (reader_rect, notes_rect) = split_reader_note_dock(body_area);
+    {
+      let rows = Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
+        .split(reader_rect);
+      draw_reader_tab_bar(
+        frame,
+        rows[0],
+        &app.reader_tabs,
+        app.reader_active_tab,
+        true,
+        &t,
+      );
+      let kitty = app.kitty_supported;
+      if let Some(tab) = app.reader_active_tab_mut() {
+        let elapsed = std::time::Instant::now();
+        let new_size = (rows[1].width, rows[1].height);
+        if tab.last_resize != Some(new_size) {
+          tab.reader.resize(new_size.0, new_size.1);
+          tab.last_resize = Some(new_size);
+        }
+        tread::draw(frame, rows[1], &tab.reader, &tread_theme);
+        tread::after_draw(&tab.reader, &mut tab.image_state, rows[1], kitty);
+        log::debug!("draw_editor (split): {}ms", elapsed.elapsed().as_millis());
+      }
+    }
+    draw_note_dock(frame, app, notes_rect, FocusedReader::Primary, &theme);
+    return MainRowRects {
+      feed: None,
+      reader: Some(reader_rect),
+      secondary_reader: None,
+      notes: Some(notes_rect),
+      secondary_notes: None,
+      details: None,
+    };
+  }
+
+  // ── Narrow mode (< 100 cols): vertical stack — feed top, details/notes bottom ──
+  if area.width < 100 {
+    let bottom_title = if app.notes_active {
+      app.notes_mode.title()
+    } else if app.filter_focus {
+      "Filters"
+    } else {
+      "Details"
+    };
+    let (feed_rect, bottom_rect) =
+      draw_vert_split_box(frame, area, "Feed", bottom_title, &t);
+
+    let t = std::time::Instant::now();
+    draw_feed_pane(frame, app, feed_rect);
+    log::debug!("draw_item_table (narrow): {}ms", t.elapsed().as_millis());
+
+    let mut details_rect: Option<Rect> = None;
+    if app.notes_active {
+      let t = std::time::Instant::now();
+      draw_notes_surface(
+        frame,
+        app,
+        bottom_rect,
+        FocusedReader::Primary,
+        false,
+        &theme,
+      );
+      log::debug!("notes::draw (narrow): {}ms", t.elapsed().as_millis());
+    } else if app.filter_focus {
+      let t = std::time::Instant::now();
+      draw_filter_panel(frame, app, bottom_rect);
+      log::debug!("draw_filter_panel (narrow): {}ms", t.elapsed().as_millis());
+    } else {
+      details_rect = Some(bottom_rect);
+      let t = std::time::Instant::now();
+      draw_details_panel(frame, app, bottom_rect);
+      log::debug!("draw_details_panel (narrow): {}ms", t.elapsed().as_millis());
+    }
+
+    return MainRowRects {
+      feed: Some(feed_rect),
+      reader: None,
+      secondary_reader: None,
+      notes: if app.notes_active { Some(bottom_rect) } else { None },
+      secondary_notes: None,
+      details: details_rect,
+    };
+  }
+
+  // ── Wide mode (>= 100 cols): single outer border, feed left, right panel ──
+  let inner_w = area.width.saturating_sub(2);
+  let right_w = if app.notes_active {
+    (inner_w * 40 / 100).max(1)
+  } else {
+    RIGHT_COL_WIDTH.min(inner_w.saturating_sub(2))
+  };
+  let right_title = if app.notes_active {
+    app.notes_mode.title()
+  } else if app.filter_focus {
+    "Filters"
+  } else {
+    "Details"
+  };
+
+  let (feed_rect, right_rect) =
+    draw_horiz_split_box(frame, area, right_w, "Feed", right_title, &t);
+
+  let t = std::time::Instant::now();
+  draw_feed_pane(frame, app, feed_rect);
+  log::debug!("draw_item_table: {}ms", t.elapsed().as_millis());
+
+  let mut details_rect: Option<Rect> = None;
+  if app.notes_active {
+    let t = std::time::Instant::now();
+    draw_notes_surface(
+      frame,
+      app,
+      right_rect,
+      FocusedReader::Primary,
+      false,
+      &theme,
+    );
+    log::debug!("notes::draw: {}ms", t.elapsed().as_millis());
+  } else if app.filter_focus {
+    let t = std::time::Instant::now();
+    draw_filter_panel(frame, app, right_rect);
+    log::debug!("draw_filter_panel: {}ms", t.elapsed().as_millis());
+  } else {
+    details_rect = Some(right_rect);
+    let t = std::time::Instant::now();
+    draw_details_panel(frame, app, right_rect);
+    log::debug!("draw_details_panel: {}ms", t.elapsed().as_millis());
+  }
+
+  MainRowRects {
+    feed: Some(feed_rect),
+    reader: None,
+    secondary_reader: None,
+    notes: if app.notes_active { Some(right_rect) } else { None },
+    secondary_notes: None,
+    details: details_rect,
+  }
+}
+
+
