@@ -3055,15 +3055,13 @@ fn handle_library_tab(key: KeyEvent, app: &mut App) -> bool {
         let len = app.visible_count();
         if len > 0 {
           let next = (app.library_selected_index + 1).min(len - 1);
-          app.library_selected_index = next;
-          app.library_recompute_selection();
+          app.library_extend_selection(next);
         }
         return true;
       }
       KeyCode::Char('k') | KeyCode::Up => {
-        app.library_selected_index =
-          app.library_selected_index.saturating_sub(1);
-        app.library_recompute_selection();
+        let next = app.library_selected_index.saturating_sub(1);
+        app.library_extend_selection(next);
         return true;
       }
       KeyCode::Char('r') => {

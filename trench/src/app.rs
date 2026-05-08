@@ -1385,6 +1385,8 @@ impl App {
 
   /// Update library_selected_urls from anchor/cursor positions in the visible
   /// item list. Always covers the contiguous range from anchor to cursor.
+  /// Used on entry to visual mode (full populate); cursor moves go through
+  /// `library_extend_selection` for incremental update.
   pub fn library_recompute_selection(&mut self) {
     if !self.library_visual_mode {
       self.library_selected_urls.clear();
@@ -1397,6 +1399,79 @@ impl App {
     let window = self.visible_window(lo, hi.saturating_add(1));
     self.library_selected_urls =
       window.iter().map(|it| it.url.clone()).collect();
+  }
+
+  /// Move the visual-mode cursor to `new_cursor` and update
+  /// `library_selected_urls` incrementally — adds/removes only the items at
+  /// the boundary between the old and new selection ranges. For the typical
+  /// single-step j/k move this means exactly one HashSet insert OR remove
+  /// per keystroke, instead of cloning every URL in [lo..=hi] (audit Perf
+  /// HIGH H7). Falls back to a no-op when not in visual mode.
+  pub fn library_extend_selection(&mut self, new_cursor: usize) {
+    if !self.library_visual_mode {
+      self.library_selected_index = new_cursor;
+      return;
+    }
+    let anchor = self.library_visual_anchor;
+    let old_cursor = self.library_selected_index;
+    let old_lo = old_cursor.min(anchor);
+    let old_hi = old_cursor.max(anchor);
+    let new_lo = new_cursor.min(anchor);
+    let new_hi = new_cursor.max(anchor);
+
+    // Materialize URL changes into local Vec<String>s so the
+    // visible_window borrow (which holds &self) drops before we touch
+    // the `library_selected_urls: HashSet<String>` field. For typical
+    // single-step j/k moves each Vec has 0 or 1 entries.
+    let removed_urls: Vec<String> = {
+      let mut out = Vec::new();
+      if new_lo > old_lo {
+        out.extend(
+          self
+            .visible_window(old_lo, new_lo)
+            .iter()
+            .map(|it| it.url.clone()),
+        );
+      }
+      if new_hi < old_hi {
+        out.extend(
+          self
+            .visible_window(new_hi.saturating_add(1), old_hi.saturating_add(1))
+            .iter()
+            .map(|it| it.url.clone()),
+        );
+      }
+      out
+    };
+    let added_urls: Vec<String> = {
+      let mut out = Vec::new();
+      if new_lo < old_lo {
+        out.extend(
+          self
+            .visible_window(new_lo, old_lo)
+            .iter()
+            .map(|it| it.url.clone()),
+        );
+      }
+      if new_hi > old_hi {
+        out.extend(
+          self
+            .visible_window(old_hi.saturating_add(1), new_hi.saturating_add(1))
+            .iter()
+            .map(|it| it.url.clone()),
+        );
+      }
+      out
+    };
+
+    for url in &removed_urls {
+      self.library_selected_urls.remove(url);
+    }
+    for url in added_urls {
+      self.library_selected_urls.insert(url);
+    }
+
+    self.library_selected_index = new_cursor;
   }
 
   pub fn library_exit_visual(&mut self) {
