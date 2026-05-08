@@ -260,17 +260,12 @@ fn draw_compact_title_bar(frame: &mut Frame, app: &App, area: Rect) {
     .split(area);
 
   let width = area.width as usize;
-  let inbox_count = app
-    .items
-    .iter()
-    .filter(|i| i.workflow_state == WorkflowState::Inbox)
-    .count();
-  let library_count = app
-    .items
-    .iter()
-    .filter(|i| i.workflow_state != WorkflowState::Inbox)
-    .count();
-  let total = app.items.len();
+  // Use the memoized counts cache instead of two full O(N) scans per
+  // frame for inbox / library counts (audit Perf MED #1).
+  let counts = app.item_counts();
+  let inbox_count = counts.inbox;
+  let library_count = counts.total - counts.inbox;
+  let total = counts.total;
   let active_style = Style::default().fg(t.text).add_modifier(Modifier::BOLD);
   let inactive_style = Style::default().fg(t.text_dim);
   let inbox_style =
