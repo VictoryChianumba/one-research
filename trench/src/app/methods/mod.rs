@@ -3,4 +3,5 @@
 //! be `pub` — methods are reachable on App regardless of which file
 //! their impl block lives in.
 
+mod reader;
 mod repo;
