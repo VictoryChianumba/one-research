@@ -41,8 +41,8 @@ pub fn draw_settings(frame: &mut Frame, app: &App) {
   };
 
   let secret_value = |field: usize, stored: &str| -> String {
-    if app.settings_editing && app.settings_field == field {
-      format!("{}_", mask_str(&app.settings_edit_buf))
+    if app.settings.editing && app.settings.field == field {
+      format!("{}_", mask_str(&app.settings.edit_buf))
     } else if stored.is_empty() {
       "not set".to_string()
     } else {
@@ -106,22 +106,22 @@ pub fn draw_settings(frame: &mut Frame, app: &App) {
       Line::from(""),
       Line::from(vec![
         Span::styled("  GitHub          ", dim_style),
-        Span::styled(secret_status(&app.settings_github_token), text_style),
+        Span::styled(secret_status(&app.settings.github_token), text_style),
       ]),
       Line::from(vec![
         Span::styled("  Semantic Scholar", dim_style),
         Span::styled(
-          format!(" {}", secret_status(&app.settings_s2_key)),
+          format!(" {}", secret_status(&app.settings.s2_key)),
           text_style,
         ),
       ]),
       Line::from(vec![
         Span::styled("  Claude          ", dim_style),
-        Span::styled(secret_status(&app.settings_claude_key), text_style),
+        Span::styled(secret_status(&app.settings.claude_key), text_style),
       ]),
       Line::from(vec![
         Span::styled("  OpenAI          ", dim_style),
-        Span::styled(secret_status(&app.settings_openai_key), text_style),
+        Span::styled(secret_status(&app.settings.openai_key), text_style),
       ]),
       Line::from(""),
       Line::from(Span::styled("  Sources", header_style)),
@@ -140,7 +140,7 @@ pub fn draw_settings(frame: &mut Frame, app: &App) {
       ]),
     ];
 
-    if app.settings_save_time.is_some() {
+    if app.settings.save_time.is_some() {
       rail_lines.push(Line::from(""));
       rail_lines.push(Line::from(Span::styled("  Saved.", success_style)));
     }
@@ -155,10 +155,10 @@ pub fn draw_settings(frame: &mut Frame, app: &App) {
   let row_width = settings_area.width.saturating_sub(2) as usize;
   let value_width = row_width.saturating_sub(32);
   let row = |field: usize, label: &str, value: String| -> Line<'static> {
-    let selected = app.settings_field == field;
+    let selected = app.settings.field == field;
     let marker = if selected { ">" } else { " " };
     let style = if selected {
-      if app.settings_editing { success_style } else { selected_style }
+      if app.settings.editing { success_style } else { selected_style }
     } else {
       text_style
     };
@@ -172,7 +172,7 @@ pub fn draw_settings(frame: &mut Frame, app: &App) {
   };
 
   let hint = |field: usize, text: &str| -> Line<'static> {
-    let prefix = if app.settings_field == field { "   " } else { "   " };
+    let prefix = if app.settings.field == field { "   " } else { "   " };
     Line::from(Span::styled(
       format!("{prefix}{}", truncate(text, row_width.saturating_sub(3))),
       dim_style,
@@ -182,17 +182,17 @@ pub fn draw_settings(frame: &mut Frame, app: &App) {
   let mut lines: Vec<Line> = vec![
     Line::from(""),
     Line::from(Span::styled("  API Keys", header_style)),
-    row(0, "GitHub token", secret_value(0, &app.settings_github_token)),
+    row(0, "GitHub token", secret_value(0, &app.settings.github_token)),
     hint(0, "Repo viewer access"),
-    row(1, "Semantic Scholar key", secret_value(1, &app.settings_s2_key)),
+    row(1, "Semantic Scholar key", secret_value(1, &app.settings.s2_key)),
     hint(1, "Improves paper metadata"),
     Line::from(""),
     Line::from(Span::styled("  Chat", header_style)),
-    row(2, "Claude API key", secret_value(2, &app.settings_claude_key)),
+    row(2, "Claude API key", secret_value(2, &app.settings.claude_key)),
     hint(2, "Used for claude: chat routing"),
-    row(3, "OpenAI API key", secret_value(3, &app.settings_openai_key)),
+    row(3, "OpenAI API key", secret_value(3, &app.settings.openai_key)),
     hint(3, "Used for openai: chat routing"),
-    row(4, "Default provider", app.settings_default_chat_provider.clone()),
+    row(4, "Default provider", app.settings.default_chat_provider.clone()),
     hint(4, "Enter toggles provider"),
     Line::from(""),
     Line::from(Span::styled("  Appearance", header_style)),
@@ -221,11 +221,11 @@ pub fn draw_settings(frame: &mut Frame, app: &App) {
     ]),
   ];
 
-  if app.settings_save_time.is_some() {
+  if app.settings.save_time.is_some() {
     lines.push(Line::from(Span::styled("  Saved.", success_style)));
   }
 
-  let selected_line = match app.settings_field {
+  let selected_line = match app.settings.field {
     0 => 2,
     1 => 4,
     2 => 8,
@@ -247,7 +247,7 @@ pub fn draw_settings(frame: &mut Frame, app: &App) {
     .style(bg_style);
   frame.render_widget(para, settings_area);
 
-  let footer_text = if app.settings_editing {
+  let footer_text = if app.settings.editing {
     "  enter apply edit · esc cancel edit"
   } else {
     "  j/k navigate · enter edit/select · s save · p sources · esc/q back"

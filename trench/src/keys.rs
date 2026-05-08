@@ -181,7 +181,7 @@ fn reader_pane_focused(app: &App) -> bool {
 }
 
 fn is_text_entry_context(app: &App) -> bool {
-  if app.search_active || app.sources_popup.input_active || app.settings_editing {
+  if app.search_active || app.sources_popup.input_active || app.settings.editing {
     return true;
   }
   if app.feed_tab == FeedTab::Discoveries && app.discovery_search_focused {
@@ -1023,18 +1023,18 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
       }
     }
     KeyCode::Char('s') => {
-      app.settings_github_token =
+      app.settings.github_token =
         app.config.github_token.clone().unwrap_or_default();
-      app.settings_s2_key =
+      app.settings.s2_key =
         app.config.semantic_scholar_key.clone().unwrap_or_default();
-      app.settings_claude_key =
+      app.settings.claude_key =
         app.config.claude_api_key.clone().unwrap_or_default();
-      app.settings_openai_key =
+      app.settings.openai_key =
         app.config.openai_api_key.clone().unwrap_or_default();
-      app.settings_default_chat_provider =
+      app.settings.default_chat_provider =
         app.config.default_chat_provider.clone();
-      app.settings_field = 0;
-      app.settings_editing = false;
+      app.settings.field = 0;
+      app.settings.editing = false;
       app.sources_popup.cursor = 0;
       app.sources_popup.input.clear();
       app.sources_popup.input_active = false;
@@ -2026,27 +2026,27 @@ fn handle_settings_view(key: KeyEvent, app: &mut App) -> bool {
     handle_theme_picker(key, app);
     return true;
   }
-  if app.settings_editing {
+  if app.settings.editing {
     match key.code {
       KeyCode::Enter => {
-        match app.settings_field {
-          0 => app.settings_github_token = app.settings_edit_buf.clone(),
-          1 => app.settings_s2_key = app.settings_edit_buf.clone(),
-          2 => app.settings_claude_key = app.settings_edit_buf.clone(),
-          3 => app.settings_openai_key = app.settings_edit_buf.clone(),
+        match app.settings.field {
+          0 => app.settings.github_token = app.settings.edit_buf.clone(),
+          1 => app.settings.s2_key = app.settings.edit_buf.clone(),
+          2 => app.settings.claude_key = app.settings.edit_buf.clone(),
+          3 => app.settings.openai_key = app.settings.edit_buf.clone(),
           _ => {}
         }
-        app.settings_editing = false;
+        app.settings.editing = false;
       }
       KeyCode::Esc => {
-        app.settings_editing = false;
-        app.settings_edit_buf.clear();
+        app.settings.editing = false;
+        app.settings.edit_buf.clear();
       }
       KeyCode::Backspace => {
-        app.settings_edit_buf.pop();
+        app.settings.edit_buf.pop();
       }
       KeyCode::Char(c) => {
-        app.settings_edit_buf.push(c);
+        app.settings.edit_buf.push(c);
       }
       _ => {}
     }
@@ -2056,55 +2056,55 @@ fn handle_settings_view(key: KeyEvent, app: &mut App) -> bool {
         app.view = AppView::Feed;
       }
       KeyCode::Char('j') | KeyCode::Down => {
-        app.settings_field = (app.settings_field + 1).min(5);
+        app.settings.field = (app.settings.field + 1).min(5);
       }
       KeyCode::Char('k') | KeyCode::Up => {
-        app.settings_field = app.settings_field.saturating_sub(1);
+        app.settings.field = app.settings.field.saturating_sub(1);
       }
       KeyCode::Enter => {
-        if app.settings_field == 4 {
-          app.settings_default_chat_provider =
-            if app.settings_default_chat_provider == "claude" {
+        if app.settings.field == 4 {
+          app.settings.default_chat_provider =
+            if app.settings.default_chat_provider == "claude" {
               "openai".to_string()
             } else {
               "claude".to_string()
             };
-        } else if app.settings_field == 5 {
+        } else if app.settings.field == 5 {
           open_theme_picker(app);
         } else {
-          app.settings_edit_buf = match app.settings_field {
-            0 => app.settings_github_token.clone(),
-            1 => app.settings_s2_key.clone(),
-            2 => app.settings_claude_key.clone(),
-            3 => app.settings_openai_key.clone(),
+          app.settings.edit_buf = match app.settings.field {
+            0 => app.settings.github_token.clone(),
+            1 => app.settings.s2_key.clone(),
+            2 => app.settings.claude_key.clone(),
+            3 => app.settings.openai_key.clone(),
             _ => String::new(),
           };
-          app.settings_editing = true;
+          app.settings.editing = true;
         }
       }
       KeyCode::Char('s') | KeyCode::Char('S') => {
-        app.config.github_token = if app.settings_github_token.is_empty() {
+        app.config.github_token = if app.settings.github_token.is_empty() {
           None
         } else {
-          Some(app.settings_github_token.clone())
+          Some(app.settings.github_token.clone())
         };
-        app.config.semantic_scholar_key = if app.settings_s2_key.is_empty() {
+        app.config.semantic_scholar_key = if app.settings.s2_key.is_empty() {
           None
         } else {
-          Some(app.settings_s2_key.clone())
+          Some(app.settings.s2_key.clone())
         };
-        app.config.claude_api_key = if app.settings_claude_key.is_empty() {
+        app.config.claude_api_key = if app.settings.claude_key.is_empty() {
           None
         } else {
-          Some(app.settings_claude_key.clone())
+          Some(app.settings.claude_key.clone())
         };
-        app.config.openai_api_key = if app.settings_openai_key.is_empty() {
+        app.config.openai_api_key = if app.settings.openai_key.is_empty() {
           None
         } else {
-          Some(app.settings_openai_key.clone())
+          Some(app.settings.openai_key.clone())
         };
         app.config.default_chat_provider =
-          app.settings_default_chat_provider.clone();
+          app.settings.default_chat_provider.clone();
         app.config.theme = app.active_theme;
         app.config.active_custom_theme_id = app.active_custom_theme_id.clone();
         // Keep github_token field in sync for repo viewer.
@@ -2112,7 +2112,7 @@ fn handle_settings_view(key: KeyEvent, app: &mut App) -> bool {
         // Rebuild chat_ui with updated keys on next open.
         app.chat.ui = None;
         app.config.save();
-        app.settings_save_time = Some(std::time::Instant::now());
+        app.settings.save_time = Some(std::time::Instant::now());
       }
       KeyCode::Char('p') => {
         app.sources_popup.cursor = 0;
@@ -2419,7 +2419,7 @@ fn handle_custom_theme_delete_confirm(key: KeyEvent, app: &mut App) {
         app.config.theme = app.active_theme;
       }
       app.config.save();
-      app.settings_save_time = Some(std::time::Instant::now());
+      app.settings.save_time = Some(std::time::Instant::now());
       app.theme_picker_cursor =
         app.theme_picker_cursor.min(theme_picker_row_count(app) - 1);
       clamp_theme_picker_scroll(app);
@@ -2538,7 +2538,7 @@ fn save_custom_theme_editor(app: &mut App) {
   app.theme_picker_original = None;
   app.theme_picker_active = false;
   app.config.save();
-  app.settings_save_time = Some(std::time::Instant::now());
+  app.settings.save_time = Some(std::time::Instant::now());
   clamp_theme_picker_scroll(app);
 }
 

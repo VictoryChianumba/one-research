@@ -379,6 +379,36 @@ pub struct SourcesPopupState {
   pub detect_rx: Option<std::sync::mpsc::Receiver<DiscoverResult>>,
 }
 
+/// Settings screen edit-time state. Grouped from `settings_*` fields.
+/// `default_chat_provider` defaults to "claude" (not empty); custom Default impl.
+pub struct SettingsEditState {
+  pub field: usize,
+  pub editing: bool,
+  pub edit_buf: String,
+  pub github_token: String,
+  pub s2_key: String,
+  pub claude_key: String,
+  pub openai_key: String,
+  pub default_chat_provider: String,
+  pub save_time: Option<std::time::Instant>,
+}
+
+impl Default for SettingsEditState {
+  fn default() -> Self {
+    Self {
+      field: 0,
+      editing: false,
+      edit_buf: String::new(),
+      github_token: String::new(),
+      s2_key: String::new(),
+      claude_key: String::new(),
+      openai_key: String::new(),
+      default_chat_provider: "claude".to_string(),
+      save_time: None,
+    }
+  }
+}
+
 pub struct App {
   /// True when the UI needs to be redrawn. Set by `mark_dirty()`, cleared by
   /// `check_needs_redraw()`. Defaults to `true` so the first frame always draws.
@@ -499,12 +529,7 @@ pub struct App {
   pub active_custom_theme_id: Option<String>,
 
   // Settings screen
-  pub settings_field: usize,
-  pub settings_editing: bool,
-  pub settings_edit_buf: String,
-  pub settings_github_token: String,
-  pub settings_s2_key: String,
-  pub settings_save_time: Option<std::time::Instant>,
+  pub settings: SettingsEditState,
   pub theme_picker_active: bool,
   pub theme_picker_cursor: usize,
   pub theme_picker_scroll: usize,
@@ -577,10 +602,6 @@ pub struct App {
   pub abstract_popup_active: bool, // Space: quick abstract view
   pub reader_feed_popup_selected: usize, // selected item in bottom feed list
 
-  // Settings buffers for chat fields
-  pub settings_claude_key: String,
-  pub settings_openai_key: String,
-  pub settings_default_chat_provider: String,
 
   // Last opened paper (shown in dashboard "Continue Reading")
   pub last_read: Option<String>,
@@ -697,12 +718,7 @@ impl App {
       config: Config::default(),
       active_theme: ui_theme::ThemeId::Dark,
       active_custom_theme_id: None,
-      settings_field: 0,
-      settings_editing: false,
-      settings_edit_buf: String::new(),
-      settings_github_token: String::new(),
-      settings_s2_key: String::new(),
-      settings_save_time: None,
+      settings: SettingsEditState::default(),
       theme_picker_active: false,
       theme_picker_cursor: 0,
       theme_picker_scroll: 0,
@@ -745,9 +761,6 @@ impl App {
       abstract_popup_active: false,
       reader_bottom_scroll: 0,
       reader_feed_popup_selected: 0,
-      settings_claude_key: String::new(),
-      settings_openai_key: String::new(),
-      settings_default_chat_provider: "claude".to_string(),
       last_read: None,
       last_read_source: None,
       fulltext_rx: None,
@@ -1048,7 +1061,7 @@ impl App {
     if self.is_loading || self.is_refreshing || self.discovery_loading {
       return true;
     }
-    if self.settings_save_time.is_some() {
+    if self.settings.save_time.is_some() {
       return true;
     }
     if self
@@ -2175,9 +2188,9 @@ impl App {
     self.process_incoming_discovery();
 
     // Clear "Saved." confirmation after 2 seconds.
-    if let Some(t) = self.settings_save_time {
+    if let Some(t) = self.settings.save_time {
       if t.elapsed().as_secs() >= 2 {
-        self.settings_save_time = None;
+        self.settings.save_time = None;
         self.mark_dirty();
       }
     }
