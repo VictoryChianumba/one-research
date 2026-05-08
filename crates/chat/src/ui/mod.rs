@@ -79,24 +79,11 @@ pub struct ChatUi {
   /// True while word-by-word reveal is in progress.
   pub is_streaming: bool,
 
-  /// Cached wrapped + styled lines per message.
-  ///
-  /// Key: `(msg_idx, has_streaming_cursor)` — single entry per message.
-  /// The cached `content_len` lets us detect when a streaming append
-  /// invalidates the entry: hit-with-matching-len returns the cached
-  /// lines directly, hit-with-stale-len falls through to re-render and
-  /// overwrite the same key. Previously the cache key included
-  /// `content_len`, so each streamed word created a NEW entry and
-  /// the HashMap grew unboundedly with conversation length (audit chat
-  /// HIGH #2). The new shape keeps a single entry per message regardless
-  /// of streaming length.
-  ///
-  /// Cleared when `terminal width` changes (resize) or when the active
-  /// session changes (different conversation entirely).
-  ///
-  /// Also closes Perf HIGH #14 from the prior audit: `build_message_lines`
-  /// previously re-wrapped every visible message via `textwrap::wrap` on
-  /// every redraw; cache hits now skip the wrap entirely.
+  /// Cached wrapped + styled lines per message. Key:
+  /// `(msg_idx, has_streaming_cursor)` — one entry per message. Cache hit
+  /// compares `content_len` against current to detect streaming-append
+  /// staleness; mismatch falls through to re-render and overwrites the
+  /// same key. Cleared on resize and on session switch.
   line_cache: std::collections::HashMap<(usize, bool), CachedRender>,
   /// Width the cache was built for. Diverges from current width on resize;
   /// triggers a full cache clear.
@@ -165,16 +152,10 @@ impl ChatUi {
   }
 
   /// Returns (session_title, provider_name, model_name) all owned.
-  ///
-  /// Note: an earlier attempt to return borrows (audit Perf MED #4) hit a
-  /// real borrow-checker conflict — the caller (`draw_chat_view`) holds
-  /// the strings across several `&mut self` mutations
-  /// (`self.viewport_height = ...`, `self.scroll_offset = ...`,
-  /// `self.clamp_slash_scroll(...)`). Restructuring the caller to do all
-  /// mutations before the workspace_summary call wasn't tractable —
-  /// many of the mutations depend on layout values computed mid-function.
-  /// The 3 String clones per chat draw are accepted as the structural
-  /// cost.
+  /// Owned strings are required because `draw_chat_view` holds them
+  /// across mid-function `&mut self` mutations (viewport_height,
+  /// scroll_offset, clamp_slash_scroll); the mutations depend on layout
+  /// values computed mid-function so they can't be hoisted.
   pub fn workspace_summary(&self) -> (String, String, String) {
     let provider_name = self
       .active_session
@@ -227,18 +208,14 @@ impl ChatUi {
       return;
     }
 
-    if self.pending_response.is_none() {
+    let Some(rx) = self.pending_response.as_ref() else {
       return;
-    }
-
-    let result = {
-      let rx = self.pending_response.as_ref().unwrap();
-      match rx.try_recv() {
-        Ok(r) => Some(Ok(r)),
-        Err(mpsc::TryRecvError::Empty) => None,
-        Err(mpsc::TryRecvError::Disconnected) => {
-          Some(Err("thread disconnected".to_string()))
-        }
+    };
+    let result = match rx.try_recv() {
+      Ok(r) => Some(Ok(r)),
+      Err(mpsc::TryRecvError::Empty) => None,
+      Err(mpsc::TryRecvError::Disconnected) => {
+        Some(Err("thread disconnected".to_string()))
       }
     };
 
@@ -753,8 +730,8 @@ impl ChatUi {
       ])
     } else {
       // Render cursor at input_cursor position so Left/Right/Home/End
-      // are visually reflected (audit Rel MED #13). split_at on a char
-      // boundary is safe because every cursor mutation steps by char.
+      // are visually reflected. split_at on a char boundary is safe
+      // because every cursor mutation steps by char.
       let cursor = self.input_cursor.min(self.input.len());
       let (before, after) = self.input.split_at(cursor);
       Line::from(vec![
@@ -926,8 +903,7 @@ impl ChatUi {
 
       KeyCode::Backspace => {
         // Delete the char immediately before the cursor and step the cursor
-        // back (audit Rel MED #13 — cursor was previously vestigial because
-        // Backspace always popped the tail regardless of cursor position).
+        // back.
         self.input_cursor =
           backspace_at_cursor(&mut self.input, self.input_cursor);
         self.clamp_slash_selection();
@@ -994,11 +970,10 @@ impl ChatUi {
     }
   }
 
-  /// Returns borrowed references into `self.slash_commands`. The previous
-  /// shape cloned every matching spec into a fresh Vec on every call —
-  /// hot path because `clamp_slash_selection` invokes it on each
-  /// keystroke (audit Perf MED #5). Callers use `.command`, `.completion`,
-  /// `.description`, `.badge` reads which work on `&Spec` unchanged.
+  /// Returns borrowed references into `self.slash_commands`. Hot path —
+  /// `clamp_slash_selection` invokes this on every keystroke; cloning the
+  /// matching specs would mean a fresh Vec per call. Callers only read
+  /// `.command`, `.completion`, `.description`, `.badge`.
   fn slash_suggestions(&self) -> Vec<&ChatSlashCommandSpec> {
     let input = self.input.trim_start();
     if !input.starts_with('/') {
@@ -1104,8 +1079,7 @@ impl ChatUi {
     self.clamp_slash_scroll(suggestions_len);
 
     // Re-fetch the suggestion borrow after the &mut self mutations
-    // above. Cheap: the inner Vec just holds &Spec pointers, no clones
-    // (audit Perf MED #5).
+    // above. Cheap: the inner Vec just holds &Spec pointers, no clones.
     let suggestions = self.slash_suggestions();
 
     // 1 separator + visible rows + 1 count line
@@ -1338,11 +1312,10 @@ impl ChatUi {
     let wrap_width = width.max(1);
 
     // Lightweight metadata pass: capture (orig_idx, role, content_len) for
-    // every non-System message without cloning content. Previously this
-    // function cloned every message body up front to release the borrow
-    // before mutating line_cache; that meant ~100KB of allocation per
-    // frame on a 50-message session even when every message was a cache
-    // hit (audit chat HIGH #3). Now we only clone content on cache miss.
+    // every non-System message without cloning content. Cloning every
+    // body up front to release the borrow before mutating line_cache
+    // costs ~100KB per frame on a 50-message session even when every
+    // message is a cache hit. Now we only clone content on cache miss.
     let metas: Vec<MsgMeta> = self
       .active_session
       .as_ref()
@@ -1372,16 +1345,14 @@ impl ChatUi {
 
       // Cache hit fast path. For non-streaming messages we require an
       // exact content_len match. For the streaming-tail message we
-      // bucket the comparison: as long as the cached render is within
-      // STREAM_BUCKET bytes of the current content, treat it as a hit.
-      // This drops the per-word streaming re-render from one full
-      // markdown+wrap pass per word to one per ~STREAM_BUCKET chars
-      // (~10 words at typical token sizes), bringing the total work
-      // over an N-word stream from O(N²) to ~O(N²/STREAM_BUCKET)
-      // (audit chat HIGH #1 / Perf HIGH H1). The user-visible effect
-      // is that streaming reveal happens in chunks instead of word-
-      // by-word; on stream end (has_streaming_cursor flips to false)
-      // the cache key changes and a final exact render fires.
+      // Bucket the comparison: as long as the cached render is within
+      // STREAM_BUCKET bytes of current content, treat as a hit. Drops
+      // per-word streaming re-render from one full markdown+wrap pass
+      // per word to one per ~STREAM_BUCKET chars (~10 words at typical
+      // token sizes); total work over an N-word stream goes O(N²) →
+      // ~O(N²/STREAM_BUCKET). User-visible effect: streaming reveals
+      // in chunks instead of word-by-word; on stream end the cache key
+      // changes and a final exact render fires.
       const STREAM_BUCKET: usize = 64;
       if let Some(cached) = self.line_cache.get(&key) {
         let same_enough = if has_streaming_cursor {
@@ -2288,8 +2259,7 @@ fn parse_api_error(err: &str) -> String {
   }
   // Char-aware truncation guards the byte boundary; sanitize then strips
   // any terminal-escape bytes the upstream API embedded in the error
-  // before it reaches log lines or the chat surface (audit Sec LOW #26;
-  // mirrors the providers' friendly_error pattern from T4b-A).
+  // before it reaches log lines or the chat surface.
   let short = crate::sanitize::truncate_chars(err, 80);
   let short = crate::sanitize::sanitize_terminal_text(&short);
   format!("API error — {short}")

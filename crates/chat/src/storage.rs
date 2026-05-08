@@ -33,9 +33,9 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 /// On parse failure, rename `<path>` to `<path>.broken-<unix_ts>` so the next
 /// save doesn't clobber the user's only recovery copy. Best-effort.
 /// Mirrors `trench::store::quarantine_corrupted`. Unique nanos+pid+counter
-/// suffix prevents same-second collisions (audit Rel HIGH H2); rename
-/// failure is logged loudly so the user knows the recovery copy will
-/// be overwritten on the next save.
+/// suffix prevents same-second collisions; rename failure is logged
+/// loudly so the user knows the recovery copy will be overwritten on the
+/// next save.
 fn quarantine_corrupted(
   path: &Path,
   label: &str,
@@ -70,7 +70,7 @@ fn quarantine_corrupted(
 fn chats_dir() -> PathBuf {
   // Memoize + log-once on the rare $HOME-unset fallback, so chat sessions
   // landing in a random CWD (CI, container, init-system) is observable
-  // instead of silent (audit Sec MED #9).
+  // instead of silent.
   static CACHE: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
   CACHE
     .get_or_init(|| match dirs::config_dir() {
@@ -118,8 +118,7 @@ fn ensure_dir() -> Result<()> {
 }
 
 /// Cap on per-file load size for chat sessions and the index. Defends
-/// against a 4-GB attacker-planted JSON OOMing trench at startup
-/// (audit Sec MED #11).
+/// against a 4-GB attacker-planted JSON OOMing trench at startup.
 const MAX_LOAD_BYTES: u64 = 8 * 1024 * 1024;
 
 fn read_capped(path: &Path) -> std::io::Result<String> {
