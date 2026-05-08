@@ -335,10 +335,7 @@ pub struct ItemCounts {
 
 pub struct App {
   /// True when the UI needs to be redrawn. Set by `mark_dirty()`, cleared by
-  /// `check_needs_redraw()`. Mirrors the cli-text-reader pattern at
-  /// `cli-text-reader/src/editor/core.rs:277-286` so trench and the embedded
-  /// reader use identical redraw discipline. Defaults to `true` so the first
-  /// frame always draws.
+  /// `check_needs_redraw()`. Defaults to `true` so the first frame always draws.
   pub needs_redraw: bool,
 
   /// `url → index in self.items`. Maintained by the `process_incoming` dedup
