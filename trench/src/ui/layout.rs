@@ -1750,13 +1750,19 @@ fn draw_library_tab(frame: &mut Frame, app: &mut App, area: Rect) {
 
   // Per-chip count via the memoized aggregate. Eliminates the ~6 full
   // O(N) scans of `app.items` that previously ran on every draw.
-  let counts = app.item_counts();
+  // Extract the three workflow counts into local copies so the Ref<ItemCounts>
+  // drops immediately — the rest of the function dispatches to mutating
+  // helpers that need &mut app (audit Perf MED #7).
+  let (count_queued, count_deep_read, count_archived) = {
+    let counts = app.item_counts();
+    (counts.queued, counts.deep_read, counts.archived)
+  };
   let chip_count = |filter: crate::library::LibraryFilter| -> usize {
     match filter {
-      crate::library::LibraryFilter::All => counts.queued + counts.deep_read,
-      crate::library::LibraryFilter::Queue => counts.queued,
-      crate::library::LibraryFilter::Read => counts.deep_read,
-      crate::library::LibraryFilter::Archived => counts.archived,
+      crate::library::LibraryFilter::All => count_queued + count_deep_read,
+      crate::library::LibraryFilter::Queue => count_queued,
+      crate::library::LibraryFilter::Read => count_deep_read,
+      crate::library::LibraryFilter::Archived => count_archived,
     }
   };
 

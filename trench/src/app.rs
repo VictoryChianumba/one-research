@@ -1202,14 +1202,16 @@ impl App {
 
   /// Cheap O(1) read from the memoized count cache. On miss, runs a single
   /// fused pass over `self.items` that produces every counter the dashboard
-  /// and chip bar need.
-  pub fn item_counts(&self) -> ItemCounts {
-    if let Some(c) = self.counts_cache.borrow().as_ref() {
-      return c.clone();
+  /// and chip bar need. Returns a `Ref` so cache hits don't pay a clone
+  /// (audit Perf MED #7).
+  pub fn item_counts(&self) -> std::cell::Ref<'_, ItemCounts> {
+    if self.counts_cache.borrow().is_none() {
+      let counts = self.compute_item_counts();
+      *self.counts_cache.borrow_mut() = Some(counts);
     }
-    let counts = self.compute_item_counts();
-    *self.counts_cache.borrow_mut() = Some(counts.clone());
-    counts
+    std::cell::Ref::map(self.counts_cache.borrow(), |opt| {
+      opt.as_ref().expect("counts_cache populated above")
+    })
   }
 
   fn compute_item_counts(&self) -> ItemCounts {
@@ -2749,16 +2751,18 @@ mod tests {
   fn invalidate_counts_cache_forces_recompute() {
     let mut app = App::new();
     app.items = mock_items();
-    let before = app.item_counts();
+    // Snapshot the cached total in a scoped block so the Ref drops before
+    // we mutate `app.items` below.
+    let before_total = app.item_counts().total;
     // Mutate items directly, bypassing the public mutators that would
     // normally call invalidate_counts_cache. The cache should still hold
     // the stale value until we invalidate by hand.
     app.items.clear();
-    let stale = app.item_counts();
-    assert_eq!(stale.total, before.total, "cache survives raw mutation");
+    let stale_total = app.item_counts().total;
+    assert_eq!(stale_total, before_total, "cache survives raw mutation");
     app.invalidate_counts_cache();
-    let fresh = app.item_counts();
-    assert_eq!(fresh.total, 0, "post-invalidation, recompute sees empty items");
+    let fresh_total = app.item_counts().total;
+    assert_eq!(fresh_total, 0, "post-invalidation, recompute sees empty items");
   }
 
   #[test]
