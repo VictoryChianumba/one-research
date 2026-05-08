@@ -16,6 +16,9 @@ use super::{
   spawn_repo_file, spawn_repo_open, truncate_for_notif,
 };
 
+mod help;
+use help::handle_help_overlay;
+
 const NOTES_MODE_ORDER: [NotesMode; 3] =
   [NotesMode::PaperNotes, NotesMode::Library, NotesMode::Capture];
 
@@ -326,33 +329,6 @@ fn clamp_reader_feed_selection(app: &mut App) {
 }
 
 // ── Help overlay ─────────────────────────────────────────────────────────────
-
-fn handle_help_overlay(key: KeyEvent, app: &mut App) -> bool {
-  if !app.help.active {
-    return false;
-  }
-  match key.code {
-    KeyCode::Tab | KeyCode::Char('l') => {
-      app.help.section = (app.help.section + 1) % crate::ui::HELP_SECTION_COUNT;
-      app.help.scroll = 0;
-    }
-    KeyCode::BackTab | KeyCode::Char('h') => {
-      app.help.section = app.help.section.saturating_sub(1);
-      app.help.scroll = 0;
-    }
-    KeyCode::Char('j') | KeyCode::Down => {
-      app.help.scroll = app.help.scroll.saturating_add(1);
-    }
-    KeyCode::Char('k') | KeyCode::Up => {
-      app.help.scroll = app.help.scroll.saturating_sub(1);
-    }
-    KeyCode::Char('q') | KeyCode::Esc => {
-      app.help.active = false;
-    }
-    _ => {}
-  }
-  true
-}
 
 // ── Leader key (Ctrl+T) ───────────────────────────────────────────────────────
 
