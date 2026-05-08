@@ -20,6 +20,13 @@ use crate::models::{
 };
 use std::collections::HashSet;
 
+mod widgets;
+use widgets::{
+  draw_card_footer, draw_horiz_split_box, draw_vert_split_box, h_margin,
+  popup_inner, popup_rect, quiet_popup_block, safe_truncate_chars,
+  settings_card_block, settings_modal_rect, swatch, truncate, truncate_str,
+};
+
 pub const RIGHT_COL_WIDTH: u16 = 50;
 
 const VERSION: &str = "v0.1.0";
@@ -3876,48 +3883,6 @@ fn footer_command_line(app: &App) -> Line<'static> {
 
 // ── Popup helpers ──────────────────────────────────────────────────────────
 
-fn popup_rect(
-  area: Rect,
-  width_pct: u16,
-  desired_h: u16,
-  min_w: u16,
-  min_h: u16,
-  max_h_pct: u16,
-) -> Rect {
-  let popup_w = (area.width as u32 * width_pct as u32 / 100) as u16;
-  let popup_w = popup_w.max(min_w).min(area.width);
-  let max_h = (area.height as u32 * max_h_pct as u32 / 100) as u16;
-  let popup_h = desired_h
-    .max(min_h)
-    .min(max_h.max(min_h).min(area.height))
-    .min(area.height);
-  let popup_x = area.x + area.width.saturating_sub(popup_w) / 2;
-  let popup_y = area.y + area.height.saturating_sub(popup_h) / 2;
-  Rect::new(popup_x, popup_y, popup_w, popup_h)
-}
-
-fn popup_inner(block_inner: Rect, pad_x: u16, pad_y: u16) -> Rect {
-  Rect {
-    x: block_inner.x.saturating_add(pad_x),
-    y: block_inner.y.saturating_add(pad_y),
-    width: block_inner.width.saturating_sub(pad_x.saturating_mul(2)),
-    height: block_inner.height.saturating_sub(pad_y.saturating_mul(2)),
-  }
-}
-
-fn quiet_popup_block(
-  title: &'static str,
-  t: &crate::theme::Theme,
-) -> Block<'static> {
-  Block::default()
-    .borders(Borders::ALL)
-    .border_style(Style::default().fg(t.border_active))
-    .title(Span::styled(
-      title,
-      Style::default().fg(t.header).add_modifier(Modifier::BOLD),
-    ))
-}
-
 // ── Quit confirmation popup ───────────────────────────────────────────────
 
 fn draw_tag_picker(frame: &mut Frame, app: &App) {
@@ -4414,15 +4379,6 @@ fn drawer_feed_row_line(
     Span::raw(" "),
     Span::styled(format!("{date:<date_w$}"), Style::default().fg(t.text_dim)),
   ])
-}
-
-fn truncate_str(s: &str, max: usize) -> String {
-  let chars: Vec<char> = s.chars().collect();
-  if chars.len() <= max {
-    s.to_string()
-  } else {
-    chars[..max.saturating_sub(1)].iter().collect::<String>() + "…"
-  }
 }
 
 // ── Sources popup ──────────────────────────────────────────────────────────
@@ -5200,52 +5156,6 @@ fn draw_theme_picker(frame: &mut Frame, app: &App) {
   }
 }
 
-fn swatch(color: Color) -> Span<'static> {
-  Span::styled("  ", Style::default().bg(color))
-}
-
-fn settings_modal_rect(area: Rect) -> Rect {
-  let popup_w =
-    (area.width as u32 * 72 / 100).max(72).min(area.width as u32) as u16;
-  let popup_h =
-    (area.height as u32 * 74 / 100).max(22).min(area.height as u32) as u16;
-  let x = area.x + area.width.saturating_sub(popup_w) / 2;
-  let y = area.y + area.height.saturating_sub(popup_h) / 2;
-  Rect::new(x, y, popup_w, popup_h)
-}
-
-fn settings_card_block(
-  title: &'static str,
-  t: &crate::theme::Theme,
-) -> Block<'static> {
-  Block::default()
-    .borders(Borders::ALL)
-    .title(Span::styled(
-      title,
-      Style::default().fg(t.text).add_modifier(Modifier::BOLD),
-    ))
-    .border_style(Style::default().fg(t.border))
-    .style(Style::default().bg(t.bg_panel))
-}
-
-fn draw_card_footer(
-  frame: &mut Frame,
-  area: Rect,
-  t: &crate::theme::Theme,
-  text: &'static str,
-) {
-  let footer_rule = "─".repeat(area.width as usize);
-  let footer = Paragraph::new(vec![
-    Line::from(Span::styled(footer_rule, Style::default().fg(t.border))),
-    Line::from(Span::styled(
-      text,
-      Style::default().fg(t.text_dim).bg(t.bg_panel),
-    )),
-  ])
-  .style(Style::default().bg(t.bg_panel));
-  frame.render_widget(footer, area);
-}
-
 fn draw_custom_theme_editor(frame: &mut Frame, app: &App) {
   let Some(editor) = app.custom_theme_editor.as_ref() else {
     return;
@@ -5593,20 +5503,6 @@ fn hex_luma(hex: &str) -> Option<f32> {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-/// Truncate `s` to at most `max_chars` Unicode scalar values.
-/// Returns a `&str` slice ending on a char boundary — never panics on multibyte input.
-fn safe_truncate_chars(s: &str, max_chars: usize) -> &str {
-  match s.char_indices().nth(max_chars) {
-    Some((byte_idx, _)) => &s[..byte_idx],
-    None => s,
-  }
-}
-
-/// Shrink a rect by `margin` columns on each side (horizontal only).
-fn h_margin(r: Rect, margin: u16) -> Rect {
-  Rect { x: r.x + margin, width: r.width.saturating_sub(margin * 2), ..r }
-}
-
 /// Count how many items (starting from `list_offset`) fit in `viewport_rows`
 /// screen rows, including one spacer row between feed items.
 fn count_visible_items_from_app(
@@ -5627,164 +5523,6 @@ fn count_visible_items_from_app(
     count += 1;
   }
   count.max(1)
-}
-
-fn truncate(s: &str, max_chars: usize) -> String {
-  if max_chars == 0 {
-    return String::new();
-  }
-  let mut chars = s.chars();
-  let mut out = String::new();
-  let mut count = 0;
-  for c in &mut chars {
-    if count >= max_chars {
-      if chars.next().is_some() {
-        out.push('…');
-      }
-      break;
-    }
-    out.push(c);
-    count += 1;
-  }
-  out
-}
-
-// ── Shared-box layout helpers ─────────────────────────────────────────────
-
-/// Draws one outer DarkGray border enclosing two side-by-side columns.
-/// `right_w` is the width of the right column INSIDE the border (no border chars).
-/// Draws a `│` divider between columns, `┬`/`┴` connectors at top/bottom border,
-/// and title strings (` {title} ` padded with `─`) embedded in the top border row.
-/// Returns `(left_inner, right_inner)` — content rects with no own borders.
-fn draw_horiz_split_box(
-  frame: &mut Frame,
-  area: Rect,
-  right_w: u16,
-  left_title: &str,
-  right_title: &str,
-  t: &crate::theme::Theme,
-) -> (Rect, Rect) {
-  let s = Style::default().fg(t.border);
-
-  // Outer border (provides ┌┐└┘ and ─/│ edges)
-  frame.render_widget(
-    Block::default().borders(Borders::ALL).border_style(s),
-    area,
-  );
-
-  // Inner content rect
-  let inner = Rect {
-    x: area.x + 1,
-    y: area.y + 1,
-    width: area.width.saturating_sub(2),
-    height: area.height.saturating_sub(2),
-  };
-
-  // Clamp right_w so there is always at least 1 column on each side
-  let right_w = right_w.min(inner.width.saturating_sub(2));
-  let left_w = inner.width.saturating_sub(right_w + 1); // +1 for divider col
-  let div_x = inner.x + left_w;
-
-  // Vertical divider body
-  if inner.height > 0 {
-    let div_lines: Vec<Line> =
-      (0..inner.height).map(|_| Line::from(Span::styled("│", s))).collect();
-    frame.render_widget(
-      Paragraph::new(div_lines),
-      Rect { x: div_x, y: inner.y, width: 1, height: inner.height },
-    );
-  }
-
-  // ┬ / ┴ connectors
-  frame.render_widget(
-    Paragraph::new(Span::styled("┬", s)),
-    Rect { x: div_x, y: area.y, width: 1, height: 1 },
-  );
-  if area.height > 1 {
-    frame.render_widget(
-      Paragraph::new(Span::styled("┴", s)),
-      Rect { x: div_x, y: area.y + area.height - 1, width: 1, height: 1 },
-    );
-  }
-
-  // Title overlays on the top border row
-  if left_w > 0 {
-    let t = format!("{:─^w$}", format!(" {left_title} "), w = left_w as usize);
-    frame.render_widget(
-      Paragraph::new(Span::styled(t, s)),
-      Rect { x: area.x + 1, y: area.y, width: left_w, height: 1 },
-    );
-  }
-  if right_w > 0 {
-    let t =
-      format!("{:─^w$}", format!(" {right_title} "), w = right_w as usize);
-    frame.render_widget(
-      Paragraph::new(Span::styled(t, s)),
-      Rect { x: div_x + 1, y: area.y, width: right_w, height: 1 },
-    );
-  }
-
-  let left_rect =
-    Rect { x: inner.x, y: inner.y, width: left_w, height: inner.height };
-  let right_rect =
-    Rect { x: div_x + 1, y: inner.y, width: right_w, height: inner.height };
-  (left_rect, right_rect)
-}
-
-/// Draws one outer DarkGray border enclosing two vertically stacked rows.
-/// The top section title is embedded in the top border; the bottom section
-/// title is embedded in a `├─ Title ─┤` divider row between the sections.
-/// Returns `(top_inner, bottom_inner)` — content rects with no own borders.
-fn draw_vert_split_box(
-  frame: &mut Frame,
-  area: Rect,
-  top_title: &str,
-  bottom_title: &str,
-  t: &crate::theme::Theme,
-) -> (Rect, Rect) {
-  let s = Style::default().fg(t.border);
-
-  frame.render_widget(
-    Block::default().borders(Borders::ALL).border_style(s),
-    area,
-  );
-
-  let inner = Rect {
-    x: area.x + 1,
-    y: area.y + 1,
-    width: area.width.saturating_sub(2),
-    height: area.height.saturating_sub(2),
-  };
-
-  // Split evenly; divider row is 1 row
-  let top_h = (inner.height / 2).max(3).min(inner.height.saturating_sub(2));
-  let div_y = inner.y + top_h;
-  let bot_h = inner.height.saturating_sub(top_h + 1);
-
-  // ├─ Bottom title ─┤ divider row
-  let div_content =
-    format!("{:─^w$}", format!(" {bottom_title} "), w = inner.width as usize);
-  let div_line = format!("├{div_content}┤");
-  frame.render_widget(
-    Paragraph::new(Span::styled(div_line, s)),
-    Rect { x: area.x, y: div_y, width: area.width, height: 1 },
-  );
-
-  // Top title overlay in top border row
-  if inner.width > 0 {
-    let t =
-      format!("{:─^w$}", format!(" {top_title} "), w = inner.width as usize);
-    frame.render_widget(
-      Paragraph::new(Span::styled(t, s)),
-      Rect { x: area.x + 1, y: area.y, width: inner.width, height: 1 },
-    );
-  }
-
-  let top_rect =
-    Rect { x: inner.x, y: inner.y, width: inner.width, height: top_h };
-  let bot_rect =
-    Rect { x: inner.x, y: div_y + 1, width: inner.width, height: bot_h };
-  (top_rect, bot_rect)
 }
 
 // ── Help overlay ─────────────────────────────────────────────────────────────
