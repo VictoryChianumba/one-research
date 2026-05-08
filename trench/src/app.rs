@@ -2466,6 +2466,17 @@ impl App {
     computed
   }
 
+  /// Mutator chokepoint for `active_filters`. Invalidates every cache that
+  /// depends on the filter set: visible_cache (filtered items), filter_summary
+  /// (the rendered summary line), filtered_history_cache (filter affects
+  /// history view too).
+  fn mutate_filters(&mut self, f: impl FnOnce(&mut FilterState)) {
+    f(&mut self.active_filters);
+    self.invalidate_visible_cache();
+    self.invalidate_filter_summary_cache();
+    self.invalidate_filtered_history_cache();
+  }
+
   pub fn toggle_filter_at_cursor(&mut self) {
     let source_names = self.filter_source_names();
     let src_count = source_names.len();
@@ -2479,52 +2490,38 @@ impl App {
     let tags_start = content_start + 3;
     let clear_all = tags_start + tag_count;
 
-    if c < src_count {
-      let name = source_names[c].clone();
-      if !self.active_filters.sources.remove(&name) {
-        self.active_filters.sources.insert(name);
-      }
-    } else if c < content_start {
-      match c - signals_start {
-        0 => toggle_set(&mut self.active_filters.signals, SignalLevel::Primary),
-        1 => {
-          toggle_set(&mut self.active_filters.signals, SignalLevel::Secondary)
+    self.mutate_filters(|filters| {
+      if c < src_count {
+        let name = source_names[c].clone();
+        if !filters.sources.remove(&name) {
+          filters.sources.insert(name);
         }
-        _ => {
-          toggle_set(&mut self.active_filters.signals, SignalLevel::Tertiary)
+      } else if c < content_start {
+        match c - signals_start {
+          0 => toggle_set(&mut filters.signals, SignalLevel::Primary),
+          1 => toggle_set(&mut filters.signals, SignalLevel::Secondary),
+          _ => toggle_set(&mut filters.signals, SignalLevel::Tertiary),
         }
-      }
-    } else if c < tags_start {
-      match c - content_start {
-        0 => {
-          toggle_set(&mut self.active_filters.content_types, ContentType::Paper)
+      } else if c < tags_start {
+        match c - content_start {
+          0 => toggle_set(&mut filters.content_types, ContentType::Paper),
+          1 => toggle_set(&mut filters.content_types, ContentType::Article),
+          _ => toggle_set(&mut filters.content_types, ContentType::Digest),
         }
-        1 => toggle_set(
-          &mut self.active_filters.content_types,
-          ContentType::Article,
-        ),
-        _ => toggle_set(
-          &mut self.active_filters.content_types,
-          ContentType::Digest,
-        ),
+      } else if c < clear_all {
+        let tag = tag_names[c - tags_start].clone();
+        if !filters.tags.remove(&tag) {
+          filters.tags.insert(tag);
+        }
+      } else {
+        *filters = FilterState::new();
       }
-    } else if c < clear_all {
-      let tag = tag_names[c - tags_start].clone();
-      if !self.active_filters.tags.remove(&tag) {
-        self.active_filters.tags.insert(tag);
-      }
-    } else {
-      self.active_filters = FilterState::new();
-    }
-    self.invalidate_filter_summary_cache();
-    self.invalidate_filtered_history_cache();
+    });
     self.reset_active_feed_position();
   }
 
   pub fn clear_filters(&mut self) {
-    self.active_filters = FilterState::new();
-    self.invalidate_filter_summary_cache();
-    self.invalidate_filtered_history_cache();
+    self.mutate_filters(|f| *f = FilterState::new());
     self.reset_active_feed_position();
   }
 
