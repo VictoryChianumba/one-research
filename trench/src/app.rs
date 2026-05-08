@@ -343,6 +343,14 @@ pub struct ChatState {
   pub at_top: bool,
 }
 
+/// Help overlay state. Grouped from `help_active`, `help_section`, `help_scroll`.
+#[derive(Default)]
+pub struct HelpState {
+  pub active: bool,
+  pub section: usize,
+  pub scroll: u16,
+}
+
 pub struct App {
   /// True when the UI needs to be redrawn. Set by `mark_dirty()`, cleared by
   /// `check_needs_redraw()`. Defaults to `true` so the first frame always draws.
@@ -579,9 +587,7 @@ pub struct App {
   pub panes: [PaneInfo; PANE_COUNT],
 
   // Help overlay
-  pub help_active: bool,
-  pub help_section: usize,
-  pub help_scroll: u16,
+  pub help: HelpState,
 
   // Cached indices of items visible under the current search/filter.
   // Keyed by (FeedTab) so a tab switch automatically misses the cache.
@@ -744,9 +750,7 @@ impl App {
       leader_activated_at: None,
       leader_timeout_ms: 1000,
       focused_pane: PaneId::Feed,
-      help_active: false,
-      help_section: 0,
-      help_scroll: 0,
+      help: HelpState::default(),
       visible_cache: RefCell::new(None),
       counts_cache: RefCell::new(None),
       filter_source_names_cache: RefCell::new(None),

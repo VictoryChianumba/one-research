@@ -131,9 +131,9 @@ pub fn dispatch(key: KeyEvent, app: &mut App) {
   }
   if key.code == KeyCode::Char('?') && !is_text_entry_context(app) {
     app.leader_active = false;
-    app.help_active = true;
-    app.help_section = 0;
-    app.help_scroll = 0;
+    app.help.active = true;
+    app.help.section = 0;
+    app.help.scroll = 0;
     return;
   }
   if handle_leader_or_ctrl_t(key, app) {
@@ -328,26 +328,26 @@ fn clamp_reader_feed_selection(app: &mut App) {
 // ── Help overlay ─────────────────────────────────────────────────────────────
 
 fn handle_help_overlay(key: KeyEvent, app: &mut App) -> bool {
-  if !app.help_active {
+  if !app.help.active {
     return false;
   }
   match key.code {
     KeyCode::Tab | KeyCode::Char('l') => {
-      app.help_section = (app.help_section + 1) % crate::ui::HELP_SECTION_COUNT;
-      app.help_scroll = 0;
+      app.help.section = (app.help.section + 1) % crate::ui::HELP_SECTION_COUNT;
+      app.help.scroll = 0;
     }
     KeyCode::BackTab | KeyCode::Char('h') => {
-      app.help_section = app.help_section.saturating_sub(1);
-      app.help_scroll = 0;
+      app.help.section = app.help.section.saturating_sub(1);
+      app.help.scroll = 0;
     }
     KeyCode::Char('j') | KeyCode::Down => {
-      app.help_scroll = app.help_scroll.saturating_add(1);
+      app.help.scroll = app.help.scroll.saturating_add(1);
     }
     KeyCode::Char('k') | KeyCode::Up => {
-      app.help_scroll = app.help_scroll.saturating_sub(1);
+      app.help.scroll = app.help.scroll.saturating_sub(1);
     }
     KeyCode::Char('q') | KeyCode::Esc => {
-      app.help_active = false;
+      app.help.active = false;
     }
     _ => {}
   }
@@ -1106,9 +1106,9 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
       }
     }
     KeyCode::Char('?') => {
-      app.help_active = true;
-      app.help_section = 0;
-      app.help_scroll = 0;
+      app.help.active = true;
+      app.help.section = 0;
+      app.help.scroll = 0;
     }
     KeyCode::Char('q') => {
       app.show_quit_popup();

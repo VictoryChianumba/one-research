@@ -210,7 +210,7 @@ pub fn draw_help_overlay(frame: &mut Frame, app: &mut App) {
   let area = frame.area();
 
   let (section_name, bindings) =
-    HELP_SECTIONS[app.help_section.min(HELP_SECTIONS.len() - 1)];
+    HELP_SECTIONS[app.help.section.min(HELP_SECTIONS.len() - 1)];
   let popup_rect = settings_modal_rect(area);
 
   frame.render_widget(Clear, popup_rect);
@@ -276,7 +276,7 @@ pub fn draw_help_overlay(frame: &mut Frame, app: &mut App) {
     ];
 
     for (i, (name, bindings)) in HELP_SECTIONS.iter().enumerate() {
-      let selected = i == app.help_section;
+      let selected = i == app.help.section;
       let marker = if selected { ">" } else { " " };
       let style = if selected {
         t.style_selection_text()
@@ -315,7 +315,7 @@ pub fn draw_help_overlay(frame: &mut Frame, app: &mut App) {
       Span::styled("  ", dim_style),
       Span::styled(section_name, header_style),
       Span::styled(
-        format!("  {}/{}", app.help_section + 1, HELP_SECTIONS.len()),
+        format!("  {}/{}", app.help.section + 1, HELP_SECTIONS.len()),
         dim_style,
       ),
     ]),
@@ -356,8 +356,8 @@ pub fn draw_help_overlay(frame: &mut Frame, app: &mut App) {
 
   let total_lines = body_lines.len() as u16;
   let max_scroll = total_lines.saturating_sub(body_area.height);
-  app.help_scroll = app.help_scroll.min(max_scroll);
-  let scroll = app.help_scroll;
+  app.help.scroll = app.help.scroll.min(max_scroll);
+  let scroll = app.help.scroll;
 
   frame.render_widget(
     Paragraph::new(body_lines)

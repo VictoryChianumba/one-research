@@ -51,7 +51,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     draw_abstract_popup(frame, app);
   }
   // Help overlay floats on top of whatever view is rendered.
-  if app.help_active {
+  if app.help.active {
     draw_help_overlay(frame, app);
   }
   if app.theme_picker_active {
