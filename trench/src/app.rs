@@ -2072,10 +2072,16 @@ impl App {
         FetchMessage::SourceComplete(name) => {
           self.loading_sources.retain(|s| s != &name);
           self.loaded_sources.push(name);
+          // Status bar shows the loading-sources list; without
+          // mark_dirty, a phantom in-progress source can sit on
+          // screen for ~250ms until any other event ticks the
+          // redraw flag (audit Rel HIGH H9).
+          self.mark_dirty();
         }
         FetchMessage::SourceError(name, err) => {
           self.status_message = Some(err);
           self.loading_sources.retain(|s| s != &name);
+          self.mark_dirty();
         }
         FetchMessage::AllComplete => {
           self.is_loading = false;
