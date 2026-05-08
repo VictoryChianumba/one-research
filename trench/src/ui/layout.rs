@@ -619,14 +619,6 @@ fn split_reader_note_dock(area: Rect) -> (Rect, Rect) {
   (rows[0], rows[1])
 }
 
-fn note_tabs_for_side(app: &App, side: FocusedReader) -> (&[NotesTab], usize) {
-  match side {
-    FocusedReader::Primary => (&app.notes_tabs, app.notes_active_tab),
-    FocusedReader::Secondary => {
-      (&app.secondary_notes_tabs, app.secondary_notes_active_tab)
-    }
-  }
-}
 
 fn note_pane_for_side(side: FocusedReader) -> PaneId {
   match side {
@@ -999,8 +991,15 @@ fn draw_notes_surface(
     return;
   }
   let is_focused = app.focused_pane == note_pane_for_side(side);
-  let (tabs, active) = note_tabs_for_side(app, side);
-  let tabs = tabs.to_vec();
+  // Inline the field access so Rust's split-borrow rules can keep the
+  // `tabs` borrow disjoint from the later `app.notes_app.as_mut()` —
+  // saves a per-draw `Vec<NotesTab>` clone (audit Perf MED #6).
+  let (tabs, active) = match side {
+    FocusedReader::Primary => (&app.notes_tabs, app.notes_active_tab),
+    FocusedReader::Secondary => {
+      (&app.secondary_notes_tabs, app.secondary_notes_active_tab)
+    }
+  };
   let show_tabs = tabs.len() > 1;
   let rows = Layout::vertical(if show_tabs {
     vec![

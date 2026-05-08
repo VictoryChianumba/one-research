@@ -164,6 +164,17 @@ impl ChatUi {
     }
   }
 
+  /// Returns (session_title, provider_name, model_name) all owned.
+  ///
+  /// Note: an earlier attempt to return borrows (audit Perf MED #4) hit a
+  /// real borrow-checker conflict — the caller (`draw_chat_view`) holds
+  /// the strings across several `&mut self` mutations
+  /// (`self.viewport_height = ...`, `self.scroll_offset = ...`,
+  /// `self.clamp_slash_scroll(...)`). Restructuring the caller to do all
+  /// mutations before the workspace_summary call wasn't tractable —
+  /// many of the mutations depend on layout values computed mid-function.
+  /// The 3 String clones per chat draw are accepted as the structural
+  /// cost.
   pub fn workspace_summary(&self) -> (String, String, String) {
     let provider_name = self
       .active_session
@@ -983,7 +994,12 @@ impl ChatUi {
     }
   }
 
-  fn slash_suggestions(&self) -> Vec<ChatSlashCommandSpec> {
+  /// Returns borrowed references into `self.slash_commands`. The previous
+  /// shape cloned every matching spec into a fresh Vec on every call —
+  /// hot path because `clamp_slash_selection` invokes it on each
+  /// keystroke (audit Perf MED #5). Callers use `.command`, `.completion`,
+  /// `.description`, `.badge` reads which work on `&Spec` unchanged.
+  fn slash_suggestions(&self) -> Vec<&ChatSlashCommandSpec> {
     let input = self.input.trim_start();
     if !input.starts_with('/') {
       return Vec::new();
@@ -999,7 +1015,6 @@ impl ChatUi {
           || query.starts_with(&spec.command)
           || spec.command.contains(query.trim_start_matches('/'))
       })
-      .cloned()
       .collect()
   }
 
@@ -1076,15 +1091,22 @@ impl ChatUi {
       return;
     }
 
-    let suggestions = self.slash_suggestions();
-    if suggestions.is_empty() || messages_area.height == 0 {
+    // Capture the suggestion count first so the borrow on
+    // self.slash_commands drops before the &mut self mutations below.
+    let suggestions_len = self.slash_suggestions().len();
+    if suggestions_len == 0 || messages_area.height == 0 {
       return;
     }
 
-    self.slash_selected = self.slash_selected.min(suggestions.len() - 1);
+    self.slash_selected = self.slash_selected.min(suggestions_len - 1);
 
-    let visible = suggestions.len().min(6);
-    self.clamp_slash_scroll(suggestions.len());
+    let visible = suggestions_len.min(6);
+    self.clamp_slash_scroll(suggestions_len);
+
+    // Re-fetch the suggestion borrow after the &mut self mutations
+    // above. Cheap: the inner Vec just holds &Spec pointers, no clones
+    // (audit Perf MED #5).
+    let suggestions = self.slash_suggestions();
 
     // 1 separator + visible rows + 1 count line
     let height = (visible as u16 + 2).min(messages_area.height);
@@ -1103,7 +1125,7 @@ impl ChatUi {
     let desc_col = w.saturating_sub(name_col + badge_col + 4);
 
     let start = self.slash_scroll;
-    let end = (start + visible).min(suggestions.len());
+    let end = (start + visible).min(suggestions_len);
 
     // Separator line
     let sep_fill = "─".repeat(w.saturating_sub(16));
@@ -1152,7 +1174,7 @@ impl ChatUi {
 
     // Count line — right-aligned
     let count_str =
-      format!("({}/{})", self.slash_selected + 1, suggestions.len());
+      format!("({}/{})", self.slash_selected + 1, suggestions_len);
     let padding = w.saturating_sub(count_str.len());
     lines.push(Line::from(Span::styled(
       format!("{}{}", " ".repeat(padding), count_str),
