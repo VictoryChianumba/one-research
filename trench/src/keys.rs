@@ -211,7 +211,6 @@ fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
         app.search_active = false;
         app.clear_search_query();
         app.reader_feed_popup_selected = 0;
-        app.invalidate_visible_cache();
       }
       KeyCode::Enter => {
         app.search_active = false;
@@ -257,7 +256,6 @@ fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
       app.search_active = true;
       app.clear_search_query();
       app.reader_feed_popup_selected = 0;
-      app.invalidate_visible_cache();
     }
     KeyCode::Tab => {
       app.feed_tab = match app.feed_tab {
@@ -3103,17 +3101,15 @@ fn handle_library_tab(key: KeyEvent, app: &mut App) -> bool {
 
   match key.code {
     KeyCode::Char(']') => {
-      app.library_filter = app.library_filter.next();
+      app.mutate_library_filter(|f| *f = f.next());
       app.library_selected_index = 0;
       app.library_list_offset = 0;
-      app.invalidate_visible_cache();
       true
     }
     KeyCode::Char('[') => {
-      app.library_filter = app.library_filter.prev();
+      app.mutate_library_filter(|f| *f = f.prev());
       app.library_selected_index = 0;
       app.library_list_offset = 0;
-      app.invalidate_visible_cache();
       true
     }
     KeyCode::Char('v') => {

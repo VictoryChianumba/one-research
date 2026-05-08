@@ -1699,6 +1699,17 @@ impl App {
     self.invalidate_filtered_history_cache();
   }
 
+  /// Mutator chokepoint for `library_filter`. The visible_cache for the
+  /// Library tab depends on this filter; cycling the chip selection must
+  /// invalidate.
+  pub fn mutate_library_filter(
+    &mut self,
+    f: impl FnOnce(&mut crate::library::LibraryFilter),
+  ) {
+    f(&mut self.library_filter);
+    self.invalidate_visible_cache();
+  }
+
   pub fn filtered_history(&self) -> Vec<&crate::history::HistoryEntry> {
     if self.filtered_history_cache.borrow().is_none() {
       let indices = self.compute_filtered_history_indices();
