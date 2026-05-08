@@ -184,6 +184,41 @@ mod url_scheme_tests {
   }
 }
 
+#[cfg(test)]
+mod extract_rss_link_tests {
+  use super::extract_rss_link;
+
+  #[test]
+  fn rejects_javascript_href() {
+    let html = r#"<link rel="alternate" type="application/rss+xml" href="javascript:alert(1)">"#;
+    assert_eq!(extract_rss_link(html, "https://example.com"), None);
+  }
+
+  #[test]
+  fn rejects_file_href() {
+    let html = r#"<link rel="alternate" type="application/rss+xml" href="file:///etc/passwd">"#;
+    assert_eq!(extract_rss_link(html, "https://example.com"), None);
+  }
+
+  #[test]
+  fn accepts_https_href() {
+    let html = r#"<link rel="alternate" type="application/rss+xml" href="https://example.com/feed.xml">"#;
+    assert_eq!(
+      extract_rss_link(html, "https://example.com"),
+      Some("https://example.com/feed.xml".to_string())
+    );
+  }
+
+  #[test]
+  fn accepts_relative_href_with_safe_base() {
+    let html = r#"<link rel="alternate" type="application/rss+xml" href="/feed.xml">"#;
+    assert_eq!(
+      extract_rss_link(html, "https://example.com"),
+      Some("https://example.com/feed.xml".to_string())
+    );
+  }
+}
+
 pub(crate) fn truncate_for_notif(s: &str, max: usize) -> String {
   let mut chars = s.chars();
   let mut out = String::new();
@@ -574,7 +609,19 @@ fn extract_rss_link(html: &str, base_url: &str) -> Option<String> {
       search[pos..].find('>').map(|p| pos + p + 1).unwrap_or(search.len());
     let tag = &search[tag_start..tag_end];
     if let Some(href) = attr_value(tag, "href") {
-      let url = if href.starts_with("http") {
+      // Reject hrefs that look like a non-http(s) scheme attempt before
+      // any joining with base_url. Anything with a `:` before the first
+      // path/query/fragment delimiter is a scheme: javascript:, file:,
+      // data:, mailto:, etc. If the scheme is http(s), pass it through;
+      // otherwise drop the link.
+      let scheme_end =
+        href.find(|c: char| c == '/' || c == '?' || c == '#');
+      let pre = scheme_end.map(|i| &href[..i]).unwrap_or(&href[..]);
+      if pre.contains(':') && !is_safe_url_scheme(&href) {
+        search = &search[pos + needle.len()..];
+        continue;
+      }
+      let url = if is_safe_url_scheme(&href) {
         href
       } else if href.starts_with('/') {
         let origin = url_origin(base_url);
@@ -582,7 +629,11 @@ fn extract_rss_link(html: &str, base_url: &str) -> Option<String> {
       } else {
         format!("{base_url}/{href}")
       };
-      return Some(url);
+      // Final guard: confirm we're returning an http(s) URL before
+      // handing it back, in case base_url itself was non-http(s).
+      if is_safe_url_scheme(&url) {
+        return Some(url);
+      }
     }
     search = &search[pos + needle.len()..];
   }
