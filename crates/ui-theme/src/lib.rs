@@ -47,24 +47,61 @@ pub enum ThemeId {
   PowderSlate,
 }
 
-const ALL_THEMES: &[ThemeId] = &[
-  ThemeId::Dark,
-  ThemeId::Amoled,
-  ThemeId::SolarizedDark,
-  ThemeId::GruvboxDark,
-  ThemeId::Nord,
-  ThemeId::TokyoNight,
-  ThemeId::CatppuccinMocha,
-  ThemeId::Light,
-  ThemeId::SolarizedLight,
-  ThemeId::PowderBlue,
-  ThemeId::PowderSage,
-  ThemeId::PowderLavender,
-  ThemeId::PowderRose,
-  ThemeId::PowderMint,
-  ThemeId::PowderSand,
-  ThemeId::PowderSlate,
-];
+/// Single source of truth for theme metadata. Each row supplies the variant
+/// name, kebab-case id, legacy CamelCase alias, display name, group,
+/// is_dark flag, and the Theme factory method to call. The `theme_table!`
+/// macro below expands this into `ThemeId::from_id`, `info`, `theme`, and
+/// the `ALL_THEMES` const — single edit per new theme instead of four.
+macro_rules! theme_table {
+  ( $( $variant:ident , $kebab:literal , $camel:literal , $name:literal , $group:expr , $is_dark:literal , $factory:ident ),* $(,)? ) => {
+    const ALL_THEMES: &[ThemeId] = &[ $( ThemeId::$variant, )* ];
+
+    impl ThemeId {
+      pub fn from_id(id: &str) -> Option<ThemeId> {
+        match id {
+          $( $kebab | $camel => Some(ThemeId::$variant), )*
+          _ => None,
+        }
+      }
+
+      pub fn info(self) -> ThemeInfo {
+        match self {
+          $( ThemeId::$variant => ThemeInfo {
+            id: $kebab,
+            name: $name,
+            group: $group,
+            is_dark: $is_dark,
+          }, )*
+        }
+      }
+
+      pub fn theme(self) -> Theme {
+        match self {
+          $( ThemeId::$variant => Theme::$factory(), )*
+        }
+      }
+    }
+  };
+}
+
+theme_table! {
+  Dark,            "dark",             "Dark",             "Dark",             ThemeGroup::Dark,   true,  dark,
+  Amoled,          "amoled",           "Amoled",           "AMOLED",           ThemeGroup::Dark,   true,  amoled,
+  SolarizedDark,   "solarized-dark",   "SolarizedDark",    "Solarized Dark",   ThemeGroup::Dark,   true,  solarized_dark,
+  GruvboxDark,     "gruvbox-dark",     "GruvboxDark",      "Gruvbox Dark",     ThemeGroup::Dark,   true,  gruvbox_dark,
+  Nord,            "nord",             "Nord",             "Nord",             ThemeGroup::Dark,   true,  nord,
+  TokyoNight,      "tokyo-night",      "TokyoNight",       "Tokyo Night",      ThemeGroup::Dark,   true,  tokyo_night,
+  CatppuccinMocha, "catppuccin-mocha", "CatppuccinMocha",  "Catppuccin Mocha", ThemeGroup::Dark,   true,  catppuccin_mocha,
+  Light,           "light",            "Light",            "Light",            ThemeGroup::Light,  false, light,
+  SolarizedLight,  "solarized-light",  "SolarizedLight",   "Solarized Light",  ThemeGroup::Light,  false, solarized_light,
+  PowderBlue,      "powder-blue",      "PowderBlue",       "Powder Blue",      ThemeGroup::Powder, false, powder_blue,
+  PowderSage,      "powder-sage",      "PowderSage",       "Powder Sage",      ThemeGroup::Powder, false, powder_sage,
+  PowderLavender,  "powder-lavender",  "PowderLavender",   "Powder Lavender",  ThemeGroup::Powder, false, powder_lavender,
+  PowderRose,      "powder-rose",      "PowderRose",       "Powder Rose",      ThemeGroup::Powder, false, powder_rose,
+  PowderMint,      "powder-mint",      "PowderMint",       "Powder Mint",      ThemeGroup::Powder, false, powder_mint,
+  PowderSand,      "powder-sand",      "PowderSand",       "Powder Sand",      ThemeGroup::Powder, false, powder_sand,
+  PowderSlate,     "powder-slate",     "PowderSlate",      "Powder Slate",     ThemeGroup::Powder, false, powder_slate,
+}
 
 impl ThemeId {
   pub fn all() -> &'static [ThemeId] {
@@ -79,150 +116,6 @@ impl ThemeId {
     let all = Self::all();
     let idx = all.iter().position(|id| *id == self).unwrap_or(0);
     all[(idx + 1) % all.len()]
-  }
-
-  pub fn from_id(id: &str) -> Option<ThemeId> {
-    match id {
-      "dark" | "Dark" => Some(ThemeId::Dark),
-      "light" | "Light" => Some(ThemeId::Light),
-      "amoled" | "Amoled" => Some(ThemeId::Amoled),
-      "solarized-dark" | "SolarizedDark" => Some(ThemeId::SolarizedDark),
-      "solarized-light" | "SolarizedLight" => Some(ThemeId::SolarizedLight),
-      "gruvbox-dark" | "GruvboxDark" => Some(ThemeId::GruvboxDark),
-      "nord" | "Nord" => Some(ThemeId::Nord),
-      "tokyo-night" | "TokyoNight" => Some(ThemeId::TokyoNight),
-      "catppuccin-mocha" | "CatppuccinMocha" => Some(ThemeId::CatppuccinMocha),
-      "powder-blue" | "PowderBlue" => Some(ThemeId::PowderBlue),
-      "powder-sage" | "PowderSage" => Some(ThemeId::PowderSage),
-      "powder-lavender" | "PowderLavender" => Some(ThemeId::PowderLavender),
-      "powder-rose" | "PowderRose" => Some(ThemeId::PowderRose),
-      "powder-mint" | "PowderMint" => Some(ThemeId::PowderMint),
-      "powder-sand" | "PowderSand" => Some(ThemeId::PowderSand),
-      "powder-slate" | "PowderSlate" => Some(ThemeId::PowderSlate),
-      _ => None,
-    }
-  }
-
-  pub fn info(self) -> ThemeInfo {
-    match self {
-      ThemeId::Dark => ThemeInfo {
-        id: "dark",
-        name: "Dark",
-        group: ThemeGroup::Dark,
-        is_dark: true,
-      },
-      ThemeId::Amoled => ThemeInfo {
-        id: "amoled",
-        name: "AMOLED",
-        group: ThemeGroup::Dark,
-        is_dark: true,
-      },
-      ThemeId::SolarizedDark => ThemeInfo {
-        id: "solarized-dark",
-        name: "Solarized Dark",
-        group: ThemeGroup::Dark,
-        is_dark: true,
-      },
-      ThemeId::GruvboxDark => ThemeInfo {
-        id: "gruvbox-dark",
-        name: "Gruvbox Dark",
-        group: ThemeGroup::Dark,
-        is_dark: true,
-      },
-      ThemeId::Nord => ThemeInfo {
-        id: "nord",
-        name: "Nord",
-        group: ThemeGroup::Dark,
-        is_dark: true,
-      },
-      ThemeId::TokyoNight => ThemeInfo {
-        id: "tokyo-night",
-        name: "Tokyo Night",
-        group: ThemeGroup::Dark,
-        is_dark: true,
-      },
-      ThemeId::CatppuccinMocha => ThemeInfo {
-        id: "catppuccin-mocha",
-        name: "Catppuccin Mocha",
-        group: ThemeGroup::Dark,
-        is_dark: true,
-      },
-      ThemeId::Light => ThemeInfo {
-        id: "light",
-        name: "Light",
-        group: ThemeGroup::Light,
-        is_dark: false,
-      },
-      ThemeId::SolarizedLight => ThemeInfo {
-        id: "solarized-light",
-        name: "Solarized Light",
-        group: ThemeGroup::Light,
-        is_dark: false,
-      },
-      ThemeId::PowderBlue => ThemeInfo {
-        id: "powder-blue",
-        name: "Powder Blue",
-        group: ThemeGroup::Powder,
-        is_dark: false,
-      },
-      ThemeId::PowderSage => ThemeInfo {
-        id: "powder-sage",
-        name: "Powder Sage",
-        group: ThemeGroup::Powder,
-        is_dark: false,
-      },
-      ThemeId::PowderLavender => ThemeInfo {
-        id: "powder-lavender",
-        name: "Powder Lavender",
-        group: ThemeGroup::Powder,
-        is_dark: false,
-      },
-      ThemeId::PowderRose => ThemeInfo {
-        id: "powder-rose",
-        name: "Powder Rose",
-        group: ThemeGroup::Powder,
-        is_dark: false,
-      },
-      ThemeId::PowderMint => ThemeInfo {
-        id: "powder-mint",
-        name: "Powder Mint",
-        group: ThemeGroup::Powder,
-        is_dark: false,
-      },
-      ThemeId::PowderSand => ThemeInfo {
-        id: "powder-sand",
-        name: "Powder Sand",
-        group: ThemeGroup::Powder,
-        is_dark: false,
-      },
-      ThemeId::PowderSlate => ThemeInfo {
-        id: "powder-slate",
-        name: "Powder Slate",
-        group: ThemeGroup::Powder,
-        is_dark: false,
-      },
-    }
-  }
-
-  pub fn theme(self) -> Theme {
-    match self {
-      ThemeId::Dark => Theme::dark(),
-      ThemeId::Amoled => Theme::amoled(),
-      ThemeId::SolarizedDark => Theme::solarized_dark(),
-      ThemeId::GruvboxDark => Theme::gruvbox_dark(),
-      ThemeId::Nord => Theme::nord(),
-      ThemeId::TokyoNight => Theme::tokyo_night(),
-      ThemeId::CatppuccinMocha => Theme::catppuccin_mocha(),
-      ThemeId::Light => Theme::light(),
-      ThemeId::SolarizedLight => Theme::solarized_light(),
-      ThemeId::PowderBlue => Theme::powder_blue(),
-      ThemeId::PowderSage => Theme::powder_sage(),
-      ThemeId::PowderLavender => Theme::powder_lavender(),
-      ThemeId::PowderRose => Theme::powder_rose(),
-      ThemeId::PowderMint => Theme::powder_mint(),
-      ThemeId::PowderSand => Theme::powder_sand(),
-      ThemeId::PowderSlate => Theme::powder_slate(),
-    }
   }
 }
 
@@ -777,46 +670,6 @@ pub const SUCCESS: Color = Color::Rgb(132, 190, 145);
 pub const WARNING: Color = Color::Rgb(204, 180, 105);
 pub const ERROR: Color = Color::Red;
 pub const INFO: Color = ACCENT;
-
-pub fn style_default() -> Style {
-  Theme::dark().style_default()
-}
-
-pub fn style_dim() -> Style {
-  Theme::dark().style_dim()
-}
-
-pub fn style_accent() -> Style {
-  Theme::dark().style_accent()
-}
-
-pub fn style_header() -> Style {
-  Theme::dark().style_header()
-}
-
-pub fn style_border() -> Style {
-  Theme::dark().style_border()
-}
-
-pub fn style_border_active() -> Style {
-  Theme::dark().style_border_active()
-}
-
-pub fn style_selection() -> Style {
-  Theme::dark().style_selection()
-}
-
-pub fn style_success() -> Style {
-  Theme::dark().style_success()
-}
-
-pub fn style_warning() -> Style {
-  Theme::dark().style_warning()
-}
-
-pub fn style_error() -> Style {
-  Theme::dark().style_error()
-}
 
 #[cfg(test)]
 mod tests {
