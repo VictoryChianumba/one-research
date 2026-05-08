@@ -218,7 +218,15 @@ fn run_source<F>(
   match fetch_fn() {
     Ok(items) => {
       log::info!("source {name}: completed, {} items", items.len());
-      all_items.lock().unwrap_or_else(|e| e.into_inner()).extend(items.clone());
+      // Clone outside the lock so the critical section is just the
+      // `.extend(...)` move (one memcpy per element, no per-item clone).
+      // Previously `items.clone()` evaluated as an argument to extend
+      // happened *inside* the critical section — torn-state risk on
+      // panic mid-clone, plus theoretical priority inversion under load
+      // (audit Rel MED #16). Two consumers (accumulator + channel) so
+      // one clone is unavoidable; the win is shrinking the lock window.
+      let to_extend = items.clone();
+      all_items.lock().unwrap_or_else(|e| e.into_inner()).extend(to_extend);
       let _ = tx.send(FetchMessage::Items(items));
       let _ = tx.send(FetchMessage::SourceComplete(name.to_string()));
     }
