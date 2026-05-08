@@ -32,24 +32,39 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 
 /// On parse failure, rename `<path>` to `<path>.broken-<unix_ts>` so the next
 /// save doesn't clobber the user's only recovery copy. Best-effort.
+/// Mirrors `trench::store::quarantine_corrupted`. Unique nanos+pid+counter
+/// suffix prevents same-second collisions (audit Rel HIGH H2); rename
+/// failure is logged loudly so the user knows the recovery copy will
+/// be overwritten on the next save.
 fn quarantine_corrupted(
   path: &Path,
   label: &str,
   err: &dyn std::fmt::Display,
 ) {
-  let ts = std::time::SystemTime::now()
+  use std::sync::atomic::{AtomicU64, Ordering};
+  static COUNTER: AtomicU64 = AtomicU64::new(0);
+  let ts_nanos = std::time::SystemTime::now()
     .duration_since(std::time::UNIX_EPOCH)
-    .map(|d| d.as_secs())
+    .map(|d| d.as_nanos())
     .unwrap_or(0);
+  let pid = std::process::id();
+  let n = COUNTER.fetch_add(1, Ordering::Relaxed);
   let mut new_name: OsString = path.as_os_str().to_owned();
-  new_name.push(format!(".broken-{ts}"));
+  new_name.push(format!(".broken-{ts_nanos}-{pid}-{n}"));
   let new_path = PathBuf::from(&new_name);
   log::error!(
-    "{label}: parse failed at {} — quarantined to {}: {err}",
+    "{label}: parse failed at {} — quarantining to {}: {err}",
     path.display(),
     new_path.display()
   );
-  let _ = fs::rename(path, &new_path);
+  if let Err(rename_err) = fs::rename(path, &new_path) {
+    log::error!(
+      "{label}: rename to quarantine path failed — corrupted file \
+       remains at {} and will be overwritten on the next save: \
+       {rename_err}",
+      path.display()
+    );
+  }
 }
 
 fn chats_dir() -> PathBuf {

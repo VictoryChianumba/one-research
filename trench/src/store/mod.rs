@@ -54,29 +54,44 @@ pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
   fs::rename(&tmp_path, path)
 }
 
-/// On parse failure, rename `<path>` to `<path>.broken-<unix_ts>` so the next
-/// save doesn't clobber the user's only recovery copy. Best-effort — rename
-/// failure is non-fatal and the caller still returns Default. Pairs with
-/// `atomic_write` to close the data-loss class: torn writes can't happen, and
-/// pre-existing corruption no longer silently nukes state.
+/// On parse failure, rename `<path>` to a unique `<path>.broken-<...>`
+/// sidecar so the next save doesn't clobber the user's only recovery
+/// copy. Suffix combines unix nanoseconds + pid + a per-process atomic
+/// counter — two failures within one nanosecond on the same process
+/// cannot collide (audit Rel HIGH H2). On rename failure (perm denied,
+/// fs full, cross-device symlink) the corrupted file remains at `path`
+/// and a loud second log line is emitted so the user knows the next
+/// save will overwrite the recovery copy. Pairs with `atomic_write` to
+/// close the data-loss class.
 pub(crate) fn quarantine_corrupted(
   path: &Path,
   label: &str,
   err: &dyn std::fmt::Display,
 ) {
-  let ts = std::time::SystemTime::now()
+  use std::sync::atomic::{AtomicU64, Ordering};
+  static COUNTER: AtomicU64 = AtomicU64::new(0);
+  let ts_nanos = std::time::SystemTime::now()
     .duration_since(std::time::UNIX_EPOCH)
-    .map(|d| d.as_secs())
+    .map(|d| d.as_nanos())
     .unwrap_or(0);
+  let pid = std::process::id();
+  let n = COUNTER.fetch_add(1, Ordering::Relaxed);
   let mut new_name: OsString = path.as_os_str().to_owned();
-  new_name.push(format!(".broken-{ts}"));
+  new_name.push(format!(".broken-{ts_nanos}-{pid}-{n}"));
   let new_path = PathBuf::from(&new_name);
   log::error!(
-    "{label}: parse failed at {} — quarantined to {}: {err}",
+    "{label}: parse failed at {} — quarantining to {}: {err}",
     path.display(),
     new_path.display()
   );
-  let _ = fs::rename(path, &new_path);
+  if let Err(rename_err) = fs::rename(path, &new_path) {
+    log::error!(
+      "{label}: rename to quarantine path failed — corrupted file \
+       remains at {} and will be overwritten on the next save: \
+       {rename_err}",
+      path.display()
+    );
+  }
 }
 
 fn state_path() -> Option<PathBuf> {
