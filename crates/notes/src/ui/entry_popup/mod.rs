@@ -231,7 +231,10 @@ impl NotePopup<'_> {
   }
 
   fn validate_title(&mut self) {
-    if self.title_txt.lines()[0].is_empty() {
+    // Defensive: lines() should always have at least one entry per the
+    // tui-textarea invariant, but treat an unexpectedly empty TextArea as
+    // an empty title rather than panicking via indexing (audit Rel MED #14).
+    if self.title_txt.lines().first().is_none_or(|l| l.is_empty()) {
       self.title_err_msg = "Title can't be empty".into();
     } else {
       self.title_err_msg.clear();
@@ -240,7 +243,7 @@ impl NotePopup<'_> {
 
   fn validate_tags(&mut self) {
     let tags = text_to_tags(
-      self.tags_txt.lines().first().expect("Tags TextBox have one line"),
+      self.tags_txt.lines().first().map(|s| s.as_str()).unwrap_or(""),
     );
     if tags.iter().any(|tag| tag.contains(',')) {
       self.tags_err_msg = "Tags are invalid".into();
@@ -279,8 +282,12 @@ impl NotePopup<'_> {
       KeyCode::Char(' ') | KeyCode::Char('t') if has_ctrl => {
         debug_assert!(self.tags_popup.is_none());
 
-        let tags_text =
-          self.tags_txt.lines().first().expect("Tags text box has one line");
+        let tags_text = self
+          .tags_txt
+          .lines()
+          .first()
+          .map(|s| s.as_str())
+          .unwrap_or("");
 
         self.tags_popup = Some(TagsPopup::new(tags_text, Vec::new()));
 
@@ -326,9 +333,10 @@ impl NotePopup<'_> {
       return NotePopupReturn::KeepPopup;
     }
 
-    let title = self.title_txt.lines()[0].to_owned();
+    let title =
+      self.title_txt.lines().first().cloned().unwrap_or_default();
     let tags = text_to_tags(
-      self.tags_txt.lines().first().expect("Tags TextBox have one line"),
+      self.tags_txt.lines().first().map(|s| s.as_str()).unwrap_or(""),
     );
 
     let data = NotePopupData { title, tags };

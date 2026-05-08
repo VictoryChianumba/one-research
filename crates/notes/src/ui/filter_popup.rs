@@ -388,15 +388,23 @@ impl FilterPopup<'_> {
       })
       .collect();
 
-    let title_filter =
-      self.title_txt.lines().first().expect("Title TextBox has one line");
+    let title_filter = self
+      .title_txt
+      .lines()
+      .first()
+      .map(|s| s.as_str())
+      .unwrap_or("");
 
     if !title_filter.is_empty() {
       criteria.push(FilterCriterion::Title(title_filter.to_owned()));
     }
 
-    let content_filter =
-      self.content_txt.lines().first().expect("Content TextBox has one line");
+    let content_filter = self
+      .content_txt
+      .lines()
+      .first()
+      .map(|s| s.as_str())
+      .unwrap_or("");
 
     if !content_filter.is_empty() {
       criteria.push(FilterCriterion::Content(content_filter.to_owned()));
