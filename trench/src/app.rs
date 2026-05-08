@@ -1381,29 +1381,32 @@ impl App {
     }
   }
 
-  pub fn push_search_char(&mut self, c: char) {
-    self.search_query.push(c);
+  /// Mutator chokepoint for `search_query`. Invokes `f` on the query, then
+  /// auto-syncs `search_query_lower` and invalidates every cache that depends
+  /// on the query (`visible_cache`, `filtered_history_cache`). All search
+  /// query mutations must go through here so the lowercased mirror and the
+  /// memoized visible/filtered-history results stay in sync.
+  fn mutate_search_query(&mut self, f: impl FnOnce(&mut String)) {
+    f(&mut self.search_query);
     self.search_query_lower = self.search_query.to_lowercase();
+    self.invalidate_visible_cache();
     self.invalidate_filtered_history_cache();
+  }
+
+  pub fn push_search_char(&mut self, c: char) {
+    self.mutate_search_query(|q| q.push(c));
     self.reset_active_feed_position();
   }
 
   pub fn pop_search_char(&mut self) {
-    self.search_query.pop();
-    self.search_query_lower = self.search_query.to_lowercase();
-    self.invalidate_filtered_history_cache();
+    self.mutate_search_query(|q| {
+      q.pop();
+    });
     self.reset_active_feed_position();
   }
 
-  /// Clear the search bar. Pairs with `push_search_char` / `pop_search_char`
-  /// so the lowercased mirror never drifts out of sync with `search_query`.
-  /// Also invalidates the visible-items cache so stale filtered results
-  /// can't survive across the clear (was a "callers are responsible" footgun).
   pub fn clear_search_query(&mut self) {
-    self.search_query.clear();
-    self.search_query_lower.clear();
-    self.invalidate_visible_cache();
-    self.invalidate_filtered_history_cache();
+    self.mutate_search_query(|q| q.clear());
   }
 
   /// Mirror of `push_search_char` for the discovery palette.
