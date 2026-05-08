@@ -105,10 +105,10 @@ impl FilterPopup<'_> {
     frame.render_widget(Clear, area);
     frame.render_widget(block, area);
 
+    let footer_wrap_width =
+      (area.width as usize).saturating_sub(FOOTER_MARGIN).max(1);
     let footer_height =
-      textwrap::fill(FOOTER_TEXT, (area.width as usize) - FOOTER_MARGIN)
-        .lines()
-        .count();
+      textwrap::fill(FOOTER_TEXT, footer_wrap_width).lines().count();
 
     let chunks = Layout::default()
       .direction(Direction::Vertical)
@@ -120,7 +120,7 @@ impl FilterPopup<'_> {
           Constraint::Length(3),
           Constraint::Length(3),
           Constraint::Min(4),
-          Constraint::Length(footer_height.try_into().unwrap()),
+          Constraint::Length(footer_height.try_into().unwrap_or(u16::MAX)),
         ]
         .as_ref(),
       )
