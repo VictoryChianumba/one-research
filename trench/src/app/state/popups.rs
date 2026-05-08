@@ -1,0 +1,56 @@
+//! Quit / tag-picker / sources-popup ephemeral state, plus the source-detect
+//! state machine and its DiscoverResult enum (used both here and by the
+//! discovery agent).
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum QuitPopupKind {
+  #[default]
+  QuitApp,
+  QuitWithProgress,
+  QuitWithChat,
+  LeaveReader,
+}
+
+/// Quit confirmation popup state.
+#[derive(Default)]
+pub struct QuitPopupState {
+  pub active: bool,
+  pub kind: QuitPopupKind,
+}
+
+/// Tag picker popup state.
+#[derive(Default)]
+pub struct TagPickerState {
+  pub active: bool,
+  pub input: String,
+  pub selected: usize,
+  pub target_urls: Vec<String>,
+}
+
+/// Result from the URL discovery pipeline (used by the sources popup).
+#[derive(Clone)]
+pub enum DiscoverResult {
+  ArxivCategory(String),
+  HuggingFaceAlreadyEnabled,
+  RssFeed { url: String, name: String },
+  Failed(String),
+}
+
+/// State machine for the "Add source" input in the sources popup.
+#[derive(Default)]
+pub enum SourcesDetectState {
+  #[default]
+  Idle,
+  Detecting,
+  Result(DiscoverResult),
+}
+
+/// Sources popup state.
+#[derive(Default)]
+pub struct SourcesPopupState {
+  pub cursor: usize,
+  pub input: String,
+  pub input_active: bool,
+  pub detect_state: SourcesDetectState,
+  pub detect_rx: Option<std::sync::mpsc::Receiver<DiscoverResult>>,
+}
