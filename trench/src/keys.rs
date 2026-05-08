@@ -3141,12 +3141,14 @@ fn handle_history_tab(key: KeyEvent, app: &mut App) -> bool {
   match key.code {
     KeyCode::Char(']') => {
       app.history_filter = app.history_filter.next();
+      app.invalidate_filtered_history_cache();
       app.history_selected_index = 0;
       app.history_list_offset = 0;
       true
     }
     KeyCode::Char('[') => {
       app.history_filter = app.history_filter.prev();
+      app.invalidate_filtered_history_cache();
       app.history_selected_index = 0;
       app.history_list_offset = 0;
       true

@@ -596,6 +596,13 @@ pub struct App {
   /// format! (audit Perf MED #8). Invalidated only by `active_filters`
   /// mutation — does NOT depend on items / search query.
   pub filter_summary_cache: RefCell<Option<String>>,
+  /// Lazy memo of `filtered_history` results as indices into `self.history`.
+  /// `filtered_history` was called 2× per History-tab frame after T4c (down
+  /// from 3); this memo cuts that to 1 compute per filter-input change
+  /// (audit Perf MED #9). Cache is invalidated by every input the filter
+  /// depends on: history mutation, search_query mutation, history_filter
+  /// time-window mutation, and active_filters mutation.
+  pub filtered_history_cache: RefCell<Option<Vec<usize>>>,
 }
 
 // Filter panel cursor positions are computed dynamically in
@@ -751,6 +758,7 @@ impl App {
       counts_cache: RefCell::new(None),
       filter_source_names_cache: RefCell::new(None),
       filter_summary_cache: RefCell::new(None),
+      filtered_history_cache: RefCell::new(None),
       panes: [
         PaneInfo::new(PaneId::Feed),
         PaneInfo::new(PaneId::Reader),
@@ -1183,6 +1191,10 @@ impl App {
     *self.filter_summary_cache.borrow_mut() = None;
   }
 
+  pub(crate) fn invalidate_filtered_history_cache(&self) {
+    *self.filtered_history_cache.borrow_mut() = None;
+  }
+
   /// Aggregate invalidator for every cache that derives from `app.items`.
   /// Call from any mutation site that changes the items vec or any item's
   /// workflow_state / source_name / published_at fields.
@@ -1386,12 +1398,14 @@ impl App {
   pub fn push_search_char(&mut self, c: char) {
     self.search_query.push(c);
     self.search_query_lower = self.search_query.to_lowercase();
+    self.invalidate_filtered_history_cache();
     self.reset_active_feed_position();
   }
 
   pub fn pop_search_char(&mut self) {
     self.search_query.pop();
     self.search_query_lower = self.search_query.to_lowercase();
+    self.invalidate_filtered_history_cache();
     self.reset_active_feed_position();
   }
 
@@ -1404,6 +1418,7 @@ impl App {
     self.search_query.clear();
     self.search_query_lower.clear();
     self.invalidate_visible_cache();
+    self.invalidate_filtered_history_cache();
   }
 
   /// Mirror of `push_search_char` for the discovery palette.
@@ -1633,6 +1648,7 @@ impl App {
       source,
       meta,
     );
+    self.invalidate_filtered_history_cache();
     crate::store::history::save(&self.history);
   }
 
@@ -1646,19 +1662,32 @@ impl App {
       topic.to_string(),
       intent.label(),
     );
+    self.invalidate_filtered_history_cache();
     crate::store::history::save(&self.history);
   }
 
   pub fn filtered_history(&self) -> Vec<&crate::history::HistoryEntry> {
+    if self.filtered_history_cache.borrow().is_none() {
+      let indices = self.compute_filtered_history_indices();
+      *self.filtered_history_cache.borrow_mut() = Some(indices);
+    }
+    let cache = self.filtered_history_cache.borrow();
+    let indices = cache.as_ref().expect("populated above");
+    indices.iter().map(|&i| &self.history[i]).collect()
+  }
+
+  fn compute_filtered_history_indices(&self) -> Vec<usize> {
     let now = chrono::Utc::now();
     let q = self.search_query_lower.as_str();
     let src_filter = &self.active_filters.sources;
     self
       .history
       .iter()
-      .filter(|e| self.history_filter.matches(e, now))
-      .filter(|e| q.is_empty() || e.title_lower.contains(q))
-      .filter(|e| src_filter.is_empty() || src_filter.contains(&e.source))
+      .enumerate()
+      .filter(|(_, e)| self.history_filter.matches(e, now))
+      .filter(|(_, e)| q.is_empty() || e.title_lower.contains(q))
+      .filter(|(_, e)| src_filter.is_empty() || src_filter.contains(&e.source))
+      .map(|(i, _)| i)
       .collect()
   }
 
@@ -2487,12 +2516,14 @@ impl App {
       self.active_filters = FilterState::new();
     }
     self.invalidate_filter_summary_cache();
+    self.invalidate_filtered_history_cache();
     self.reset_active_feed_position();
   }
 
   pub fn clear_filters(&mut self) {
     self.active_filters = FilterState::new();
     self.invalidate_filter_summary_cache();
+    self.invalidate_filtered_history_cache();
     self.reset_active_feed_position();
   }
 
