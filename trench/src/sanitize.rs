@@ -25,13 +25,11 @@
 ///
 /// `&s[..N]` byte-slicing panics if byte `N` falls in the middle of a
 /// multi-byte UTF-8 sequence — which happens routinely on emoji, em-dash,
-/// or accented characters in API error bodies. The audit's Reliability
-/// HIGH #8 cataloged 5 such panic sites; this helper is the chokepoint
-/// fix.
+/// or accented characters in API error bodies. Use this everywhere we
+/// slice API/error text.
 ///
 /// Returns `Cow<str>` so the common case (input already short enough) is
-/// allocation-free — most error messages truncate to 80-100 chars but
-/// most messages are shorter than that.
+/// allocation-free.
 pub(crate) fn truncate_chars(s: &str, max: usize) -> std::borrow::Cow<'_, str> {
   if s.chars().count() <= max {
     std::borrow::Cow::Borrowed(s)
