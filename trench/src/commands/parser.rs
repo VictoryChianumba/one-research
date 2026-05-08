@@ -21,13 +21,17 @@ pub enum SlashCommandInvocation {
   Unknown { raw: String },
 }
 
+fn arg_after(input: &str, prefix: &str) -> String {
+  input.strip_prefix(prefix).unwrap_or("").trim().to_string()
+}
+
 pub fn parse_slash_command(raw: &str) -> SlashCommandInvocation {
   let trimmed = raw.trim();
 
   match find_command(trimmed).map(|spec| spec.id) {
     Some(CommandId::ClearChat) => SlashCommandInvocation::ClearChat,
     Some(CommandId::Discover) => SlashCommandInvocation::Discover {
-      topic: trimmed.strip_prefix("/discover").unwrap_or("").trim().to_string(),
+      topic: arg_after(trimmed, "/discover"),
     },
     Some(CommandId::ClearDiscoveries) => {
       SlashCommandInvocation::ClearDiscoveries
@@ -35,51 +39,39 @@ pub fn parse_slash_command(raw: &str) -> SlashCommandInvocation {
     Some(CommandId::ClearHistory) => SlashCommandInvocation::ClearHistory,
     Some(CommandId::AddArxivCategory) => {
       SlashCommandInvocation::AddArxivCategory {
-        category: trimmed.strip_prefix("/add").unwrap_or("").trim().to_string(),
+        category: arg_after(trimmed, "/add"),
       }
     }
     Some(CommandId::AddFeed) => SlashCommandInvocation::AddFeed {
-      url: trimmed.strip_prefix("/add-feed").unwrap_or("").trim().to_string(),
+      url: arg_after(trimmed, "/add-feed"),
     },
     Some(CommandId::Sota) => SlashCommandInvocation::Sota {
-      topic: trimmed.strip_prefix("/sota").unwrap_or("").trim().to_string(),
+      topic: arg_after(trimmed, "/sota"),
     },
     Some(CommandId::ReadingList) => SlashCommandInvocation::ReadingList {
-      topic: trimmed
-        .strip_prefix("/reading-list")
-        .unwrap_or("")
-        .trim()
-        .to_string(),
+      topic: arg_after(trimmed, "/reading-list"),
     },
     Some(CommandId::Code) => SlashCommandInvocation::Code {
-      topic: trimmed.strip_prefix("/code").unwrap_or("").trim().to_string(),
+      topic: arg_after(trimmed, "/code"),
     },
     Some(CommandId::Compare) => SlashCommandInvocation::Compare {
-      topic: trimmed.strip_prefix("/compare").unwrap_or("").trim().to_string(),
+      topic: arg_after(trimmed, "/compare"),
     },
     Some(CommandId::Digest) => SlashCommandInvocation::Digest,
     Some(CommandId::Author) => SlashCommandInvocation::Author {
-      name: trimmed.strip_prefix("/author").unwrap_or("").trim().to_string(),
+      name: arg_after(trimmed, "/author"),
     },
     Some(CommandId::Trending) => SlashCommandInvocation::Trending {
-      topic: trimmed.strip_prefix("/trending").unwrap_or("").trim().to_string(),
+      topic: arg_after(trimmed, "/trending"),
     },
     Some(CommandId::Watch) => SlashCommandInvocation::Watch {
-      topic: trimmed.strip_prefix("/watch").unwrap_or("").trim().to_string(),
+      topic: arg_after(trimmed, "/watch"),
     },
     Some(CommandId::ExportHistory) => SlashCommandInvocation::ExportHistory {
-      format: trimmed
-        .strip_prefix("/export-history")
-        .unwrap_or("")
-        .trim()
-        .to_string(),
+      format: arg_after(trimmed, "/export-history"),
     },
     Some(CommandId::ExportLibrary) => SlashCommandInvocation::ExportLibrary {
-      format: trimmed
-        .strip_prefix("/export-library")
-        .unwrap_or("")
-        .trim()
-        .to_string(),
+      format: arg_after(trimmed, "/export-library"),
     },
     None => SlashCommandInvocation::Unknown { raw: trimmed.to_string() },
   }
