@@ -1955,7 +1955,7 @@ impl App {
       if ctx.wrap_width == 0 {
         ctx.wrap_width = 80;
       }
-      ctx.wrap_width += 10;
+      ctx.wrap_width = ctx.wrap_width.saturating_add(10).min(200);
     }
   }
 
