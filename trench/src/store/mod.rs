@@ -98,6 +98,29 @@ pub(crate) fn quarantine_corrupted(
     path.display(),
     new_path.display()
   );
+  // Defense-in-depth: refuse to quarantine the source if it's a symlink.
+  // POSIX `rename` operates on the directory entry, not the target, so
+  // the rename itself doesn't follow links — but quarantining an
+  // attacker-planted symlink would silently move the link out of the
+  // way and let the next save create a fresh real file at the original
+  // path, masking the tampering. Stop and surface it instead.
+  match fs::symlink_metadata(path) {
+    Ok(meta) if meta.file_type().is_symlink() => {
+      log::error!(
+        "{label}: refusing to quarantine symlink at {} — possible tampering",
+        path.display()
+      );
+      return;
+    }
+    Ok(_) => {}
+    Err(stat_err) => {
+      log::error!(
+        "{label}: stat failed for {} — skipping quarantine: {stat_err}",
+        path.display()
+      );
+      return;
+    }
+  }
   if let Err(rename_err) = fs::rename(path, &new_path) {
     log::error!(
       "{label}: rename to quarantine path failed — corrupted file \
