@@ -68,11 +68,23 @@ fn quarantine_corrupted(
 }
 
 fn chats_dir() -> PathBuf {
-  let base = dirs::config_dir()
-    .unwrap_or_else(|| PathBuf::from("."))
-    .join("trench")
-    .join("chats");
-  base
+  // Memoize + log-once on the rare $HOME-unset fallback, so chat sessions
+  // landing in a random CWD (CI, container, init-system) is observable
+  // instead of silent (audit Sec MED #9).
+  static CACHE: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+  CACHE
+    .get_or_init(|| match dirs::config_dir() {
+      Some(p) => p.join("trench").join("chats"),
+      None => {
+        log::error!(
+          "chat::chats_dir: dirs::config_dir() returned None — falling \
+           back to ./trench/chats. Set HOME or XDG_CONFIG_HOME to avoid \
+           writing chat sessions into the launching directory."
+        );
+        PathBuf::from(".").join("trench").join("chats")
+      }
+    })
+    .clone()
 }
 
 fn index_path() -> PathBuf {

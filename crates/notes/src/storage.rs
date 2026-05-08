@@ -5,10 +5,23 @@ use std::path::{Path, PathBuf};
 use crate::Note;
 
 fn notes_dir() -> PathBuf {
-  dirs::config_dir()
-    .unwrap_or_else(|| PathBuf::from("."))
-    .join("trench")
-    .join("notes")
+  // Memoize + log-once on the rare $HOME-unset fallback, so notes landing
+  // in a random CWD (CI, container, init-system) is observable instead of
+  // silent (audit Sec MED #9).
+  static CACHE: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+  CACHE
+    .get_or_init(|| match dirs::config_dir() {
+      Some(p) => p.join("trench").join("notes"),
+      None => {
+        log::error!(
+          "notes::notes_dir: dirs::config_dir() returned None — falling \
+           back to ./trench/notes. Set HOME or XDG_CONFIG_HOME to avoid \
+           writing notes into the launching directory."
+        );
+        PathBuf::from(".").join("trench").join("notes")
+      }
+    })
+    .clone()
 }
 
 fn note_path(note_id: &str) -> PathBuf {

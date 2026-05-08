@@ -31,7 +31,12 @@ pub fn save(entries: &[HistoryEntry]) {
   let trimmed: &[HistoryEntry] =
     if entries.len() > HISTORY_CAP { &entries[..HISTORY_CAP] } else { entries };
   if let Ok(json) = serde_json::to_vec(trimmed) {
-    let _ = super::atomic_write(&path, &json);
+    if let Err(e) = super::atomic_write(&path, &json) {
+      log::error!(
+        "trench/history: atomic_write failed at {}: {e}",
+        path.display()
+      );
+    }
   }
 }
 

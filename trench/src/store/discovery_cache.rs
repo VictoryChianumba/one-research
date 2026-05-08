@@ -50,6 +50,11 @@ pub fn save(items: &[FeedItem]) {
   }
 
   if let Ok(json) = serde_json::to_vec(items) {
-    let _ = super::atomic_write(&path, &json);
+    if let Err(e) = super::atomic_write(&path, &json) {
+      log::error!(
+        "trench/discovery_cache: atomic_write failed at {}: {e}",
+        path.display()
+      );
+    }
   }
 }

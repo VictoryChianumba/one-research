@@ -30,13 +30,23 @@ pub fn save(session: &SessionHistory) {
     let _ = fs::create_dir_all(parent);
   }
   if let Ok(json) = serde_json::to_vec(session) {
-    let _ = super::atomic_write(&path, &json);
+    if let Err(e) = super::atomic_write(&path, &json) {
+      log::error!(
+        "trench/discovery_session: atomic_write failed at {}: {e}",
+        path.display()
+      );
+    }
   }
 }
 
 pub fn clear() {
-  if let Some(path) = path() {
-    let _ = super::atomic_write(&path, b"{}");
+  if let Some(path) = path()
+    && let Err(e) = super::atomic_write(&path, b"{}")
+  {
+    log::error!(
+      "trench/discovery_session: clear failed at {}: {e}",
+      path.display()
+    );
   }
 }
 

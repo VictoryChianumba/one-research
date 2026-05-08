@@ -165,7 +165,9 @@ pub fn save(state: &HashMap<String, WorkflowState>) {
   }
 
   if let Ok(json) = serde_json::to_vec(state) {
-    let _ = atomic_write(&path, &json);
+    if let Err(e) = atomic_write(&path, &json) {
+      log::error!("trench/state: atomic_write failed at {}: {e}", path.display());
+    }
     set_private(&path);
   }
 }
@@ -221,7 +223,9 @@ pub fn save_ui(state: &UiState) {
     let _ = fs::create_dir_all(parent);
   }
   if let Ok(json) = serde_json::to_vec(state) {
-    let _ = atomic_write(&path, &json);
+    if let Err(e) = atomic_write(&path, &json) {
+      log::error!("trench/ui: atomic_write failed at {}: {e}", path.display());
+    }
     set_private(&path);
   }
 }
