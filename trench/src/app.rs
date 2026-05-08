@@ -2270,12 +2270,7 @@ impl App {
         self.list_offset = 0;
       }
       self.mark_dirty();
-    } else if had_source_updates {
-      self.invalidate_visible_cache();
-      self.invalidate_items_derived_caches();
-      crate::store::cache::queue_save(self.items.clone());
-      self.mark_dirty();
-    } else if had_enriched_updates {
+    } else if had_source_updates || had_enriched_updates {
       self.invalidate_visible_cache();
       self.invalidate_items_derived_caches();
       crate::store::cache::queue_save(self.items.clone());
