@@ -81,24 +81,23 @@ pub struct ChatUi {
 
   /// Cached wrapped + styled lines per message.
   ///
-  /// Key: `(msg_idx, content_len, has_streaming_cursor)`. `content_len`
-  /// catches every streaming append (each word reveal grows the last
-  /// message by `word.len() + 1`); `has_streaming_cursor` differentiates
-  /// "this message is the streaming target right now" from "this message
-  /// was the last message but is no longer streaming". Together they form
-  /// a content-derived cache key so older messages stay cached across
-  /// streaming ticks while only the streaming message re-wraps.
+  /// Key: `(msg_idx, has_streaming_cursor)` — single entry per message.
+  /// The cached `content_len` lets us detect when a streaming append
+  /// invalidates the entry: hit-with-matching-len returns the cached
+  /// lines directly, hit-with-stale-len falls through to re-render and
+  /// overwrite the same key. Previously the cache key included
+  /// `content_len`, so each streamed word created a NEW entry and
+  /// the HashMap grew unboundedly with conversation length (audit chat
+  /// HIGH #2). The new shape keeps a single entry per message regardless
+  /// of streaming length.
   ///
   /// Cleared when `terminal width` changes (resize) or when the active
   /// session changes (different conversation entirely).
   ///
-  /// Closes Perf HIGH #14: previously `build_message_lines` re-wrapped
-  /// every visible message via `textwrap::wrap` on every redraw, which is
-  /// the dominant per-frame cost during streaming reveals.
-  line_cache: std::collections::HashMap<
-    (usize, usize, bool),
-    Vec<ratatui::text::Line<'static>>,
-  >,
+  /// Also closes Perf HIGH #14 from the prior audit: `build_message_lines`
+  /// previously re-wrapped every visible message via `textwrap::wrap` on
+  /// every redraw; cache hits now skip the wrap entirely.
+  line_cache: std::collections::HashMap<(usize, bool), CachedRender>,
   /// Width the cache was built for. Diverges from current width on resize;
   /// triggers a full cache clear.
   line_cache_width: usize,
@@ -112,6 +111,15 @@ pub struct ChatUi {
   /// Top visible row in the slash-command suggestion palette.
   pub slash_scroll: usize,
   pub slash_commands: Vec<ChatSlashCommandSpec>,
+}
+
+/// Single entry in `ChatUi.line_cache`. Stores the rendered lines for a
+/// message at a particular `content_len`; on cache lookup the caller
+/// compares its current content length against `content_len` to decide
+/// whether the cache is fresh.
+struct CachedRender {
+  content_len: usize,
+  lines: Vec<ratatui::text::Line<'static>>,
 }
 
 // ── Construction ─────────────────────────────────────────────────────────────
@@ -1272,69 +1280,105 @@ impl ChatUi {
       self.line_cache_session_id = session_id;
     }
 
-    let session = match &self.active_session {
-      Some(s) => s,
-      None => return vec![],
-    };
+    if self.active_session.is_none() {
+      return vec![];
+    }
 
     let wrap_width = width.max(1);
-    // Collect msg metadata up front so we can release the borrow on
-    // self.active_session before we mutate self.line_cache below.
-    let msgs: Vec<(Role, String, usize)> = session
-      .messages
-      .iter()
-      .filter(|m| !matches!(m.role, Role::System))
-      .map(|m| (m.role, m.content.clone(), m.content.len()))
-      .collect();
 
+    // Lightweight metadata pass: capture (orig_idx, role, content_len) for
+    // every non-System message without cloning content. Previously this
+    // function cloned every message body up front to release the borrow
+    // before mutating line_cache; that meant ~100KB of allocation per
+    // frame on a 50-message session even when every message was a cache
+    // hit (audit chat HIGH #3). Now we only clone content on cache miss.
+    let metas: Vec<MsgMeta> = self
+      .active_session
+      .as_ref()
+      .map(|s| {
+        s.messages
+          .iter()
+          .enumerate()
+          .filter(|(_, m)| !matches!(m.role, Role::System))
+          .map(|(orig_idx, m)| MsgMeta {
+            orig_idx,
+            role: m.role,
+            content_len: m.content.len(),
+          })
+          .collect()
+      })
+      .unwrap_or_default();
+
+    let total = metas.len();
     let mut lines: Vec<Line<'static>> = Vec::new();
-    let total_msgs = msgs.len();
 
-    for (i, (role, content, content_len)) in msgs.iter().enumerate() {
-      let role = *role;
-      let content_len = *content_len;
-      let is_last = i + 1 == total_msgs;
+    for filt_i in 0..total {
+      let meta = &metas[filt_i];
+      let is_last = filt_i + 1 == total;
       let has_streaming_cursor =
-        self.is_streaming && is_last && matches!(role, Role::Assistant);
-      let key = (i, content_len, has_streaming_cursor);
+        self.is_streaming && is_last && matches!(meta.role, Role::Assistant);
+      let key = (filt_i, has_streaming_cursor);
 
-      // Cache hit: clone the cached lines into the output. Cloning a
-      // Vec<Line<'static>> is O(N_lines × N_spans × String::clone) but
-      // skips the dominant `textwrap::wrap` cost over the message body.
+      // Cache hit fast path — content_len match means the cached lines
+      // are still valid for this message. No content access, no clone.
       if let Some(cached) = self.line_cache.get(&key) {
-        lines.extend(cached.iter().cloned());
-        let next_role = msgs.get(i + 1).map(|(role, _, _)| *role);
-        if message_gap_needed(role, next_role) {
-          lines.push(Line::from(""));
+        if cached.content_len == meta.content_len {
+          lines.extend(cached.lines.iter().cloned());
+          let next_role = metas.get(filt_i + 1).map(|m| m.role);
+          if message_gap_needed(meta.role, next_role) {
+            lines.push(Line::from(""));
+          }
+          continue;
         }
-        continue;
       }
 
-      // Cache miss: compute role-specific presentation into a temporary,
-      // store it in the cache, then extend the output.
-      let msg_lines = match role {
+      // Cache miss or stale entry: clone the message content in a scoped
+      // borrow so it drops before we touch line_cache mutably.
+      let content_owned = self
+        .active_session
+        .as_ref()
+        .map(|s| s.messages[meta.orig_idx].content.clone())
+        .unwrap_or_default();
+      let msg_lines = match meta.role {
         Role::System => continue,
-        Role::User => render_user_message(content, wrap_width, t),
-        Role::Assistant => {
-          render_assistant_message(content, wrap_width, has_streaming_cursor, t)
-        }
+        Role::User => render_user_message(&content_owned, wrap_width, t),
+        Role::Assistant => render_assistant_message(
+          &content_owned,
+          wrap_width,
+          has_streaming_cursor,
+          t,
+        ),
       };
 
-      // Cache the freshly-built per-message lines, then extend the output.
-      // Cloning into the cache is cheap relative to the textwrap::wrap
-      // cost we just paid; subsequent reads only pay the clone.
-      self.line_cache.insert(key, msg_lines.clone());
+      // Overwrite the (msg_idx, has_streaming_cursor) entry with the new
+      // rendered output. The HashMap stays bounded — single entry per
+      // message regardless of how many streaming ticks have happened.
+      self.line_cache.insert(
+        key,
+        CachedRender {
+          content_len: meta.content_len,
+          lines: msg_lines.clone(),
+        },
+      );
       lines.extend(msg_lines);
 
       // Single blank line between messages, not after the last.
-      let next_role = msgs.get(i + 1).map(|(role, _, _)| *role);
-      if message_gap_needed(role, next_role) {
+      let next_role = metas.get(filt_i + 1).map(|m| m.role);
+      if message_gap_needed(meta.role, next_role) {
         lines.push(Line::from(""));
       }
     }
 
     lines
   }
+}
+
+/// Lightweight per-message metadata used by `build_message_lines` so the
+/// cache-hit path doesn't have to clone any message content.
+struct MsgMeta {
+  orig_idx: usize,
+  role: Role,
+  content_len: usize,
 }
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
