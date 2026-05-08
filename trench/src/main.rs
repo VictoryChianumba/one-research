@@ -46,9 +46,8 @@ use std::sync::mpsc;
 /// will dispatch any registered scheme (including `javascript:`,
 /// `vscode://`, `mailto:`). Restricting to http(s) blocks the local-handler
 /// attack surface; http is kept because some legitimate paper hosts are
-/// http-only. Case-insensitive: per RFC 3986 §3.1 schemes are
-/// case-insensitive, and RSS feeds in the wild ship `Https://` URLs that
-/// are not normalized at ingestion (audit Sec LOW #21).
+/// http-only. Case-insensitive per RFC 3986 §3.1 — RSS feeds in the wild
+/// ship `Https://` URLs without normalization.
 pub(crate) fn is_safe_url_scheme(url: &str) -> bool {
   let lower = url.to_ascii_lowercase();
   lower.starts_with("https://") || lower.starts_with("http://")
@@ -127,9 +126,7 @@ mod panic_msg_tests {
       // The closure body is unconditional `panic!`, so the closure's return
       // type is `!` and `outcome` is provably `Err(_)` — let-else makes that
       // explicit and avoids an irrefutable-pattern lint.
-      let Err(payload) = outcome else {
-        unreachable!("catch_unwind of a panicking closure cannot be Ok");
-      };
+      let Err(payload) = outcome else { unreachable!() };
       let msg = panic_msg(payload);
       let _ = tx_panic.send(Err(format!("panicked: {msg}")));
     })
@@ -254,12 +251,9 @@ fn run_source<F>(
     Ok(items) => {
       log::info!("source {name}: completed, {} items", items.len());
       // Clone outside the lock so the critical section is just the
-      // `.extend(...)` move (one memcpy per element, no per-item clone).
-      // Previously `items.clone()` evaluated as an argument to extend
-      // happened *inside* the critical section — torn-state risk on
-      // panic mid-clone, plus theoretical priority inversion under load
-      // (audit Rel MED #16). Two consumers (accumulator + channel) so
-      // one clone is unavoidable; the win is shrinking the lock window.
+      // `.extend(...)` move. Two consumers (accumulator + channel) so
+      // one clone is unavoidable; the win is shrinking the lock window
+      // and avoiding torn-state risk on panic mid-clone.
       let to_extend = items.clone();
       all_items.lock().unwrap_or_else(|e| e.into_inner()).extend(to_extend);
       let _ = tx.send(FetchMessage::Items(items));
@@ -686,8 +680,7 @@ fn domain_name(url: &str) -> String {
 /// lockstep with the dispatch logic in `spawn_fetch` (arxiv/hf/openreview/core
 /// have specialized fetch paths; the rest go through spawn_fetch's rss_feeds
 /// loop). Adding a new built-in source here without wiring spawn_fetch (or
-/// vice versa) leaves the spinner showing phantom or missing sources
-/// (audit Rel MED #12).
+/// vice versa) leaves the spinner showing phantom or missing sources.
 const BUILTIN_LOADING_SOURCES: &[&str] = &[
   "arxiv",
   "huggingface",
@@ -1151,7 +1144,7 @@ fn migrate_legacy_config_dir() {
     // access to ~/.config/tentative/, planting `state.json` as a symlink
     // pointing to a victim file would let our rename move that file
     // unexpectedly. Skip symlinks; the legacy dir is ephemeral and a
-    // subsequent launch can retry (audit Sec MED #17).
+    // subsequent launch can retry.
     match std::fs::symlink_metadata(&old_path) {
       Ok(m) if m.file_type().is_symlink() => {
         eprintln!(
