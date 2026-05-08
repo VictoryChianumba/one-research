@@ -49,7 +49,7 @@ use std::sync::mpsc;
 /// http-only. Case-insensitive: per RFC 3986 §3.1 schemes are
 /// case-insensitive, and RSS feeds in the wild ship `Https://` URLs that
 /// are not normalized at ingestion (audit Sec LOW #21).
-fn is_safe_url_scheme(url: &str) -> bool {
+pub(crate) fn is_safe_url_scheme(url: &str) -> bool {
   let lower = url.to_ascii_lowercase();
   lower.starts_with("https://") || lower.starts_with("http://")
 }

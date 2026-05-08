@@ -76,6 +76,12 @@ pub fn fetch(item: &FeedItem) -> Result<tread::PaperData, String> {
 // ---------------------------------------------------------------------------
 
 fn fetch_with_readability(url: &str) -> Result<String, String> {
+  // Step-3 fallback consumes `item.url` directly, so it's the only
+  // branch in `fetch()` that can pivot on a hostile feed URL. Steps 1
+  // (cached full_content) and 2 (arxiv synthetic URL) don't.
+  if !crate::is_safe_url_scheme(url) {
+    return Err(format!("unsafe scheme: {url}"));
+  }
   let html = get_text(url)?;
   log::debug!("fulltext: readability url={url} raw_html={} bytes", html.len());
   apply_readability(&html, url)
@@ -115,6 +121,23 @@ fn get_text(url: &str) -> Result<String, String> {
 // ---------------------------------------------------------------------------
 // arXiv ID extraction — used to pick step 2 over step 3.
 // ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+  use super::fetch_with_readability;
+
+  #[test]
+  fn rejects_file_scheme() {
+    let err = fetch_with_readability("file:///etc/passwd").unwrap_err();
+    assert!(err.starts_with("unsafe scheme"), "expected scheme error, got {err}");
+  }
+
+  #[test]
+  fn rejects_javascript_scheme() {
+    let err = fetch_with_readability("javascript:alert(1)").unwrap_err();
+    assert!(err.starts_with("unsafe scheme"), "expected scheme error, got {err}");
+  }
+}
 
 fn extract_arxiv_id(url: &str) -> Option<&str> {
   // Validate against the shared arxiv-id pattern before returning. Without
