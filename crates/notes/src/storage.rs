@@ -65,6 +65,26 @@ pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
   std::fs::rename(&tmp_path, path)
 }
 
+/// Cap on per-file load size for notes. Defends against an attacker-planted
+/// 4-GB JSON OOMing trench at startup (audit Sec MED #11). Notes are
+/// user-authored content so the legit upper bound is small; 8 MB is
+/// generous.
+const MAX_NOTE_BYTES: u64 = 8 * 1024 * 1024;
+
+fn read_capped_bytes(path: &Path) -> std::io::Result<Vec<u8>> {
+  use std::io::Read;
+  let f = std::fs::File::open(path)?;
+  let mut buf = Vec::new();
+  f.take(MAX_NOTE_BYTES + 1).read_to_end(&mut buf)?;
+  if buf.len() as u64 > MAX_NOTE_BYTES {
+    return Err(std::io::Error::new(
+      std::io::ErrorKind::InvalidData,
+      format!("file exceeds {} MB cap", MAX_NOTE_BYTES / 1024 / 1024),
+    ));
+  }
+  Ok(buf)
+}
+
 pub fn load_all_notes() -> anyhow::Result<Vec<Note>> {
   let dir = notes_dir();
   if !dir.exists() {
@@ -75,7 +95,7 @@ pub fn load_all_notes() -> anyhow::Result<Vec<Note>> {
     let entry = entry?;
     let path = entry.path();
     if path.extension().and_then(|e| e.to_str()) == Some("json") {
-      if let Ok(bytes) = std::fs::read(&path) {
+      if let Ok(bytes) = read_capped_bytes(&path) {
         if let Ok(note) = serde_json::from_slice::<Note>(&bytes) {
           // Reject deserialized notes whose `note_id` field would resolve
           // outside notes_dir on the next save_note call. The deserialize
@@ -104,7 +124,7 @@ pub fn load_note(note_id: &str) -> Option<Note> {
     return None;
   }
   let path = note_path(note_id);
-  let bytes = std::fs::read(&path).ok()?;
+  let bytes = read_capped_bytes(&path).ok()?;
   serde_json::from_slice(&bytes).ok()
 }
 

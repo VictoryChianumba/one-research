@@ -117,6 +117,25 @@ fn ensure_dir() -> Result<()> {
   Ok(())
 }
 
+/// Cap on per-file load size for chat sessions and the index. Defends
+/// against a 4-GB attacker-planted JSON OOMing trench at startup
+/// (audit Sec MED #11).
+const MAX_LOAD_BYTES: u64 = 8 * 1024 * 1024;
+
+fn read_capped(path: &Path) -> std::io::Result<String> {
+  use std::io::Read;
+  let f = std::fs::File::open(path)?;
+  let mut buf = String::new();
+  f.take(MAX_LOAD_BYTES + 1).read_to_string(&mut buf)?;
+  if buf.len() as u64 > MAX_LOAD_BYTES {
+    return Err(std::io::Error::new(
+      std::io::ErrorKind::InvalidData,
+      format!("file exceeds {} MB cap", MAX_LOAD_BYTES / 1024 / 1024),
+    ));
+  }
+  Ok(buf)
+}
+
 pub fn load_index() -> ChatIndex {
   let path = index_path();
   if !path.exists() {
@@ -125,7 +144,7 @@ pub fn load_index() -> ChatIndex {
       default_provider: "claude".to_string(),
     };
   }
-  let data = fs::read_to_string(&path).unwrap_or_default();
+  let data = read_capped(&path).unwrap_or_default();
   match serde_json::from_str(&data) {
     Ok(v) => v,
     Err(e) => {
@@ -154,7 +173,7 @@ pub fn load_session(id: &str) -> Option<ChatSession> {
   if !path.exists() {
     return None;
   }
-  let data = fs::read_to_string(&path).ok()?;
+  let data = read_capped(&path).ok()?;
   match serde_json::from_str(&data) {
     Ok(v) => Some(v),
     Err(e) => {

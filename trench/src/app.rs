@@ -2538,6 +2538,12 @@ fn validate_download_name(name: &str) -> Result<(), String> {
   if p.is_absolute() {
     return Err(format!("absolute path not allowed: {name:?}"));
   }
+  // Reject names starting with `.` (matches the chat/notes is_safe_id
+  // policy and prevents a malicious GitHub `name = "..bashrc"` from
+  // landing as a hidden file in ~/Downloads — audit Sec MED #15).
+  if name.starts_with('.') {
+    return Err(format!("leading dot in filename not allowed: {name:?}"));
+  }
   match p.file_name().and_then(|n| n.to_str()) {
     Some(n) if n == name => Ok(()),
     _ => Err(format!("path separator or traversal segment: {name:?}")),
@@ -2611,9 +2617,15 @@ mod tests {
     assert!(super::validate_download_name("foo.zip").is_ok());
     assert!(super::validate_download_name("README.md").is_ok());
     assert!(super::validate_download_name("file_name-1.txt").is_ok());
-    // `..foo` (two dots only as part of the filename, no separator) is
-    // technically allowed — it's a single component.
-    assert!(super::validate_download_name("..foo").is_ok());
+  }
+
+  #[test]
+  fn validate_download_name_rejects_leading_dot() {
+    // `..foo`, `.bashrc`, etc. — would land as hidden files in ~/Downloads
+    // if the upstream `name` from GitHub is hostile.
+    assert!(super::validate_download_name("..foo").is_err());
+    assert!(super::validate_download_name(".bashrc").is_err());
+    assert!(super::validate_download_name(".hidden").is_err());
   }
 
   #[test]
