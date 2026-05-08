@@ -117,23 +117,30 @@ fn get_text(url: &str) -> Result<String, String> {
 // ---------------------------------------------------------------------------
 
 fn extract_arxiv_id(url: &str) -> Option<&str> {
-  if let Some(pos) = url.find("/papers/") {
+  // Validate against the shared arxiv-id pattern before returning. Without
+  // this, a hostile feed URL like `https://attacker/abs/../../admin` would
+  // produce `id = "../../admin"` and pivot the subsequent
+  // `format!("https://arxiv.org/html/{id}")` fetch into a path-traversal
+  // request (audit Sec HIGH #6).
+  let candidate = if let Some(pos) = url.find("/papers/") {
     let id = &url[pos + "/papers/".len()..];
     let id = id.split('?').next().unwrap_or(id);
     let id = id.split('#').next().unwrap_or(id);
-    if !id.is_empty() {
-      return Some(id);
-    }
-  }
-  for prefix in ["/abs/", "/html/", "/pdf/"] {
-    if let Some(pos) = url.find(prefix) {
-      let id = &url[pos + prefix.len()..];
-      let id = id.split('?').next().unwrap_or(id);
-      let id = id.split('#').next().unwrap_or(id);
-      if !id.is_empty() {
-        return Some(id);
+    let id = id.split('/').next().unwrap_or(id);
+    Some(id)
+  } else {
+    let mut found = None;
+    for prefix in ["/abs/", "/html/", "/pdf/"] {
+      if let Some(pos) = url.find(prefix) {
+        let id = &url[pos + prefix.len()..];
+        let id = id.split('?').next().unwrap_or(id);
+        let id = id.split('#').next().unwrap_or(id);
+        let id = id.split('/').next().unwrap_or(id);
+        found = Some(id);
+        break;
       }
     }
-  }
-  None
+    found
+  };
+  candidate.filter(|id| !id.is_empty() && crate::models::is_arxiv_id(id))
 }

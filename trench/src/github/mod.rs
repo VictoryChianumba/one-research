@@ -37,8 +37,19 @@ pub fn fetch_tree_dir(
   path: &str,
   token: &str,
 ) -> Result<Vec<TreeNode>, String> {
-  let path_seg =
-    if path.is_empty() { String::new() } else { format!("/{}", path) };
+  // Apply the same path encoding as fetch_file. Without this, a hostile or
+  // compromised tree-listing response with `path = "../actions/secrets"` (or
+  // `"foo?ref=evil"`) would smuggle a crafted URL into the next request,
+  // sent with the user's `Authorization: Bearer <token>` header
+  // (audit Sec HIGH #1).
+  if !is_safe_branch(branch) {
+    return Err(format!("github: rejected unsafe branch name: {branch:?}"));
+  }
+  let path_seg = if path.is_empty() {
+    String::new()
+  } else {
+    format!("/{}", encode_url_path(path)?)
+  };
   let url = format!(
     "https://api.github.com/repos/{owner}/{repo}/contents{path_seg}?ref={branch}"
   );
@@ -74,6 +85,17 @@ pub fn fetch_tree_dir(
 /// hostile GitHub tree-listing response with `path = "..?ref=token"` or
 /// `"foo#frag"` to smuggle additional URL components into the request,
 /// where our bearer token is attached.
+/// True iff `branch` matches `[A-Za-z0-9._/-]+` and is non-empty. Branch
+/// names from GitHub responses (`default_branch`, etc.) flow into the `?ref=`
+/// query param of subsequent requests; without this gate, a tampered response
+/// with `branch = "main&token=..."` could inject parameters into our calls.
+fn is_safe_branch(branch: &str) -> bool {
+  !branch.is_empty()
+    && branch.chars().all(|c| {
+      c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '/' | '-')
+    })
+}
+
 fn encode_url_path(path: &str) -> Result<String, String> {
   if path.contains("..") {
     return Err(format!(

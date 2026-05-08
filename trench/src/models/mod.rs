@@ -3,6 +3,33 @@ pub mod item;
 pub use categories::*;
 pub use item::*;
 
+/// True iff `s` looks like a bare arXiv ID — `NNNN.NNNNN` (post-2007 form),
+/// optionally with a `vN` version suffix. Conservative: requires exactly
+/// 4 digits before the dot and at least 4 after, all ASCII. Used at every
+/// site that ingests an "arxiv id" from network input (huggingface paper
+/// pages, fulltext URL extraction, etc.) to keep us from interpolating
+/// `..`/path-segments/etc. into URL templates.
+pub fn is_arxiv_id(s: &str) -> bool {
+  // Strip a trailing `vN` (digits) before structural validation.
+  let s = if let Some(v_pos) = s.find('v') {
+    let version = &s[v_pos + 1..];
+    if !version.is_empty() && version.chars().all(|c| c.is_ascii_digit()) {
+      &s[..v_pos]
+    } else {
+      s
+    }
+  } else {
+    s
+  };
+  let Some(dot) = s.find('.') else { return false };
+  let before = &s[..dot];
+  let after = &s[dot + 1..];
+  before.len() == 4
+    && after.len() >= 4
+    && before.chars().all(|c| c.is_ascii_digit())
+    && after.chars().all(|c| c.is_ascii_digit())
+}
+
 /// Extract a bare arXiv ID from known URL patterns, or return `None`.
 ///
 /// Handles `arxiv.org/abs/`, `arxiv.org/pdf/`, and `huggingface.co/papers/`.

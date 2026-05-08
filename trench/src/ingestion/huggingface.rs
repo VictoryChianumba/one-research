@@ -260,7 +260,7 @@ fn extract_h3_papers(html: &str) -> Vec<(String, String)> {
     let paper_id = &id_raw[..id_end];
 
     // Validate: must look like an arXiv ID (digits, dot, digits, optional v+digits)
-    if !is_arxiv_id(paper_id) {
+    if !crate::models::is_arxiv_id(paper_id) {
       continue;
     }
 
@@ -274,23 +274,6 @@ fn extract_h3_papers(html: &str) -> Vec<(String, String)> {
   }
 
   results
-}
-
-fn is_arxiv_id(s: &str) -> bool {
-  // Accept NNNN.NNNNN or NNNN.NNNNNvN
-  let s = if let Some(v_pos) = s.find('v') {
-    let version = &s[v_pos + 1..];
-    if version.chars().all(|c| c.is_ascii_digit()) { &s[..v_pos] } else { s }
-  } else {
-    s
-  };
-  let Some(dot) = s.find('.') else { return false };
-  let before = &s[..dot];
-  let after = &s[dot + 1..];
-  before.len() == 4
-    && after.len() >= 4
-    && before.chars().all(|c| c.is_ascii_digit())
-    && after.chars().all(|c| c.is_ascii_digit())
 }
 
 fn strip_tags(s: &str) -> String {
@@ -333,7 +316,7 @@ fn extract_json_meta(
     };
     let paper_id = &html[id_val_start..id_val_start + id_val_end_rel];
 
-    if !is_arxiv_id(paper_id) {
+    if !crate::models::is_arxiv_id(paper_id) {
       pos = id_val_start + id_val_end_rel;
       continue;
     }
@@ -372,8 +355,10 @@ fn extract_authors(block: &str) -> Vec<String> {
   // Only look within the authors array: stop at the first non-author &quot;name&quot;
   // that follows a field clearly outside author objects (e.g. &quot;title&quot;).
   // Simple heuristic: stop after 20 authors or when we leave the first 2 KB.
-  let limit = block.len().min(2048);
-  let block = &block[..limit];
+  // Use char-aware truncation so a multi-byte char straddling byte 2048
+  // doesn't panic the parser thread (audit Sec HIGH #7).
+  let block: String = block.chars().take(2048).collect();
+  let block = block.as_str();
 
   while let Some(rel) = block[pos..].find(needle) {
     let val_start = pos + rel + needle.len();
