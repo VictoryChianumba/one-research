@@ -157,7 +157,7 @@ fn friendly_error(status: u16, body: &str) -> String {
           // Char-aware truncation guards the byte boundary; sanitize then
           // strips any terminal-escape bytes the upstream API embedded in
           // the error message before it reaches log lines or the chat
-          // surface (audit Sec HIGH #4).
+          // surface.
           let short = crate::sanitize::truncate_chars(msg, 80);
           let short = crate::sanitize::sanitize_terminal_text(&short);
           format!("API error — {short}")
