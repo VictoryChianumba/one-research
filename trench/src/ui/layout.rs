@@ -1955,7 +1955,9 @@ fn draw_history_tab(frame: &mut Frame, app: &App, area: Rect) {
 
   let end = (offset + viewport_rows + 2).min(total);
   let window = &entries[offset..end];
-  let window_data: Vec<(u16, Vec<Line>)> = window
+  // Store raw title strings (not Vec<Line>) — see draw_item_table's
+  // window_data shape for the same rationale (audit Perf HIGH H5/H4).
+  let window_data: Vec<(u16, Vec<String>)> = window
     .iter()
     .map(|entry| {
       let mut raw_lines = textwrap::wrap(&entry.title, title_wrap_w);
@@ -1968,8 +1970,8 @@ fn draw_history_tab(frame: &mut Frame, app: &App, area: Rect) {
           *last = std::borrow::Cow::Owned(format!("{trimmed}…"));
         }
       }
-      let title_lines =
-        raw_lines.into_iter().map(|l| Line::from(l.into_owned())).collect();
+      let title_lines: Vec<String> =
+        raw_lines.into_iter().map(|l| l.into_owned()).collect();
       (row_height, title_lines)
     })
     .collect();
@@ -1981,11 +1983,19 @@ fn draw_history_tab(frame: &mut Frame, app: &App, area: Rect) {
       let item_idx = offset + i;
       let is_selected = item_idx == selected;
       let (content_height, title_lines) = &window_data[i];
+      // O(1) hashmap lookup (audit Perf CRIT C1, sibling site missed
+      // by T4c which only fixed details_subject). Was a per-row
+      // O(items + discovery_items) chain+find scan against ~3K items.
       let cached_item = app
-        .items
-        .iter()
-        .chain(app.discovery_items.iter())
-        .find(|item| item.url == entry.key);
+        .url_index
+        .get(&entry.key)
+        .map(|&idx| &app.items[idx])
+        .or_else(|| {
+          app
+            .discovery_url_index
+            .get(&entry.key)
+            .map(|&idx| &app.discovery_items[idx])
+        });
       let row_style =
         if is_selected { t.style_selection() } else { Style::default() };
       let selected_text_style = t.style_selection_text();
@@ -2021,13 +2031,19 @@ fn draw_history_tab(frame: &mut Frame, app: &App, area: Rect) {
       Row::new(vec![
         feed_cell(&source, source_style, is_selected),
         feed_cell(&kind, dim_style, is_selected),
-        Cell::from(Text::from(feed_title_lines(
-          style_feed_title_lines(
-            title_lines.clone(),
-            if is_selected { selected_text_style } else { Style::default() },
-          ),
-          is_selected,
-        ))),
+        Cell::from(Text::from({
+          let title_style = if is_selected {
+            selected_text_style
+          } else {
+            Style::default()
+          };
+          let mut lines: Vec<Line<'static>> = title_lines
+            .iter()
+            .map(|s| Line::from(Span::styled(s.clone(), title_style)))
+            .collect();
+          lines.push(feed_spacer_line(is_selected));
+          lines
+        })),
         feed_cell(date, dim_style, is_selected),
         feed_cell(
           &crate::history::format_ago(entry.opened_at, now),
@@ -2641,38 +2657,12 @@ fn feed_cell(value: &str, style: Style, selected: bool) -> Cell<'static> {
   Cell::from(Text::from(lines))
 }
 
-fn feed_title_lines(
-  mut lines: Vec<Line<'static>>,
-  selected: bool,
-) -> Vec<Line<'static>> {
-  lines.push(feed_spacer_line(selected));
-  lines
-}
-
 fn feed_spacer_line(selected: bool) -> Line<'static> {
   if selected {
     Line::from(Span::styled(" ", Style::default()))
   } else {
     Line::from("")
   }
-}
-
-fn style_feed_title_lines(
-  lines: Vec<Line<'static>>,
-  style: Style,
-) -> Vec<Line<'static>> {
-  lines
-    .into_iter()
-    .map(|line| {
-      Line::from(
-        line
-          .spans
-          .into_iter()
-          .map(|span| Span::styled(span.content.into_owned(), style))
-          .collect::<Vec<_>>(),
-      )
-    })
-    .collect()
 }
 
 fn draw_filter_panel(frame: &mut Frame, app: &App, area: Rect) {
