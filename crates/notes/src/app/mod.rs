@@ -95,34 +95,23 @@ impl ActivePopup {
 }
 
 pub struct App {
-  /// All notes, sorted according to the current sorter.
   pub notes: Vec<Note>,
-  /// `note_id` of the note highlighted in the list, if any.
   pub current_note_id: Option<String>,
-  /// `note_id`s of notes that have been filtered out by the active filter.
   pub filtered_out_notes: HashSet<String>,
-  /// Active filter, if any.
   pub filter: Option<Filter>,
-  /// Whether the active pane is maximised.
   pub full_screen: bool,
-  /// The editor widget.
   pub editor: NoteEditor<'static>,
-  /// The entries-list widget.
   pub entries_list: EntriesList,
-  /// Currently displayed popup.
   pub active_popup: ActivePopup,
-  /// Which control (list or editor) has keyboard focus.
   pub active_control: ControlType,
-  /// Current UI state (list / preview / editor).
   pub notes_state: NotesState,
-  /// Scroll offset inside the preview popup.
   pub preview_scroll: usize,
   sorter: Sorter,
   history: HistoryManager,
   colored_tags: ColoredTagsManager,
-  /// A command waiting for a MsgBox confirmation before executing.
+  /// Command waiting for a MsgBox confirmation before executing.
   pending_command: Option<UICommand>,
-  /// Set by `focus_article` before `run()` so the runner can select the right note.
+  /// Set by `focus_article` before `run()` so the runner selects the right note.
   initial_focus_id: Option<String>,
   initial_focus_title: String,
   initial_focus_url: String,
@@ -1073,7 +1062,7 @@ impl App {
   ) -> anyhow::Result<()> {
     log::trace!("Updating note content for id: {id}");
 
-    // Graceful no-op on missing-id (audit Rel MED #33).
+    // Graceful no-op on missing-id.
     let Some(note) =
       self.notes.iter_mut().find(|n| n.note_id == id)
     else {
@@ -1114,8 +1103,7 @@ impl App {
     storage::delete_note(id)?;
 
     // Graceful no-op when the in-memory list lacks the id even though the
-    // disk delete succeeded — already-gone state with no harmful effect
-    // (audit Rel MED #33).
+    // disk delete succeeded — already-gone state with no harmful effect.
     let Some(removed) = self
       .notes
       .iter()

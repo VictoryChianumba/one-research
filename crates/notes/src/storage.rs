@@ -7,7 +7,7 @@ use crate::Note;
 fn notes_dir() -> PathBuf {
   // Memoize + log-once on the rare $HOME-unset fallback, so notes landing
   // in a random CWD (CI, container, init-system) is observable instead of
-  // silent (audit Sec MED #9).
+  // silent.
   static CACHE: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
   CACHE
     .get_or_init(|| match dirs::config_dir() {
@@ -96,9 +96,8 @@ fn quarantine_corrupt_note(path: &Path, err: &dyn std::fmt::Display) {
 }
 
 /// Cap on per-file load size for notes. Defends against an attacker-planted
-/// 4-GB JSON OOMing trench at startup (audit Sec MED #11). Notes are
-/// user-authored content so the legit upper bound is small; 8 MB is
-/// generous.
+/// 4-GB JSON OOMing trench at startup. Notes are user-authored, so the
+/// legit upper bound is small; 8 MB is generous.
 const MAX_NOTE_BYTES: u64 = 8 * 1024 * 1024;
 
 fn read_capped_bytes(path: &Path) -> std::io::Result<Vec<u8>> {
@@ -146,8 +145,7 @@ pub fn load_all_notes() -> anyhow::Result<Vec<Note>> {
           }
           Err(parse_err) => {
             // Quarantine the corrupt file so the user keeps a recovery
-            // copy and the next save_note doesn't overwrite it
-            // (audit Rel MED #4).
+            // copy and the next save_note doesn't overwrite it.
             quarantine_corrupt_note(&path, &parse_err);
           }
         },

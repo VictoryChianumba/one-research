@@ -231,10 +231,12 @@ impl NotePopup<'_> {
   }
 
   fn validate_title(&mut self) {
-    // Defensive: lines() should always have at least one entry per the
-    // tui-textarea invariant, but treat an unexpectedly empty TextArea as
-    // an empty title rather than panicking via indexing (audit Rel MED #14).
-    if self.title_txt.lines().first().is_none_or(|l| l.is_empty()) {
+    let empty = self
+      .title_txt
+      .lines()
+      .first()
+      .is_none_or(|line| line.is_empty());
+    if empty {
       self.title_err_msg = "Title can't be empty".into();
     } else {
       self.title_err_msg.clear();
