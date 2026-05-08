@@ -5,6 +5,7 @@
 
 mod cache;
 mod library_filter;
+mod notes;
 mod process;
 mod reader;
 mod repo;
