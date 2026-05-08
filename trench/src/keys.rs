@@ -2289,23 +2289,23 @@ fn open_new_custom_theme_editor(app: &mut App) {
 }
 
 fn next_custom_theme_id(app: &App) -> String {
-  for n in 1.. {
+  for n in 1..=1000 {
     let id = format!("custom-{n}");
     if !app.config.custom_themes.iter().any(|theme| theme.id == id) {
       return id;
     }
   }
-  unreachable!()
+  panic!("custom theme ID space exhausted — 1000 candidates checked")
 }
 
 fn next_custom_theme_name(app: &App) -> String {
-  for n in 1.. {
+  for n in 1..=1000 {
     let name = format!("Custom {n}");
     if !app.config.custom_themes.iter().any(|theme| theme.name == name) {
       return name;
     }
   }
-  unreachable!()
+  panic!("custom theme name space exhausted — 1000 candidates checked")
 }
 
 fn handle_custom_theme_editor(key: KeyEvent, app: &mut App) {
