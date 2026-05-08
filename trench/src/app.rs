@@ -578,6 +578,11 @@ pub struct App {
   /// fused + 2 queue-preview titles). Invalidated by every items/workflow
   /// mutation site via `invalidate_counts_cache`.
   counts_cache: RefCell<Option<ItemCounts>>,
+  /// Lazy memo of the sorted unique source-label set, used by the filter
+  /// panel. Previously rebuilt per render frame AND per j/k keystroke
+  /// while focused — full O(N items) BTreeSet build with String clones
+  /// (audit Perf CRIT C4). Invalidated alongside `counts_cache`.
+  filter_source_names_cache: RefCell<Option<Vec<String>>>,
 }
 
 // Filter panel cursor positions are computed dynamically in
@@ -730,6 +735,7 @@ impl App {
       help_scroll: 0,
       visible_cache: RefCell::new(None),
       counts_cache: RefCell::new(None),
+      filter_source_names_cache: RefCell::new(None),
       panes: [
         PaneInfo::new(PaneId::Feed),
         PaneInfo::new(PaneId::Reader),
@@ -1154,6 +1160,18 @@ impl App {
     *self.counts_cache.borrow_mut() = None;
   }
 
+  pub(crate) fn invalidate_filter_source_names_cache(&self) {
+    *self.filter_source_names_cache.borrow_mut() = None;
+  }
+
+  /// Aggregate invalidator for every cache that derives from `app.items`.
+  /// Call from any mutation site that changes the items vec or any item's
+  /// workflow_state / source_name / published_at fields.
+  pub(crate) fn invalidate_items_derived_caches(&self) {
+    self.invalidate_counts_cache();
+    self.invalidate_filter_source_names_cache();
+  }
+
   /// Reset the primary items vec and every parallel index/cache that mirrors
   /// it. Replaces ad-hoc `app.items.clear()` callers, which used to leave
   /// `url_index` / `arxiv_id_index` populated with stale offsets and panic on
@@ -1163,7 +1181,7 @@ impl App {
     self.url_index.clear();
     self.arxiv_id_index.clear();
     self.invalidate_visible_cache();
-    self.invalidate_counts_cache();
+    self.invalidate_items_derived_caches();
   }
 
   /// Same shape as `reset_items` but for the discovery-side mirrors. Replaces
@@ -1411,7 +1429,7 @@ impl App {
     }
     crate::store::save(&self.persisted_states);
     self.invalidate_visible_cache();
-    self.invalidate_counts_cache();
+    self.invalidate_items_derived_caches();
     count
   }
 
@@ -2081,12 +2099,12 @@ impl App {
       self.mark_dirty();
     } else if had_source_updates {
       self.invalidate_visible_cache();
-      self.invalidate_counts_cache();
+      self.invalidate_items_derived_caches();
       crate::store::cache::queue_save(self.items.clone());
       self.mark_dirty();
     } else if had_enriched_updates {
       self.invalidate_visible_cache();
-      self.invalidate_counts_cache();
+      self.invalidate_items_derived_caches();
       crate::store::cache::queue_save(self.items.clone());
       self.mark_dirty();
     }
@@ -2237,7 +2255,13 @@ impl App {
   }
 
   /// Sorted unique source label strings derived from loaded items.
+  /// Lazy memoize: the BTreeSet build + per-item String clone happens on the
+  /// first read after invalidation; every other call (per draw frame, per
+  /// j/k keystroke in the filter panel) is an O(1) clone of the cached vec.
   pub fn filter_source_names(&self) -> Vec<String> {
+    if let Some(c) = self.filter_source_names_cache.borrow().as_ref() {
+      return c.clone();
+    }
     let mut names: std::collections::BTreeSet<String> = self
       .items
       .iter()
@@ -2254,7 +2278,9 @@ impl App {
     for seed in &["arxiv", "hf"] {
       names.insert(seed.to_string());
     }
-    names.into_iter().collect()
+    let computed: Vec<String> = names.into_iter().collect();
+    *self.filter_source_names_cache.borrow_mut() = Some(computed.clone());
+    computed
   }
 
   pub fn toggle_filter_at_cursor(&mut self) {
@@ -2379,7 +2405,7 @@ impl App {
       }
       self.persisted_states.insert(url, state);
       crate::store::save(&self.persisted_states);
-      self.invalidate_counts_cache();
+      self.invalidate_items_derived_caches();
     }
   }
 }
@@ -2578,6 +2604,29 @@ mod tests {
     app.invalidate_counts_cache();
     let fresh = app.item_counts();
     assert_eq!(fresh.total, 0, "post-invalidation, recompute sees empty items");
+  }
+
+  #[test]
+  fn filter_source_names_caches_until_invalidated() {
+    let mut app = App::new();
+    app.items = mock_items();
+
+    // First call computes and caches.
+    let before = app.filter_source_names();
+    assert!(!before.is_empty());
+
+    // Mutate items directly without invalidation — cache holds stale value.
+    app.items.clear();
+    let stale = app.filter_source_names();
+    assert_eq!(stale, before, "cache survives raw mutation");
+
+    // Invalidate; next call recomputes (just the seeds, since items empty).
+    app.invalidate_filter_source_names_cache();
+    let fresh = app.filter_source_names();
+    assert!(fresh.contains(&"arxiv".to_string()));
+    assert!(fresh.contains(&"hf".to_string()));
+    // No source labels beyond the always-included seeds when items is empty.
+    assert_eq!(fresh.len(), 2);
   }
 
   #[test]

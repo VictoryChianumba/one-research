@@ -652,20 +652,17 @@ fn notes_browser_visible<'a>(
 
 fn notes_browser_selected_index(
   app: &App,
-  side: FocusedReader,
+  visible: &[&notes::Note],
 ) -> Option<usize> {
   let current_id = app.notes_app.as_ref()?.current_note_id.as_ref()?;
-  notes_browser_visible(app, side)
-    .iter()
-    .position(|note| &note.note_id == current_id)
+  visible.iter().position(|note| &note.note_id == current_id)
 }
 
 fn notes_browser_selected_note<'a>(
-  app: &'a App,
-  side: FocusedReader,
+  app: &App,
+  visible: &[&'a notes::Note],
 ) -> Option<&'a notes::Note> {
-  let visible = notes_browser_visible(app, side);
-  let idx = notes_browser_selected_index(app, side)?;
+  let idx = notes_browser_selected_index(app, visible)?;
   visible.get(idx).copied()
 }
 
@@ -715,8 +712,12 @@ fn build_notes_summary_line(
 ) -> Line<'static> {
   let mode = app.notes_mode_for_side(side);
   let context = app.notes_context_for_side(side);
-  let visible_count = notes_browser_visible(app, side).len();
-  let selected_note = notes_browser_selected_note(app, side);
+  // Compute visible once; previously notes_browser_visible ran twice here
+  // (once for count, once inside notes_browser_selected_note) — audit
+  // Perf CRIT C2.
+  let visible = notes_browser_visible(app, side);
+  let visible_count = visible.len();
+  let selected_note = notes_browser_selected_note(app, &visible);
   let summary = match mode {
     NotesMode::Library => {
       if let Some(note) = selected_note {
@@ -1088,7 +1089,7 @@ fn draw_notes_surface(
           frame,
           chunks[0],
           &visible,
-          notes_browser_selected_index(app, side),
+          notes_browser_selected_index(app, &visible),
           is_focused,
           theme,
         );
@@ -1099,7 +1100,7 @@ fn draw_notes_surface(
         draw_notes_browser_preview(
           frame,
           chunks[2],
-          notes_browser_selected_note(app, side),
+          notes_browser_selected_note(app, &visible),
           theme,
         );
       } else {
@@ -1113,7 +1114,7 @@ fn draw_notes_surface(
           frame,
           chunks[0],
           &visible,
-          notes_browser_selected_index(app, side),
+          notes_browser_selected_index(app, &visible),
           is_focused,
           theme,
         );
@@ -1125,7 +1126,7 @@ fn draw_notes_surface(
         draw_notes_browser_preview(
           frame,
           chunks[2],
-          notes_browser_selected_note(app, side),
+          notes_browser_selected_note(app, &visible),
           theme,
         );
       }
@@ -2972,15 +2973,26 @@ fn draw_details_panel(frame: &mut Frame, app: &mut App, area: Rect) {
   };
 
   // Reset scroll when the selected item changes, before borrowing item data.
+  // The filtered_history call is scoped so the borrow drops before the
+  // mutable access below; we'll re-borrow for the render path.
   {
-    let current_key = details_subject_key(app);
+    let history = app.filtered_history();
+    let current_key = details_subject_key(app, &history);
     if current_key != app.details_last_item_url {
+      // Note: actual mutation happens after the scope ends; capture state.
+      drop(history);
       app.details_scroll = 0;
       app.details_last_item_url = current_key;
     }
   }
 
-  if let Some(subject) = details_subject(app) {
+  // Re-borrow filtered_history for the render path. With the prior
+  // implementation this filter ran 3× per History-tab frame (once in
+  // draw_history_tab, once each in details_subject + details_subject_key);
+  // threading it through brings the per-render-call count from 3 to 2 —
+  // full deduplication would require a memo on App (audit Perf CRIT C3).
+  let history = app.filtered_history();
+  if let Some(subject) = details_subject(app, &history) {
     let title_style = Style::default().fg(t.text).add_modifier(Modifier::BOLD);
     let meta_style = Style::default().fg(t.text_dim);
     let label_style =
@@ -3052,17 +3064,26 @@ struct DetailStyles {
   success_style: Style,
 }
 
-fn details_subject(app: &App) -> Option<DetailsSubject<'_>> {
+fn details_subject<'a>(
+  app: &'a App,
+  history: &[&'a crate::history::HistoryEntry],
+) -> Option<DetailsSubject<'a>> {
   if app.feed_tab == FeedTab::History {
-    let entries = app.filtered_history();
-    let entry = *entries.get(app.history_selected_index)?;
+    let entry = *history.get(app.history_selected_index)?;
     return match entry.kind {
       crate::history::HistoryKind::Paper => {
+        // O(1) hashmap lookup vs the prior O(N) chain+find scan that
+        // ran per row × per frame on the History tab (audit Perf CRIT C1).
         let item = app
-          .items
-          .iter()
-          .chain(app.discovery_items.iter())
-          .find(|item| item.url == entry.key);
+          .url_index
+          .get(&entry.key)
+          .map(|&i| &app.items[i])
+          .or_else(|| {
+            app
+              .discovery_url_index
+              .get(&entry.key)
+              .map(|&i| &app.discovery_items[i])
+          });
         Some(DetailsSubject::HistoryPaper {
           entry,
           item,
@@ -3077,8 +3098,11 @@ fn details_subject(app: &App) -> Option<DetailsSubject<'_>> {
   app.selected_item().map(DetailsSubject::FeedItem)
 }
 
-fn details_subject_key(app: &App) -> Option<String> {
-  match details_subject(app)? {
+fn details_subject_key(
+  app: &App,
+  history: &[&crate::history::HistoryEntry],
+) -> Option<String> {
+  match details_subject(app, history)? {
     DetailsSubject::FeedItem(item) => Some(item.url.clone()),
     DetailsSubject::HistoryPaper { entry, .. } => Some(entry.key.clone()),
     DetailsSubject::HistoryQuery(entry) => Some(format!("query:{}", entry.key)),
