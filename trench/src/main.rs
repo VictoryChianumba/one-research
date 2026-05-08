@@ -5,7 +5,11 @@ mod discovery;
 mod export;
 mod github;
 mod history;
-mod http;
+// Re-export the workspace http crate so every existing `crate::http::client()`
+// call site continues to compile unchanged. The real impl lives at
+// `crates/http/`; chat providers + discovery + main feed-discovery now
+// share the same hardened client (timeout, redirect cap, UA).
+use trench_http as http;
 mod ingestion;
 mod keys;
 mod library;
@@ -514,11 +518,7 @@ fn discover_feed(url: &str) -> DiscoverResult {
     };
   }
 
-  let client = reqwest::blocking::Client::builder()
-    .timeout(std::time::Duration::from_secs(10))
-    .build()
-    .unwrap_or_default();
-
+  let client = crate::http::client();
   let base_url = url.trim_end_matches('/').to_string();
 
   // Step 4: Fetch page and scan <head> for RSS link element.

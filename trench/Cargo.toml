@@ -23,6 +23,7 @@ arboard = "3"
 chrono = { version = "0.4", features = ["serde"] }
 notes = { path = "../crates/notes" }
 chat = { path = "../crates/chat" }
+trench-http = { path = "../crates/http" }
 # Tread — v1 arXiv reader, embedded as a library.  Path dep so
 # updates in the tread repo flow into trench's next build
 # automatically.  Replaced cli-text-reader during the migration

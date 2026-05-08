@@ -346,6 +346,7 @@ dependencies = [
  "serde",
  "serde_json",
  "textwrap",
+ "trench-http",
  "ui-theme 0.1.19",
  "uuid",
 ]
@@ -3766,8 +3767,16 @@ dependencies = [
  "syntect",
  "textwrap",
  "tread",
+ "trench-http",
  "ui-theme 0.1.19",
  "url",
+]
+
+[[package]]
+name = "trench-http"
+version = "0.1.19"
+dependencies = [
+ "reqwest 0.12.28",
 ]
 
 [[package]]

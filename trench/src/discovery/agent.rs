@@ -9,7 +9,6 @@ use crate::discovery::intent::QueryIntent;
 use crate::discovery::{DiscoveryMessage, tools};
 
 const MAX_ITERATIONS: usize = 8;
-const API_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 const MAX_BODY_BYTES: u64 = 4 * 1024 * 1024;
 const MODEL: &str = "claude-sonnet-4-6";
 
@@ -198,10 +197,7 @@ fn run_inner(
     .map(|t| json!({ "name": t.name, "description": t.description, "input_schema": t.schema }))
     .collect();
 
-  let client = reqwest::blocking::Client::builder()
-    .timeout(API_TIMEOUT)
-    .build()
-    .map_err(|e| e.to_string())?;
+  let client = crate::http::client();
 
   let mut messages: Vec<Value> = match prior_history {
     Some(mut h) => {

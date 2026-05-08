@@ -5,7 +5,6 @@ use serde_json::{Value, json};
 use crate::provider::{ChatProvider, ProviderResponse};
 use crate::{ChatMessage, Role};
 
-const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
 const MAX_RESPONSE_BYTES: u64 = 4 * 1024 * 1024;
 const DEFAULT_MODEL: &str = "claude-sonnet-4-6";
 
@@ -33,10 +32,9 @@ impl ClaudeProvider {
     Self {
       api_key: api_key.into(),
       model: DEFAULT_MODEL.to_string(),
-      client: reqwest::blocking::Client::builder()
-        .timeout(REQUEST_TIMEOUT)
-        .build()
-        .expect("failed to build HTTP client"),
+      // Share the workspace-hardened client (redirect cap, UA, timeout).
+      // Client::clone is an Arc bump, not a connection-pool rebuild.
+      client: trench_http::client().clone(),
     }
   }
 
@@ -47,10 +45,7 @@ impl ClaudeProvider {
     Self {
       api_key: api_key.into(),
       model: model.into(),
-      client: reqwest::blocking::Client::builder()
-        .timeout(REQUEST_TIMEOUT)
-        .build()
-        .expect("failed to build HTTP client"),
+      client: trench_http::client().clone(),
     }
   }
 }

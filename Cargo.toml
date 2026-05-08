@@ -3,6 +3,7 @@ resolver = "2"
 
 members = [
   "trench",
+  "crates/http",
   "crates/notes",
   "crates/chat",
   "crates/ui-theme",
