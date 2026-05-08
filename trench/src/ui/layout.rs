@@ -2133,6 +2133,13 @@ fn draw_narrow_feed(frame: &mut Frame, app: &mut App, area: Rect) {
   // window at viewport_rows is a safe upper bound for what gets drawn.
   let visible =
     app.visible_window(offset, offset.saturating_add(viewport_rows));
+  // Pre-wrap titles once per item — `reader_feed_row_lines` previously
+  // re-ran textwrap on each call, doubling work against the same
+  // textwrap done for row-height counting (audit Perf HIGH H6).
+  let pre_wrapped: Vec<Vec<String>> = visible
+    .iter()
+    .map(|item| reader_feed_title_lines(&item.title, title_w))
+    .collect();
   let mut y = list_area.y;
   for (rel_i, item) in visible.iter().enumerate() {
     if y >= list_area.y + list_area.height {
@@ -2140,8 +2147,13 @@ fn draw_narrow_feed(frame: &mut Frame, app: &mut App, area: Rect) {
     }
     let abs_i = offset + rel_i;
     let is_selected = abs_i == selected;
-    let row_lines =
-      reader_feed_row_lines(item, list_area.width as usize, is_selected, &t);
+    let row_lines = reader_feed_row_lines_with_wrapped(
+      item,
+      &pre_wrapped[rel_i],
+      list_area.width as usize,
+      is_selected,
+      &t,
+    );
     for line in row_lines {
       if y >= list_area.y + list_area.height {
         break;
@@ -2227,8 +2239,12 @@ fn reader_feed_title_lines(title: &str, title_w: usize) -> Vec<String> {
   raw_lines.into_iter().map(|line| line.into_owned()).collect()
 }
 
-fn reader_feed_row_lines(
+/// Build the per-row Line<'static>s for a single visible item in the
+/// narrow-feed table. Takes pre-wrapped title lines so the caller can
+/// share the textwrap output with height-counting (audit Perf HIGH H6).
+fn reader_feed_row_lines_with_wrapped(
   item: &crate::models::FeedItem,
+  title_lines: &[String],
   width: usize,
   selected: bool,
   t: &crate::theme::Theme,
@@ -2244,10 +2260,9 @@ fn reader_feed_row_lines(
   let source = truncate_str(&feed_source_label(item), source_w);
   let kind = truncate_str(item.content_type.short_label(), kind_w);
   let date = truncate_str(&item.published_at, date_w);
-  let title_lines = reader_feed_title_lines(&item.title, title_w);
 
   title_lines
-    .into_iter()
+    .iter()
     .enumerate()
     .map(|(idx, title)| {
       let source_text = if idx == 0 {
