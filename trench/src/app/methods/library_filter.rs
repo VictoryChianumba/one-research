@@ -1,5 +1,5 @@
 use crate::app::{App, FilterState};
-use crate::models::{ContentType, FeedItem, SignalLevel, WorkflowState};
+use crate::models::{ContentType, SignalLevel, WorkflowState};
 
 use super::super::toggle_set;
 

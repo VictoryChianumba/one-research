@@ -1,4 +1,4 @@
-use crate::app::{App, FilterState, ItemCounts};
+use crate::app::{App, FilterState};
 use crate::models::WorkflowState;
 
 /// Cache invalidators + mutator chokepoints. Five caches with five mutator

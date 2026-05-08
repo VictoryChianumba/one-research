@@ -2,7 +2,6 @@ use crate::config::{Config, CustomThemeConfig};
 use crate::ingestion::message::FetchMessage;
 use crate::models::*;
 use chrono::Utc;
-use ratatui::layout::Rect;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;

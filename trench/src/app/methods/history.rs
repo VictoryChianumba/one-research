@@ -1,5 +1,4 @@
 use crate::app::App;
-use crate::history::HistoryEntry;
 use crate::models::FeedItem;
 
 impl App {
