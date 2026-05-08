@@ -187,7 +187,7 @@ fn is_text_entry_context(app: &App) -> bool {
   if app.feed_tab == FeedTab::Discoveries && app.discovery_search_focused {
     return true;
   }
-  if app.chat_active && app.focused_pane == PaneId::Chat {
+  if app.chat.active && app.focused_pane == PaneId::Chat {
     return true;
   }
   if app.notes_active && app.focused_pane == PaneId::Notes {
@@ -841,7 +841,7 @@ fn focus_reader_bottom_from_reader(app: &mut App) -> bool {
 }
 
 fn ensure_chat(app: &mut App) {
-  if app.chat_ui.is_some() {
+  if app.chat.ui.is_some() {
     return;
   }
 
@@ -857,7 +857,7 @@ fn ensure_chat(app: &mut App) {
   let default_provider = app.config.default_chat_provider.clone();
   let slash_commands =
     crate::commands::registry::chat_slash_specs().to_vec();
-  app.chat_ui =
+  app.chat.ui =
     Some(chat::ChatUi::new(registry, default_provider, slash_commands));
 }
 
@@ -1009,16 +1009,16 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
       }
     }
     KeyCode::Char('c') => {
-      if app.chat_active {
-        app.chat_active = false;
-        app.chat_fullscreen = false;
+      if app.chat.active {
+        app.chat.active = false;
+        app.chat.fullscreen = false;
         app.focused_pane =
           if app.reader_active { PaneId::Reader } else { PaneId::Feed };
       } else {
         ensure_chat(app);
         app.notes_active = false;
         app.secondary_notes_active = false;
-        app.chat_active = true;
+        app.chat.active = true;
         app.focused_pane = PaneId::Chat;
       }
     }
@@ -1042,8 +1042,8 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
       app.view = AppView::Settings;
     }
     KeyCode::Char('z') => {
-      if app.chat_active {
-        app.chat_at_top = !app.chat_at_top;
+      if app.chat.active {
+        app.chat.at_top = !app.chat.at_top;
       }
     }
     // A1 — floating reader popup
@@ -1184,8 +1184,8 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
     }
     KeyCode::Esc => match app.focused_pane {
       PaneId::Chat => {
-        app.chat_active = false;
-        app.chat_fullscreen = false;
+        app.chat.active = false;
+        app.chat.fullscreen = false;
         app.focused_pane =
           if app.reader_active { PaneId::Reader } else { PaneId::Feed };
       }
@@ -1419,16 +1419,16 @@ fn trigger_fulltext_new_tab(app: &mut App) {
 // ── Pane routers ─────────────────────────────────────────────────────────────
 
 fn handle_chat_pane(key: KeyEvent, app: &mut App) -> bool {
-  if !(app.chat_active && app.focused_pane == PaneId::Chat) {
+  if !(app.chat.active && app.focused_pane == PaneId::Chat) {
     return false;
   }
   log::debug!("routing to chat pane");
-  if let Some(chat_ui) = app.chat_ui.as_mut() {
+  if let Some(chat_ui) = app.chat.ui.as_mut() {
     let action = chat_ui.handle_key(key);
     match action {
       chat::ChatAction::Quit => {
-        app.chat_active = false;
-        app.chat_fullscreen = false;
+        app.chat.active = false;
+        app.chat.fullscreen = false;
         app.focused_pane =
           if app.reader_active { PaneId::Reader } else { PaneId::Feed };
       }
@@ -2110,7 +2110,7 @@ fn handle_settings_view(key: KeyEvent, app: &mut App) -> bool {
         // Keep github_token field in sync for repo viewer.
         app.github_token = app.config.github_token.clone();
         // Rebuild chat_ui with updated keys on next open.
-        app.chat_ui = None;
+        app.chat.ui = None;
         app.config.save();
         app.settings_save_time = Some(std::time::Instant::now());
       }

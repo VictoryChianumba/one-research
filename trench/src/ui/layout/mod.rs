@@ -85,7 +85,7 @@ fn draw_feed(frame: &mut Frame, app: &mut App) {
   // Only allocate a dedicated panel row when the chat conversation is open.
   // Session-list and new-session overlays float over the main layout instead.
   let chat_needs_panel =
-    app.chat_active && app.chat_ui.as_ref().map_or(true, |c| c.needs_panel());
+    app.chat.active && app.chat.ui.as_ref().map_or(true, |c| c.needs_panel());
 
   let (main_h, chat_h) = if chat_needs_panel {
     let ch = (available / 2).max(15).min(available.saturating_sub(10));
@@ -97,7 +97,7 @@ fn draw_feed(frame: &mut Frame, app: &mut App) {
 
   // Build row constraints: title | search | [chat?] | main | [chat?] | footer
   // We place chat above or below main depending on `chat_at_top`.
-  if chat_needs_panel && app.chat_at_top {
+  if chat_needs_panel && app.chat.at_top {
     let rows = Layout::default()
       .direction(Direction::Vertical)
       .constraints([
@@ -118,7 +118,7 @@ fn draw_feed(frame: &mut Frame, app: &mut App) {
     log::debug!("draw_search_row: {}ms", t.elapsed().as_millis());
 
     let chat_rect = Some(rows[2]);
-    if let Some(chat_ui) = app.chat_ui.as_mut() {
+    if let Some(chat_ui) = app.chat.ui.as_mut() {
       let t = std::time::Instant::now();
       chat_ui.draw_with_context(
         frame,
@@ -173,7 +173,7 @@ fn draw_feed(frame: &mut Frame, app: &mut App) {
 
     let chat_rect = if chat_needs_panel { Some(rows[3]) } else { None };
     if chat_needs_panel {
-      if let Some(chat_ui) = app.chat_ui.as_mut() {
+      if let Some(chat_ui) = app.chat.ui.as_mut() {
         let t = std::time::Instant::now();
         chat_ui.draw_with_context(
           frame,
@@ -200,8 +200,8 @@ fn draw_feed(frame: &mut Frame, app: &mut App) {
   }
 
   // Session-list / new-session overlay: rendered last so it floats on top.
-  if app.chat_active && !chat_needs_panel {
-    if let Some(chat_ui) = app.chat_ui.as_mut() {
+  if app.chat.active && !chat_needs_panel {
+    if let Some(chat_ui) = app.chat.ui.as_mut() {
       chat_ui.draw_overlay(frame, area, &theme);
     }
   }

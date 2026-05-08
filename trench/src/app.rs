@@ -333,6 +333,16 @@ pub struct ItemCounts {
   pub queue_preview: Vec<String>,
 }
 
+/// Chat pane state. Grouped from the previous flat fields on App
+/// (`chat_ui`, `chat_active`, `chat_fullscreen`, `chat_at_top`).
+#[derive(Default)]
+pub struct ChatState {
+  pub ui: Option<chat::ChatUi>,
+  pub active: bool,
+  pub fullscreen: bool,
+  pub at_top: bool,
+}
+
 pub struct App {
   /// True when the UI needs to be redrawn. Set by `mark_dirty()`, cleared by
   /// `check_needs_redraw()`. Defaults to `true` so the first frame always draws.
@@ -490,10 +500,7 @@ pub struct App {
   pub secondary_notes_context: Option<NotesContext>,
 
   // Embedded chat pane
-  pub chat_ui: Option<chat::ChatUi>,
-  pub chat_active: bool,
-  pub chat_fullscreen: bool,
-  pub chat_at_top: bool,
+  pub chat: ChatState,
 
   // Embedded reader (hygg-reader) — tabbed
   pub reader_tabs: Vec<ReaderTab>,
@@ -695,10 +702,7 @@ impl App {
       secondary_notes_active_tab: 0,
       secondary_notes_mode: NotesMode::Library,
       secondary_notes_context: None,
-      chat_ui: None,
-      chat_active: false,
-      chat_fullscreen: false,
-      chat_at_top: false,
+      chat: ChatState::default(),
       reader_tabs: Vec::new(),
       reader_active_tab: 0,
       reader_active: false,
@@ -1637,8 +1641,8 @@ impl App {
       QuitPopupKind::LeaveReader
     } else if self.discovery_loading || self.is_loading {
       QuitPopupKind::QuitWithProgress
-    } else if self.chat_active
-      && self.chat_ui.as_ref().map_or(false, |c| !c.input.trim().is_empty())
+    } else if self.chat.active
+      && self.chat.ui.as_ref().map_or(false, |c| !c.input.trim().is_empty())
     {
       QuitPopupKind::QuitWithChat
     } else {
@@ -1746,7 +1750,7 @@ impl App {
   }
 
   pub fn push_chat_assistant_message(&mut self, content: String) {
-    if let Some(chat_ui) = self.chat_ui.as_mut() {
+    if let Some(chat_ui) = self.chat.ui.as_mut() {
       if let Some(session) = chat_ui.active_session.as_mut() {
         session.messages.push(chat::ChatMessage {
           role: chat::Role::Assistant,
@@ -1771,7 +1775,7 @@ impl App {
   }
 
   pub fn clear_chat_messages(&mut self) {
-    if let Some(chat_ui) = self.chat_ui.as_mut() {
+    if let Some(chat_ui) = self.chat.ui.as_mut() {
       if let Some(session) = chat_ui.active_session.as_mut() {
         session.messages.clear();
         session.updated_at = Utc::now();

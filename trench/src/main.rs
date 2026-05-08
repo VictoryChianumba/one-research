@@ -864,7 +864,7 @@ fn handle_mouse(
             }
           }
           Some(PaneId::Chat) => {
-            if let Some(chat_ui) = app.chat_ui.as_mut() {
+            if let Some(chat_ui) = app.chat.ui.as_mut() {
               chat_ui.scroll_offset = chat_ui.scroll_offset.saturating_add(3);
             }
           }
@@ -911,7 +911,7 @@ fn handle_mouse(
             }
           }
           Some(PaneId::Chat) => {
-            if let Some(chat_ui) = app.chat_ui.as_mut() {
+            if let Some(chat_ui) = app.chat.ui.as_mut() {
               chat_ui.scroll_offset = chat_ui.scroll_offset.saturating_sub(3);
             }
           }
@@ -1394,7 +1394,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // word streaming reveal). When chat is streaming we want the next frame
     // to render — capture is_streaming BEFORE tick so the FINAL word still
     // triggers a redraw even though tick clears the flag on completion.
-    if let Some(chat_ui) = app.chat_ui.as_mut() {
+    if let Some(chat_ui) = app.chat.ui.as_mut() {
       let was_streaming = chat_ui.is_streaming;
       chat_ui.tick();
       if was_streaming || chat_ui.is_streaming {
