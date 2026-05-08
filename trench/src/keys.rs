@@ -28,11 +28,11 @@ pub fn dispatch(key: KeyEvent, app: &mut App) {
   }
 
   // Quit popup — intercepts all keys until dismissed.
-  if app.quit_popup_active {
+  if app.quit_popup.active {
     match key.code {
       KeyCode::Char('q') | KeyCode::Enter => {
-        app.quit_popup_active = false;
-        match app.quit_popup_kind {
+        app.quit_popup.active = false;
+        match app.quit_popup.kind {
           QuitPopupKind::LeaveReader => {
             let pane_empty = app.reader_close_active_tab();
             if pane_empty {
@@ -53,7 +53,7 @@ pub fn dispatch(key: KeyEvent, app: &mut App) {
         }
       }
       KeyCode::Esc => {
-        app.quit_popup_active = false;
+        app.quit_popup.active = false;
       }
       _ => {}
     }

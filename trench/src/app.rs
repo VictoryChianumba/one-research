@@ -351,6 +351,13 @@ pub struct HelpState {
   pub scroll: u16,
 }
 
+/// Quit confirmation popup state. Grouped from `quit_popup_active`, `quit_popup_kind`.
+#[derive(Default)]
+pub struct QuitPopupState {
+  pub active: bool,
+  pub kind: QuitPopupKind,
+}
+
 pub struct App {
   /// True when the UI needs to be redrawn. Set by `mark_dirty()`, cleared by
   /// `check_needs_redraw()`. Defaults to `true` so the first frame always draws.
@@ -369,8 +376,7 @@ pub struct App {
   pub discovery_arxiv_id_index: HashMap<String, usize>,
 
   pub should_quit: bool,
-  pub quit_popup_active: bool,
-  pub quit_popup_kind: QuitPopupKind,
+  pub quit_popup: QuitPopupState,
 
   pub items: Vec<FeedItem>,
   pub selected_index: usize,
@@ -620,8 +626,7 @@ impl App {
       discovery_url_index: HashMap::new(),
       discovery_arxiv_id_index: HashMap::new(),
       should_quit: false,
-      quit_popup_active: false,
-      quit_popup_kind: QuitPopupKind::default(),
+      quit_popup: QuitPopupState::default(),
       items: Vec::new(),
       selected_index: 0,
       list_offset: 0,
@@ -1652,8 +1657,8 @@ impl App {
     } else {
       QuitPopupKind::QuitApp
     };
-    self.quit_popup_active = true;
-    self.quit_popup_kind = kind;
+    self.quit_popup.active = true;
+    self.quit_popup.kind = kind;
   }
 
   pub fn record_paper_open(&mut self, item: &FeedItem) {

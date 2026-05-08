@@ -61,7 +61,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     draw_tag_picker(frame, app);
   }
   // Quit popup sits above everything — must be last.
-  if app.quit_popup_active {
+  if app.quit_popup.active {
     draw_quit_popup(frame, app);
   }
   let total_ms = t_total.elapsed().as_millis();

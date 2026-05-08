@@ -12,7 +12,7 @@ pub fn draw_quit_popup(frame: &mut Frame, app: &App) {
   let t = app.theme();
   let area = frame.area();
 
-  let (title, body, action) = match app.quit_popup_kind {
+  let (title, body, action) = match app.quit_popup.kind {
     QuitPopupKind::QuitApp => (
       " quit trench? ",
       &["Feed, progress and sessions are", "saved automatically."][..],
