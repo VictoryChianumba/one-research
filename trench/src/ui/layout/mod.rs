@@ -57,7 +57,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
   if app.theme_picker_active {
     draw_theme_picker(frame, app);
   }
-  if app.tag_picker_active {
+  if app.tag_picker.active {
     draw_tag_picker(frame, app);
   }
   // Quit popup sits above everything — must be last.

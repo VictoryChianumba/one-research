@@ -13,7 +13,7 @@ pub fn draw_tag_picker(frame: &mut Frame, app: &App) {
   let area = frame.area();
 
   let all = crate::tags::all_tags(&app.item_tags);
-  let target_count = app.tag_picker_target_urls.len();
+  let target_count = app.tag_picker.target_urls.len();
   let target_label = if target_count == 1 {
     "1 item".to_string()
   } else {
@@ -24,7 +24,7 @@ pub fn draw_tag_picker(frame: &mut Frame, app: &App) {
   let common_on_all: std::collections::HashSet<String> = all
     .iter()
     .filter(|tag| {
-      app.tag_picker_target_urls.iter().all(|url| {
+      app.tag_picker.target_urls.iter().all(|url| {
         crate::tags::for_url(&app.item_tags, url).iter().any(|t| t == *tag)
       })
     })
@@ -54,7 +54,7 @@ pub fn draw_tag_picker(frame: &mut Frame, app: &App) {
   lines.push(Line::from(vec![
     Span::styled("+ ", Style::default().fg(t.accent)),
     Span::styled(
-      format!("{}█", app.tag_picker_input),
+      format!("{}█", app.tag_picker.input),
       Style::default().fg(t.text),
     ),
   ]));
@@ -67,7 +67,7 @@ pub fn draw_tag_picker(frame: &mut Frame, app: &App) {
     )));
   } else {
     for (i, tag) in all.iter().enumerate() {
-      let is_selected = i == app.tag_picker_selected;
+      let is_selected = i == app.tag_picker.selected;
       let active = common_on_all.contains(tag);
       let count = crate::tags::count_for(&app.item_tags, tag);
       let arrow = if is_selected {

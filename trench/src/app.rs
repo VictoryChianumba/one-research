@@ -358,6 +358,15 @@ pub struct QuitPopupState {
   pub kind: QuitPopupKind,
 }
 
+/// Tag picker popup state. Grouped from `tag_picker_*`.
+#[derive(Default)]
+pub struct TagPickerState {
+  pub active: bool,
+  pub input: String,
+  pub selected: usize,
+  pub target_urls: Vec<String>,
+}
+
 pub struct App {
   /// True when the UI needs to be redrawn. Set by `mark_dirty()`, cleared by
   /// `check_needs_redraw()`. Defaults to `true` so the first frame always draws.
@@ -426,10 +435,7 @@ pub struct App {
   /// Tag store: URL → list of tag names. Persisted to ~/.config/trench/tags.json.
   pub item_tags: crate::tags::ItemTags,
   /// Tag picker popup state.
-  pub tag_picker_active: bool,
-  pub tag_picker_input: String,
-  pub tag_picker_selected: usize,
-  pub tag_picker_target_urls: Vec<String>,
+  pub tag_picker: TagPickerState,
   pub search_query: String,
   /// Lowercased mirror of `search_query`. Populated by the search-mutator
   /// helpers (`push_search_char`, `pop_search_char`, `clear_search_query`).
@@ -657,10 +663,7 @@ impl App {
       library_visual_anchor: 0,
       library_selected_urls: HashSet::new(),
       item_tags: crate::store::tags::load(),
-      tag_picker_active: false,
-      tag_picker_input: String::new(),
-      tag_picker_selected: 0,
-      tag_picker_target_urls: Vec::new(),
+      tag_picker: TagPickerState::default(),
       search_query: String::new(),
       search_query_lower: String::new(),
       search_active: false,
@@ -1610,17 +1613,17 @@ impl App {
     if target_urls.is_empty() {
       return;
     }
-    self.tag_picker_target_urls = target_urls;
-    self.tag_picker_input.clear();
-    self.tag_picker_selected = 0;
-    self.tag_picker_active = true;
+    self.tag_picker.target_urls = target_urls;
+    self.tag_picker.input.clear();
+    self.tag_picker.selected = 0;
+    self.tag_picker.active = true;
   }
 
   pub fn close_tag_picker(&mut self) {
-    self.tag_picker_active = false;
-    self.tag_picker_input.clear();
-    self.tag_picker_selected = 0;
-    self.tag_picker_target_urls.clear();
+    self.tag_picker.active = false;
+    self.tag_picker.input.clear();
+    self.tag_picker.selected = 0;
+    self.tag_picker.target_urls.clear();
   }
 
   /// Toggle a tag on every target URL. If any target lacks the tag, add it to all;
@@ -1630,7 +1633,7 @@ impl App {
     if tag.is_empty() {
       return;
     }
-    let urls = self.tag_picker_target_urls.clone();
+    let urls = self.tag_picker.target_urls.clone();
     let any_missing = urls.iter().any(|url| {
       !crate::tags::for_url(&self.item_tags, url).iter().any(|t| t == &tag)
     });
