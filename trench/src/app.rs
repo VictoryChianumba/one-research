@@ -195,6 +195,10 @@ pub struct ReaderTab {
   pub notes_context: Option<NotesContext>,
   pub reader: tread::Reader,
   pub image_state: tread::ImageState,
+  /// Last (width, height) we passed to `reader.resize`. Used to skip
+  /// no-op resize calls every frame in the steady state — `tread::Reader`
+  /// doesn't guarantee its own short-circuit (audit Perf MED #2).
+  pub last_resize: Option<(u16, u16)>,
 }
 
 /// One note document open in the notes pane.
@@ -3304,6 +3308,7 @@ impl App {
       notes_context,
       reader,
       image_state: tread::ImageState::default(),
+      last_resize: None,
     });
     self.reader_active_tab = self.reader_tabs.len() - 1;
     self.reader_active = true;
@@ -3322,6 +3327,7 @@ impl App {
       notes_context,
       reader,
       image_state: tread::ImageState::default(),
+      last_resize: None,
     });
     self.reader_secondary_active_tab = self.reader_secondary_tabs.len() - 1;
   }
@@ -3342,6 +3348,7 @@ impl App {
         notes_context,
         reader,
         image_state: tread::ImageState::default(),
+        last_resize: None,
       };
       self.reader_active = true;
     }
@@ -3364,6 +3371,7 @@ impl App {
           notes_context,
           reader,
           image_state: tread::ImageState::default(),
+          last_resize: None,
         };
     }
   }
