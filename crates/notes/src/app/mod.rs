@@ -1023,11 +1023,19 @@ impl App {
   ) -> anyhow::Result<()> {
     log::trace!("Updating note attributes for id: {id}");
 
-    let note = self
-      .notes
-      .iter_mut()
-      .find(|n| n.note_id == id)
-      .expect("note must exist when updating attributes");
+    // Graceful no-op if the note has gone away between UI dispatch and now
+    // (stale ID, race with delete, future refactor breaks the invariant).
+    // Was an `.expect("note must exist...")` panic over a raw-mode terminal
+    // — bounded by the panic hook but a real risk surface. (Audit Rel
+    // MED #33.)
+    let Some(note) =
+      self.notes.iter_mut().find(|n| n.note_id == id)
+    else {
+      log::warn!(
+        "notes::update_note_attributes: id {id:?} missing — ignoring update"
+      );
+      return Ok(());
+    };
 
     self.history.register_change_attributes(history_target, note);
 
@@ -1065,11 +1073,15 @@ impl App {
   ) -> anyhow::Result<()> {
     log::trace!("Updating note content for id: {id}");
 
-    let note = self
-      .notes
-      .iter_mut()
-      .find(|n| n.note_id == id)
-      .expect("note must exist when updating content");
+    // Graceful no-op on missing-id (audit Rel MED #33).
+    let Some(note) =
+      self.notes.iter_mut().find(|n| n.note_id == id)
+    else {
+      log::warn!(
+        "notes::update_note_content: id {id:?} missing — ignoring update"
+      );
+      return Ok(());
+    };
 
     self.history.register_change_content(history_target, note);
 
@@ -1101,12 +1113,21 @@ impl App {
 
     storage::delete_note(id)?;
 
-    let removed = self
+    // Graceful no-op when the in-memory list lacks the id even though the
+    // disk delete succeeded — already-gone state with no harmful effect
+    // (audit Rel MED #33).
+    let Some(removed) = self
       .notes
       .iter()
       .position(|n| n.note_id == id)
       .map(|pos| self.notes.remove(pos))
-      .expect("note must be in the list when deleting");
+    else {
+      log::warn!(
+        "notes::delete_note_intern: id {id:?} not in list (already gone?) — \
+         on-disk delete already succeeded, skipping history register"
+      );
+      return Ok(());
+    };
 
     self.history.register_remove(history_target, removed);
 
