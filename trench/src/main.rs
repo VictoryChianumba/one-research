@@ -1113,7 +1113,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   let log_file = dirs::home_dir().and_then(|home| {
     let path = home.join(".config/trench/trench.log");
     std::fs::create_dir_all(path.parent()?).ok()?;
-    // Truncate on each startup — prevents unbounded growth from filling disk.
+    // Rotate on startup: move existing trench.log → trench.log.1 so the
+    // prior session's diagnostics survive a crash investigation. Was
+    // `truncate(true)` which wiped the log before the user could read it
+    // (audit Rel MED #15). Bounded growth: at most 2 files at a time.
+    let rotated = path.with_extension("log.1");
+    let _ = std::fs::rename(&path, &rotated);
     let mut opts = std::fs::OpenOptions::new();
     opts.create(true).write(true).truncate(true);
     // Owner-read/write only on Unix. Default umask leaves trench.log
