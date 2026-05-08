@@ -40,8 +40,7 @@ pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
   // Defense-in-depth against pre-planted symlinks at the tmp path: if
   // the cleanup above failed (perm denied, etc.) and a symlink remains,
   // refuse to follow it. Bounded TOCTOU between this check and the
-  // create — closes the easy attack while leaving the corner case open
-  // (audit Rel MED #10).
+  // create — closes the easy attack while leaving the corner case open.
   if let Ok(meta) = fs::symlink_metadata(&tmp_path) {
     if meta.file_type().is_symlink() {
       return Err(std::io::Error::new(
@@ -71,10 +70,9 @@ pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 /// On parse failure, rename `<path>` to a unique `<path>.broken-<...>`
 /// sidecar so the next save doesn't clobber the user's only recovery
 /// copy. Suffix combines unix nanoseconds + pid + a per-process atomic
-/// counter — two failures within one nanosecond on the same process
-/// cannot collide (audit Rel HIGH H2). On rename failure (perm denied,
-/// fs full, cross-device symlink) the corrupted file remains at `path`
-/// and a loud second log line is emitted so the user knows the next
+/// counter so two failures within one nanosecond on the same process
+/// cannot collide. On rename failure the corrupted file remains at
+/// `path` and a loud log line is emitted so the user knows the next
 /// save will overwrite the recovery copy. Pairs with `atomic_write` to
 /// close the data-loss class.
 pub(crate) fn quarantine_corrupted(
