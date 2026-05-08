@@ -155,7 +155,9 @@ pub enum DiscoverResult {
 }
 
 /// State machine for the "Add source" input in the sources popup.
+#[derive(Default)]
 pub enum SourcesDetectState {
+  #[default]
   Idle,
   Detecting,
   Result(DiscoverResult),
@@ -367,6 +369,16 @@ pub struct TagPickerState {
   pub target_urls: Vec<String>,
 }
 
+/// Sources popup state. Grouped from `sources_*`.
+#[derive(Default)]
+pub struct SourcesPopupState {
+  pub cursor: usize,
+  pub input: String,
+  pub input_active: bool,
+  pub detect_state: SourcesDetectState,
+  pub detect_rx: Option<std::sync::mpsc::Receiver<DiscoverResult>>,
+}
+
 pub struct App {
   /// True when the UI needs to be redrawn. Set by `mark_dirty()`, cleared by
   /// `check_needs_redraw()`. Defaults to `true` so the first frame always draws.
@@ -500,11 +512,7 @@ pub struct App {
   pub custom_theme_editor: Option<CustomThemeEditorState>,
 
   // Sources popup
-  pub sources_cursor: usize,
-  pub sources_input: String,
-  pub sources_input_active: bool,
-  pub sources_detect_state: SourcesDetectState,
-  pub sources_detect_rx: Option<std::sync::mpsc::Receiver<DiscoverResult>>,
+  pub sources_popup: SourcesPopupState,
 
   // Embedded notes pane
   pub notes_app: Option<notes::app::App>,
@@ -700,11 +708,7 @@ impl App {
       theme_picker_scroll: 0,
       theme_picker_original: None,
       custom_theme_editor: None,
-      sources_cursor: 0,
-      sources_input: String::new(),
-      sources_input_active: false,
-      sources_detect_state: SourcesDetectState::Idle,
-      sources_detect_rx: None,
+      sources_popup: SourcesPopupState::default(),
       notes_app: None,
       notes_active: false,
       notes_tabs: Vec::new(),
@@ -2614,21 +2618,21 @@ impl App {
   /// Poll the discovery background thread and update detect state.
   pub fn poll_detect_result(&mut self) {
     use std::sync::mpsc::TryRecvError;
-    let result = if let Some(rx) = &self.sources_detect_rx {
+    let result = if let Some(rx) = &self.sources_popup.detect_rx {
       Some(rx.try_recv())
     } else {
       None
     };
     match result {
       Some(Ok(r)) => {
-        self.sources_detect_state = SourcesDetectState::Result(r);
-        self.sources_detect_rx = None;
+        self.sources_popup.detect_state = SourcesDetectState::Result(r);
+        self.sources_popup.detect_rx = None;
       }
       Some(Err(TryRecvError::Disconnected)) => {
-        self.sources_detect_state = SourcesDetectState::Result(
+        self.sources_popup.detect_state = SourcesDetectState::Result(
           DiscoverResult::Failed("Detection thread disconnected".to_string()),
         );
-        self.sources_detect_rx = None;
+        self.sources_popup.detect_rx = None;
       }
       _ => {}
     }

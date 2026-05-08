@@ -59,7 +59,7 @@ pub fn draw_sources_popup(frame: &mut Frame, app: &App) {
   let cats_count = cats.len();
   let sources_count = crate::config::PREDEFINED_SOURCES.len();
   let custom_feeds = &app.config.sources.custom_feeds;
-  let cursor = app.sources_cursor;
+  let cursor = app.sources_popup.cursor;
 
   let dim_style = Style::default().fg(t.text_dim);
   let text_style = Style::default().fg(t.text);
@@ -120,14 +120,14 @@ pub fn draw_sources_popup(frame: &mut Frame, app: &App) {
   lines.push(Line::from(""));
   lines.push(Line::from(Span::styled("  Add source", header_style)));
 
-  let input_active = app.sources_input_active;
+  let input_active = app.sources_popup.input_active;
   let input_focused = cursor == 0;
-  let input_display = if app.sources_input.is_empty() && !input_active {
+  let input_display = if app.sources_popup.input.is_empty() && !input_active {
     "paste a URL...".to_string()
   } else if input_active {
-    format!("{}_", app.sources_input)
+    format!("{}_", app.sources_popup.input)
   } else {
-    app.sources_input.clone()
+    app.sources_popup.input.clone()
   };
   lines.push(Line::from(vec![
     Span::styled(
@@ -146,9 +146,9 @@ pub fn draw_sources_popup(frame: &mut Frame, app: &App) {
     ),
   ]));
 
-  let detect_line = match &app.sources_detect_state {
+  let detect_line = match &app.sources_popup.detect_state {
     SourcesDetectState::Idle => {
-      if input_focused && !app.sources_input.is_empty() && !input_active {
+      if input_focused && !app.sources_popup.input.is_empty() && !input_active {
         Line::from(Span::styled("  Press Enter to detect feed type", dim_style))
       } else {
         Line::from("")

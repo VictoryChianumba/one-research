@@ -181,7 +181,7 @@ fn reader_pane_focused(app: &App) -> bool {
 }
 
 fn is_text_entry_context(app: &App) -> bool {
-  if app.search_active || app.sources_input_active || app.settings_editing {
+  if app.search_active || app.sources_popup.input_active || app.settings_editing {
     return true;
   }
   if app.feed_tab == FeedTab::Discoveries && app.discovery_search_focused {
@@ -1035,10 +1035,10 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
         app.config.default_chat_provider.clone();
       app.settings_field = 0;
       app.settings_editing = false;
-      app.sources_cursor = 0;
-      app.sources_input.clear();
-      app.sources_input_active = false;
-      app.sources_detect_state = SourcesDetectState::Idle;
+      app.sources_popup.cursor = 0;
+      app.sources_popup.input.clear();
+      app.sources_popup.input_active = false;
+      app.sources_popup.detect_state = SourcesDetectState::Idle;
       app.view = AppView::Settings;
     }
     KeyCode::Char('z') => {
@@ -1871,21 +1871,21 @@ fn handle_sources_popup(key: KeyEvent, app: &mut App) -> bool {
   if app.view != AppView::Sources {
     return false;
   }
-  if app.sources_input_active {
+  if app.sources_popup.input_active {
     match key.code {
       KeyCode::Esc => {
-        app.sources_input_active = false;
-        app.sources_detect_state = SourcesDetectState::Idle;
-        app.sources_input.clear();
+        app.sources_popup.input_active = false;
+        app.sources_popup.detect_state = SourcesDetectState::Idle;
+        app.sources_popup.input.clear();
       }
       KeyCode::Enter => {
-        match &app.sources_detect_state {
+        match &app.sources_popup.detect_state {
           SourcesDetectState::Idle => {
-            if !app.sources_input.is_empty() {
-              app.sources_detect_state = SourcesDetectState::Detecting;
-              let url = app.sources_input.clone();
+            if !app.sources_popup.input.is_empty() {
+              app.sources_popup.detect_state = SourcesDetectState::Detecting;
+              let url = app.sources_popup.input.clone();
               let (dtx, drx) = mpsc::channel();
-              app.sources_detect_rx = Some(drx);
+              app.sources_popup.detect_rx = Some(drx);
               spawn_discovery(url, dtx);
             }
           }
@@ -1925,19 +1925,19 @@ fn handle_sources_popup(key: KeyEvent, app: &mut App) -> bool {
               DiscoverResult::HuggingFaceAlreadyEnabled
               | DiscoverResult::Failed(_) => {}
             }
-            app.sources_input.clear();
-            app.sources_detect_state = SourcesDetectState::Idle;
-            app.sources_input_active = false;
+            app.sources_popup.input.clear();
+            app.sources_popup.detect_state = SourcesDetectState::Idle;
+            app.sources_popup.input_active = false;
           }
         }
       }
       KeyCode::Backspace => {
-        app.sources_input.pop();
-        app.sources_detect_state = SourcesDetectState::Idle;
+        app.sources_popup.input.pop();
+        app.sources_popup.detect_state = SourcesDetectState::Idle;
       }
       KeyCode::Char(c) => {
-        app.sources_input.push(c);
-        app.sources_detect_state = SourcesDetectState::Idle;
+        app.sources_popup.input.push(c);
+        app.sources_popup.detect_state = SourcesDetectState::Idle;
       }
       _ => {}
     }
@@ -1951,26 +1951,26 @@ fn handle_sources_popup(key: KeyEvent, app: &mut App) -> bool {
     match key.code {
       KeyCode::Esc | KeyCode::Char('q') => {
         app.view = AppView::Settings;
-        app.sources_cursor = 0;
-        app.sources_input.clear();
-        app.sources_detect_state = SourcesDetectState::Idle;
+        app.sources_popup.cursor = 0;
+        app.sources_popup.input.clear();
+        app.sources_popup.detect_state = SourcesDetectState::Idle;
       }
       KeyCode::Char('j') | KeyCode::Down => {
-        app.sources_cursor =
-          (app.sources_cursor + 1).min(total.saturating_sub(1));
+        app.sources_popup.cursor =
+          (app.sources_popup.cursor + 1).min(total.saturating_sub(1));
       }
       KeyCode::Char('k') | KeyCode::Up => {
-        app.sources_cursor = app.sources_cursor.saturating_sub(1);
+        app.sources_popup.cursor = app.sources_popup.cursor.saturating_sub(1);
       }
       KeyCode::Enter | KeyCode::Char('/') => {
-        if app.sources_cursor == 0 {
-          app.sources_input_active = true;
+        if app.sources_popup.cursor == 0 {
+          app.sources_popup.input_active = true;
         }
       }
       KeyCode::Char(' ') => {
-        let c = app.sources_cursor;
+        let c = app.sources_popup.cursor;
         if c == 0 {
-          app.sources_input_active = true;
+          app.sources_popup.input_active = true;
         } else if c <= cats_count {
           let code = cats[c - 1].0.clone();
           if app.config.sources.arxiv_categories.contains(&code) {
@@ -2003,13 +2003,13 @@ fn handle_sources_popup(key: KeyEvent, app: &mut App) -> bool {
         // custom feeds: no toggle (present = enabled, use d to delete)
       }
       KeyCode::Char('d') => {
-        let c = app.sources_cursor;
+        let c = app.sources_popup.cursor;
         let custom_start = 1 + cats_count + sources_count;
         if c >= custom_start && c < custom_start + custom_count {
           let idx = c - custom_start;
           app.config.sources.custom_feeds.remove(idx);
           app.config.save();
-          app.sources_cursor = app.sources_cursor.saturating_sub(1);
+          app.sources_popup.cursor = app.sources_popup.cursor.saturating_sub(1);
         }
       }
       _ => {}
@@ -2115,10 +2115,10 @@ fn handle_settings_view(key: KeyEvent, app: &mut App) -> bool {
         app.settings_save_time = Some(std::time::Instant::now());
       }
       KeyCode::Char('p') => {
-        app.sources_cursor = 0;
-        app.sources_input.clear();
-        app.sources_input_active = false;
-        app.sources_detect_state = SourcesDetectState::Idle;
+        app.sources_popup.cursor = 0;
+        app.sources_popup.input.clear();
+        app.sources_popup.input_active = false;
+        app.sources_popup.detect_state = SourcesDetectState::Idle;
         app.view = AppView::Sources;
         log::debug!(
           "sources_popup: opened — current arxiv categories: [{}]",
