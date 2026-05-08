@@ -1376,10 +1376,13 @@ impl App {
 
   /// Clear the search bar. Pairs with `push_search_char` / `pop_search_char`
   /// so the lowercased mirror never drifts out of sync with `search_query`.
-  /// Callers are still responsible for invalidating the visible-items cache.
+  /// Also invalidates the visible-items cache so stale filtered results
+  /// can't survive across the clear (audit Rel MED #6 — was a documented
+  /// "callers are responsible" footgun).
   pub fn clear_search_query(&mut self) {
     self.search_query.clear();
     self.search_query_lower.clear();
+    self.invalidate_visible_cache();
   }
 
   pub fn selected_item(&self) -> Option<&FeedItem> {
