@@ -591,6 +591,11 @@ pub struct App {
   /// while focused — full O(N items) BTreeSet build with String clones
   /// (audit Perf CRIT C4). Invalidated alongside `counts_cache`.
   filter_source_names_cache: RefCell<Option<Vec<String>>>,
+  /// Lazy memo of the rendered `filter_summary` string. Previously rebuilt
+  /// per-frame via 4 `summarize_ordered_set` passes + a sort + a final
+  /// format! (audit Perf MED #8). Invalidated only by `active_filters`
+  /// mutation — does NOT depend on items / search query.
+  pub filter_summary_cache: RefCell<Option<String>>,
 }
 
 // Filter panel cursor positions are computed dynamically in
@@ -745,6 +750,7 @@ impl App {
       visible_cache: RefCell::new(None),
       counts_cache: RefCell::new(None),
       filter_source_names_cache: RefCell::new(None),
+      filter_summary_cache: RefCell::new(None),
       panes: [
         PaneInfo::new(PaneId::Feed),
         PaneInfo::new(PaneId::Reader),
@@ -1171,6 +1177,10 @@ impl App {
 
   pub(crate) fn invalidate_filter_source_names_cache(&self) {
     *self.filter_source_names_cache.borrow_mut() = None;
+  }
+
+  pub(crate) fn invalidate_filter_summary_cache(&self) {
+    *self.filter_summary_cache.borrow_mut() = None;
   }
 
   /// Aggregate invalidator for every cache that derives from `app.items`.
@@ -2476,11 +2486,13 @@ impl App {
     } else {
       self.active_filters = FilterState::new();
     }
+    self.invalidate_filter_summary_cache();
     self.reset_active_feed_position();
   }
 
   pub fn clear_filters(&mut self) {
     self.active_filters = FilterState::new();
+    self.invalidate_filter_summary_cache();
     self.reset_active_feed_position();
   }
 

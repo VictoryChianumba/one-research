@@ -387,7 +387,21 @@ fn draw_search_row(frame: &mut Frame, app: &App, area: Rect) {
   );
 }
 
-fn filter_summary(app: &App) -> String {
+fn filter_summary(app: &App) -> std::cell::Ref<'_, str> {
+  // Lazy memoize: the 4 summarize_ordered_set passes + sort + format!
+  // ran every frame regardless of whether active_filters changed
+  // (audit Perf MED #8). Invalidation hooks fire from
+  // `toggle_filter_at_cursor` and `clear_filters` in app.rs.
+  if app.filter_summary_cache.borrow().is_none() {
+    let summary = compute_filter_summary(app);
+    *app.filter_summary_cache.borrow_mut() = Some(summary);
+  }
+  std::cell::Ref::map(app.filter_summary_cache.borrow(), |opt| {
+    opt.as_deref().expect("filter_summary_cache populated above")
+  })
+}
+
+fn compute_filter_summary(app: &App) -> String {
   let f = &app.active_filters;
   let source_summary = if f.active_count() == 0 {
     "any".to_string()
