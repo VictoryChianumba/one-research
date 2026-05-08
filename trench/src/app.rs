@@ -2514,6 +2514,12 @@ impl App {
       }
       self.persisted_states.insert(url, state);
       crate::store::save(&self.persisted_states);
+      // Unconditional invalidate even when the mutation lands on
+      // discovery_items: counts_cache reads only from app.items today,
+      // so the call is technically redundant on the Discoveries tab.
+      // Keeping it unconditional preserves invariant safety — if anyone
+      // later folds discovery_items into counts, the invalidation
+      // discipline doesn't silently drift (audit Rel MED #7).
       self.invalidate_items_derived_caches();
     }
   }

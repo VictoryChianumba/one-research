@@ -622,6 +622,37 @@ fn domain_name(url: &str) -> String {
 
 // ── Refresh helper ────────────────────────────────────────────────────────
 
+/// Built-in source names that produce loading_sources entries on every
+/// fetch cycle. Covers what the user sees in the loading spinner. Kept in
+/// lockstep with the dispatch logic in `spawn_fetch` (arxiv/hf/openreview/core
+/// have specialized fetch paths; the rest go through spawn_fetch's rss_feeds
+/// loop). Adding a new built-in source here without wiring spawn_fetch (or
+/// vice versa) leaves the spinner showing phantom or missing sources
+/// (audit Rel MED #12).
+const BUILTIN_LOADING_SOURCES: &[&str] = &[
+  "arxiv",
+  "huggingface",
+  "openreview",
+  "core",
+  "openai",
+  "deepmind",
+  "import_ai",
+  "bair",
+  "mit_news_ai",
+  "enriching",
+];
+
+/// Build the loading_sources list shown in the spinner. Single source of
+/// truth shared by `do_refresh` and the startup fetch in `main`.
+fn build_loading_sources(custom_feeds: &[config::CustomFeed]) -> Vec<String> {
+  let mut out: Vec<String> =
+    BUILTIN_LOADING_SOURCES.iter().map(|s| s.to_string()).collect();
+  for feed in custom_feeds {
+    out.push(feed.name.clone());
+  }
+  out
+}
+
 /// Spawn a fresh fetch cycle and attach the receiver to `app`.
 pub(crate) fn do_refresh(app: &mut App) {
   if app.is_loading || app.is_refreshing {
@@ -629,22 +660,7 @@ pub(crate) fn do_refresh(app: &mut App) {
   }
   let (tx, rx) = mpsc::channel::<FetchMessage>();
   app.fetch_rx = Some(rx);
-  let mut sources = vec![
-    "arxiv".to_string(),
-    "huggingface".to_string(),
-    "openreview".to_string(),
-    "core".to_string(),
-    "openai".to_string(),
-    "deepmind".to_string(),
-    "import_ai".to_string(),
-    "bair".to_string(),
-    "mit_news_ai".to_string(),
-    "enriching".to_string(),
-  ];
-  for feed in &app.config.sources.custom_feeds {
-    sources.push(feed.name.clone());
-  }
-  app.loading_sources = sources;
+  app.loading_sources = build_loading_sources(&app.config.sources.custom_feeds);
   app.is_loading = true;
   app.is_refreshing = true;
   spawn_fetch(tx, app.config.clone());
@@ -1281,22 +1297,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   {
     let (tx, rx) = mpsc::channel::<FetchMessage>();
     app.fetch_rx = Some(rx);
-    let mut loading_sources = vec![
-      "arxiv".to_string(),
-      "huggingface".to_string(),
-      "openreview".to_string(),
-      "core".to_string(),
-      "openai".to_string(),
-      "deepmind".to_string(),
-      "import_ai".to_string(),
-      "bair".to_string(),
-      "mit_news_ai".to_string(),
-      "enriching".to_string(),
-    ];
-    for feed in &app.config.sources.custom_feeds {
-      loading_sources.push(feed.name.clone());
-    }
-    app.loading_sources = loading_sources;
+    app.loading_sources =
+      build_loading_sources(&app.config.sources.custom_feeds);
     app.is_loading = true;
     spawn_fetch(tx, app.config.clone());
   }
