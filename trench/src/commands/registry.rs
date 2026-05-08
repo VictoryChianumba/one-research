@@ -193,35 +193,50 @@ pub const COMMAND_SPECS: &[CommandSpec] = &[
   },
 ];
 
-pub fn discovery_slash_specs() -> Vec<ChatSlashCommandSpec> {
-  COMMAND_SPECS
-    .iter()
-    .filter(|spec| spec.show_in_discovery)
-    .map(|spec| ChatSlashCommandSpec {
-      command: spec.command.to_string(),
-      completion: spec.completion.to_string(),
-      description: spec.description.to_string(),
-      badge: match spec.kind {
-        CommandKind::Stub => "soon".to_string(),
-        _ => String::new(),
-      },
-    })
-    .collect()
+/// Memoized output of the discovery palette. Returns a `&'static [...]` so
+/// callers iterate by reference instead of paying ~80 String clones per
+/// palette draw + per nav keystroke (audit Perf HIGH H8). The spec list is
+/// derived from the const COMMAND_SPECS, so the result is deterministic and
+/// can be cached for the lifetime of the process.
+pub fn discovery_slash_specs() -> &'static [ChatSlashCommandSpec] {
+  static CACHE: std::sync::OnceLock<Vec<ChatSlashCommandSpec>> =
+    std::sync::OnceLock::new();
+  CACHE.get_or_init(|| {
+    COMMAND_SPECS
+      .iter()
+      .filter(|spec| spec.show_in_discovery)
+      .map(|spec| ChatSlashCommandSpec {
+        command: spec.command.to_string(),
+        completion: spec.completion.to_string(),
+        description: spec.description.to_string(),
+        badge: match spec.kind {
+          CommandKind::Stub => "soon".to_string(),
+          _ => String::new(),
+        },
+      })
+      .collect()
+  })
 }
 
-pub fn chat_slash_specs() -> Vec<ChatSlashCommandSpec> {
-  COMMAND_SPECS
-    .iter()
-    .map(|spec| ChatSlashCommandSpec {
-      command: spec.command.to_string(),
-      completion: spec.completion.to_string(),
-      description: spec.description.to_string(),
-      badge: match spec.category {
-        CommandCategory::Discovery => "disc",
-        CommandCategory::Sources => "src",
-        CommandCategory::Planned => "soon",
-      }
-      .to_string(),
-    })
-    .collect()
+/// Memoized output of the full chat slash palette. Same shape as
+/// `discovery_slash_specs` — single allocation at first call.
+pub fn chat_slash_specs() -> &'static [ChatSlashCommandSpec] {
+  static CACHE: std::sync::OnceLock<Vec<ChatSlashCommandSpec>> =
+    std::sync::OnceLock::new();
+  CACHE.get_or_init(|| {
+    COMMAND_SPECS
+      .iter()
+      .map(|spec| ChatSlashCommandSpec {
+        command: spec.command.to_string(),
+        completion: spec.completion.to_string(),
+        description: spec.description.to_string(),
+        badge: match spec.category {
+          CommandCategory::Discovery => "disc",
+          CommandCategory::Sources => "src",
+          CommandCategory::Planned => "soon",
+        }
+        .to_string(),
+      })
+      .collect()
+  })
 }

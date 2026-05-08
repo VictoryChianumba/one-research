@@ -857,7 +857,8 @@ fn ensure_chat(app: &mut App) {
     registry.register("openai", Box::new(chat::OpenAiProvider::new(k.clone())));
   }
   let default_provider = app.config.default_chat_provider.clone();
-  let slash_commands = crate::commands::registry::chat_slash_specs();
+  let slash_commands =
+    crate::commands::registry::chat_slash_specs().to_vec();
   app.chat_ui =
     Some(chat::ChatUi::new(registry, default_provider, slash_commands));
 }
@@ -3277,11 +3278,13 @@ fn reconstruct_feed_item(
 
 // ── Discovery palette helpers ─────────────────────────────────────────────────
 
-fn discovery_palette_filtered(query: &str) -> Vec<chat::ChatSlashCommandSpec> {
+fn discovery_palette_filtered(
+  query: &str,
+) -> Vec<&'static chat::ChatSlashCommandSpec> {
   let all = crate::commands::registry::discovery_slash_specs();
   let q = query.to_lowercase();
   all
-    .into_iter()
+    .iter()
     .filter(|s| q == "/" || s.command.starts_with(q.as_str()))
     .collect()
 }
@@ -3297,7 +3300,7 @@ fn discovery_palette_completion(
   discovery_palette_filtered(query)
     .into_iter()
     .nth(selected)
-    .map(|s| s.completion)
+    .map(|s| s.completion.clone())
 }
 
 fn clamp_discovery_palette_scroll(app: &mut App) {
