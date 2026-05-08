@@ -26,8 +26,10 @@ pub fn fetch() -> Result<Vec<FeedItem>, String> {
 }
 
 fn fetch_venue(invitation: &str) -> Result<Vec<FeedItem>, String> {
-  let encoded =
-    invitation.chars().map(|c| if c == '/' { "%2F".to_string() } else { c.to_string() }).collect::<String>();
+  let encoded = invitation
+    .chars()
+    .map(|c| if c == '/' { "%2F".to_string() } else { c.to_string() })
+    .collect::<String>();
   let url = format!(
     "https://api2.openreview.net/notes\
      ?invitation={encoded}&limit=50&offset=0"
@@ -70,9 +72,7 @@ fn note_to_item(note: OrNote) -> Option<FeedItem> {
       // authors can be {"value": [...]} or directly [...]
       let arr = v.get("value").unwrap_or(v);
       arr.as_array().map(|a| {
-        a.iter()
-          .filter_map(|x| x.as_str().map(|s| s.to_string()))
-          .collect()
+        a.iter().filter_map(|x| x.as_str().map(|s| s.to_string())).collect()
       })
     })
     .unwrap_or_default();

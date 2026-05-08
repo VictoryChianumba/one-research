@@ -80,9 +80,8 @@ static WRITER_TX: OnceLock<Sender<WriterMsg>> = OnceLock::new();
 fn writer_handle() -> &'static Sender<WriterMsg> {
   WRITER_TX.get_or_init(|| {
     let (tx, rx) = mpsc::channel::<WriterMsg>();
-    let _ = thread::Builder::new()
-      .name("trench-cache-writer".into())
-      .spawn(move || {
+    let _ = thread::Builder::new().name("trench-cache-writer".into()).spawn(
+      move || {
         // Single-slot coalesce: latest snapshot wins. While `pending` is
         // Some we cap waits at DEBOUNCE_MS so a burst flushes promptly;
         // while empty we block forever to avoid spinning.
@@ -123,7 +122,8 @@ fn writer_handle() -> &'static Sender<WriterMsg> {
             }
           }
         }
-      });
+      },
+    );
     tx
   })
 }
@@ -187,10 +187,8 @@ mod tests {
     // Set HOME to a temp dir so cache_path() resolves there. Running this in
     // serial would be safer; for a single test it's fine since other tests
     // don't rely on $HOME.
-    let dir = std::env::temp_dir().join(format!(
-      "trench_cache_load_test_{}",
-      std::process::id()
-    ));
+    let dir = std::env::temp_dir()
+      .join(format!("trench_cache_load_test_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(dir.join(".config/trench")).unwrap();
     std::fs::write(dir.join(".config/trench/cache.json"), &json).unwrap();

@@ -134,7 +134,12 @@ pub const CUSTOM_THEME_ROLES: &[CustomThemeRole] = &[
 ];
 
 impl CustomThemeConfig {
-  pub fn from_theme(id: String, name: String, base: ui_theme::ThemeId, theme: ui_theme::Theme) -> Self {
+  pub fn from_theme(
+    id: String,
+    name: String,
+    base: ui_theme::ThemeId,
+    theme: ui_theme::Theme,
+  ) -> Self {
     Self { id, name, base, colors: CustomThemeColors::from_theme(theme) }
   }
 
@@ -183,16 +188,20 @@ impl CustomThemeColors {
       text: parse_hex_color(&self.text).unwrap_or(fallback.text),
       text_dim: parse_hex_color(&self.text_dim).unwrap_or(fallback.text_dim),
       border: parse_hex_color(&self.border).unwrap_or(fallback.border),
-      border_active: parse_hex_color(&self.border_active).unwrap_or(fallback.border_active),
+      border_active: parse_hex_color(&self.border_active)
+        .unwrap_or(fallback.border_active),
       bg: parse_hex_color(&self.bg).unwrap_or(fallback.bg),
       bg_panel: parse_hex_color(&self.bg_panel).unwrap_or(fallback.bg_panel),
       bg_input: parse_hex_color(&self.bg_input).unwrap_or(fallback.bg_input),
-      bg_selection: parse_hex_color(&self.bg_selection).unwrap_or(fallback.bg_selection),
+      bg_selection: parse_hex_color(&self.bg_selection)
+        .unwrap_or(fallback.bg_selection),
       bg_code: parse_hex_color(&self.bg_code).unwrap_or(fallback.bg_code),
       bg_chat: parse_hex_color(&self.bg_chat).unwrap_or(fallback.bg_chat),
-      bg_user_msg: parse_hex_color(&self.bg_user_msg).unwrap_or(fallback.bg_user_msg),
+      bg_user_msg: parse_hex_color(&self.bg_user_msg)
+        .unwrap_or(fallback.bg_user_msg),
       bg_popup: parse_hex_color(&self.bg_popup).unwrap_or(fallback.bg_popup),
-      text_on_accent: parse_hex_color(&self.text_on_accent).unwrap_or(fallback.text_on_accent),
+      text_on_accent: parse_hex_color(&self.text_on_accent)
+        .unwrap_or(fallback.text_on_accent),
       success: parse_hex_color(&self.success).unwrap_or(fallback.success),
       warning: parse_hex_color(&self.warning).unwrap_or(fallback.warning),
       error: parse_hex_color(&self.error).unwrap_or(fallback.error),
@@ -200,11 +209,14 @@ impl CustomThemeColors {
       mono: parse_hex_color(&self.mono).unwrap_or(fallback.mono),
       rule: parse_hex_color(&self.rule).unwrap_or(fallback.rule),
       toc_dim: parse_hex_color(&self.toc_dim).unwrap_or(fallback.toc_dim),
-      bookmark_bg: parse_hex_color(&self.bookmark_bg).unwrap_or(fallback.bookmark_bg),
+      bookmark_bg: parse_hex_color(&self.bookmark_bg)
+        .unwrap_or(fallback.bookmark_bg),
       cursor_bg: parse_hex_color(&self.cursor_bg).unwrap_or(fallback.cursor_bg),
       cursor_fg: parse_hex_color(&self.cursor_fg).unwrap_or(fallback.cursor_fg),
-      search_match_bg: parse_hex_color(&self.search_match_bg).unwrap_or(fallback.search_match_bg),
-      search_match_fg: parse_hex_color(&self.search_match_fg).unwrap_or(fallback.search_match_fg),
+      search_match_bg: parse_hex_color(&self.search_match_bg)
+        .unwrap_or(fallback.search_match_bg),
+      search_match_fg: parse_hex_color(&self.search_match_fg)
+        .unwrap_or(fallback.search_match_fg),
     }
   }
 
@@ -387,6 +399,9 @@ mod tests {
     let decoded: Config = serde_json::from_str(&json).unwrap();
     assert_eq!(decoded.active_custom_theme_id.as_deref(), Some("custom-test"));
     assert_eq!(decoded.custom_themes[0].name, "My Theme");
-    assert_eq!(decoded.custom_themes[0].colors.accent, color_to_hex(base.theme().accent));
+    assert_eq!(
+      decoded.custom_themes[0].colors.accent,
+      color_to_hex(base.theme().accent)
+    );
   }
 }

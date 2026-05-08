@@ -68,7 +68,9 @@ pub fn export_library(
   let mut f = fs::File::create(&path)?;
   match format {
     ExportFormat::Jsonl => write_library_jsonl(&mut f, items)?,
-    ExportFormat::Markdown => write_library_markdown(&mut f, items, filter_label)?,
+    ExportFormat::Markdown => {
+      write_library_markdown(&mut f, items, filter_label)?
+    }
   }
   Ok(path)
 }
@@ -127,7 +129,10 @@ fn write_history_markdown(
   Ok(())
 }
 
-fn write_library_jsonl(f: &mut fs::File, items: &[&FeedItem]) -> io::Result<()> {
+fn write_library_jsonl(
+  f: &mut fs::File,
+  items: &[&FeedItem],
+) -> io::Result<()> {
   for item in items {
     let line = serde_json::to_string(item).map_err(io::Error::other)?;
     writeln!(f, "{line}")?;

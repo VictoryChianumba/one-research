@@ -145,14 +145,14 @@ pub fn save(state: &HashMap<String, WorkflowState>) {
 
 #[derive(serde::Serialize, serde::Deserialize, Default)]
 pub struct UiState {
-  pub last_read:        Option<String>,
+  pub last_read: Option<String>,
   pub last_read_source: Option<String>,
   #[serde(default)]
-  pub notes_tabs:       Vec<NotesTab>,
+  pub notes_tabs: Vec<NotesTab>,
   #[serde(default)]
   pub notes_active_tab: usize,
   #[serde(default)]
-  pub secondary_notes_tabs:       Vec<NotesTab>,
+  pub secondary_notes_tabs: Vec<NotesTab>,
   #[serde(default)]
   pub secondary_notes_active_tab: usize,
 }
@@ -204,10 +204,8 @@ mod atomic_write_tests {
 
   #[test]
   fn writes_bytes_and_cleans_tmp() {
-    let dir = std::env::temp_dir().join(format!(
-      "trench_atomic_write_test_{}",
-      std::process::id()
-    ));
+    let dir = std::env::temp_dir()
+      .join(format!("trench_atomic_write_test_{}", std::process::id()));
     let _ = fs::create_dir_all(&dir);
     let path = dir.join("payload.json");
     let tmp = dir.join("payload.json.tmp");
@@ -220,10 +218,8 @@ mod atomic_write_tests {
 
   #[test]
   fn overwrite_replaces_existing_content() {
-    let dir = std::env::temp_dir().join(format!(
-      "trench_atomic_overwrite_test_{}",
-      std::process::id()
-    ));
+    let dir = std::env::temp_dir()
+      .join(format!("trench_atomic_overwrite_test_{}", std::process::id()));
     let _ = fs::create_dir_all(&dir);
     let path = dir.join("payload.json");
     fs::write(&path, b"original").unwrap();
@@ -237,10 +233,8 @@ mod atomic_write_tests {
   #[test]
   fn produces_owner_only_permissions() {
     use std::os::unix::fs::PermissionsExt;
-    let dir = std::env::temp_dir().join(format!(
-      "trench_atomic_perms_test_{}",
-      std::process::id()
-    ));
+    let dir = std::env::temp_dir()
+      .join(format!("trench_atomic_perms_test_{}", std::process::id()));
     let _ = fs::create_dir_all(&dir);
     let path = dir.join("payload.json");
 

@@ -20,8 +20,8 @@ pub fn fetch(api_key: &str) -> Result<Vec<FeedItem>, String> {
     .header("Authorization", format!("Bearer {api_key}"))
     .send()
     .map_err(|e| format!("core: HTTP failed: {e}"))?;
-  let body =
-    crate::http::read_body(resp).map_err(|e| format!("core: read failed: {e}"))?;
+  let body = crate::http::read_body(resp)
+    .map_err(|e| format!("core: read failed: {e}"))?;
 
   let parsed: CoreResponse = serde_json::from_str(&body)
     .map_err(|e| format!("core: JSON parse failed: {e}"))?;
@@ -64,11 +64,7 @@ fn work_to_item(work: CoreWork) -> Option<FeedItem> {
     .cloned();
 
   let best_url = arxiv_url.clone().or_else(|| {
-    work
-      .links
-      .into_iter()
-      .find(|l| l.url.starts_with("http"))
-      .map(|l| l.url)
+    work.links.into_iter().find(|l| l.url.starts_with("http")).map(|l| l.url)
   });
   let url = match best_url {
     Some(u) => u,

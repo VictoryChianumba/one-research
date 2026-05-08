@@ -143,10 +143,22 @@ mod workflow_state_tests {
 
   #[test]
   fn serializes_to_lowercase_variant_name() {
-    assert_eq!(serde_json::to_string(&WorkflowState::Inbox).unwrap(), "\"inbox\"");
-    assert_eq!(serde_json::to_string(&WorkflowState::Queued).unwrap(), "\"queued\"");
-    assert_eq!(serde_json::to_string(&WorkflowState::DeepRead).unwrap(), "\"deepread\"");
-    assert_eq!(serde_json::to_string(&WorkflowState::Archived).unwrap(), "\"archived\"");
+    assert_eq!(
+      serde_json::to_string(&WorkflowState::Inbox).unwrap(),
+      "\"inbox\""
+    );
+    assert_eq!(
+      serde_json::to_string(&WorkflowState::Queued).unwrap(),
+      "\"queued\""
+    );
+    assert_eq!(
+      serde_json::to_string(&WorkflowState::DeepRead).unwrap(),
+      "\"deepread\""
+    );
+    assert_eq!(
+      serde_json::to_string(&WorkflowState::Archived).unwrap(),
+      "\"archived\""
+    );
   }
 
   #[test]
@@ -342,6 +354,7 @@ impl FeedItem {
     // they need to be rebuilt at every entry point that produces or loads
     // a FeedItem; sanitize_in_place is the natural chokepoint.
     self.title_lower = self.title.to_lowercase();
-    self.authors_lower = self.authors.iter().map(|a| a.to_lowercase()).collect();
+    self.authors_lower =
+      self.authors.iter().map(|a| a.to_lowercase()).collect();
   }
 }

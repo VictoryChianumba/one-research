@@ -2,7 +2,7 @@ use crate::config::{Config, CustomThemeConfig};
 use crate::discovery::DiscoveryMessage;
 use crate::ingestion::message::FetchMessage;
 use crate::models::*;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use ratatui::layout::Rect;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -381,17 +381,11 @@ pub struct App {
   pub discovery_palette_scroll: usize,
   /// Activity log — paper opens and discovery queries.
   pub history: Vec<crate::history::HistoryEntry>,
-  /// Latest open timestamp for each paper URL. Keeps the library time filter
-  /// on the visible-items hot path O(items) instead of O(items * history).
-  pub history_last_opened: HashMap<String, DateTime<Utc>>,
   pub history_filter: crate::history::HistoryFilter,
   pub history_selected_index: usize,
   pub history_list_offset: usize,
   /// Library tab: workflow-state filter chip + per-tab navigation.
   pub library_filter: crate::library::LibraryFilter,
-  /// Smart filter: time window applied on top of the workflow chip — pulls
-  /// "last opened" timestamps from the history store.
-  pub library_time_filter: crate::history::HistoryFilter,
   pub library_selected_index: usize,
   pub library_list_offset: usize,
   /// Library bulk-select state. `library_visual_mode` enables visual selection;
@@ -620,12 +614,10 @@ impl App {
       discovery_palette_selected: 0,
       discovery_palette_scroll: 0,
       history: crate::store::history::load(),
-      history_last_opened: HashMap::new(),
       history_filter: crate::history::HistoryFilter::default(),
       history_selected_index: 0,
       history_list_offset: 0,
       library_filter: crate::library::LibraryFilter::default(),
-      library_time_filter: crate::history::HistoryFilter::default(),
       library_selected_index: 0,
       library_list_offset: 0,
       library_visual_mode: false,
@@ -1004,16 +996,6 @@ impl App {
     needs
   }
 
-  pub fn rebuild_history_paper_index(&mut self) {
-    self.history_last_opened.clear();
-    self.history_last_opened.reserve(self.history.len());
-    for entry in &self.history {
-      if entry.kind == crate::history::HistoryKind::Paper {
-        self.history_last_opened.insert(entry.key.clone(), entry.opened_at);
-      }
-    }
-  }
-
   /// True if any continuous animation or background activity is in flight
   /// that requires fast (~16ms) event-poll cadence. Used by the main loop
   /// to decide whether to block long (idle) or short (animating).
@@ -1110,19 +1092,6 @@ impl App {
           FeedTab::Library => {
             if !self.library_filter.matches(item.workflow_state) {
               return false;
-            }
-            // Smart filter: time-window pre-filter using last-opened from history.
-            if !matches!(
-              self.library_time_filter,
-              crate::history::HistoryFilter::All
-            ) {
-              let now = chrono::Utc::now();
-              let last_opened =
-                self.history_last_opened.get(&item.url).copied();
-              match last_opened {
-                Some(t) if self.library_time_filter.matches_time(t, now) => {}
-                _ => return false,
-              }
             }
           }
           _ => {}
@@ -1498,9 +1467,6 @@ impl App {
       source,
       meta,
     );
-    if let Some(entry) = self.history.first() {
-      self.history_last_opened.insert(entry.key.clone(), entry.opened_at);
-    }
     crate::store::history::save(&self.history);
   }
 

@@ -35,7 +35,9 @@ impl LibraryFilter {
 
   pub fn matches(self, state: WorkflowState) -> bool {
     match self {
-      Self::All => matches!(state, WorkflowState::Queued | WorkflowState::DeepRead),
+      Self::All => {
+        matches!(state, WorkflowState::Queued | WorkflowState::DeepRead)
+      }
       Self::Queue => state == WorkflowState::Queued,
       Self::Read => state == WorkflowState::DeepRead,
       Self::Archived => state == WorkflowState::Archived,

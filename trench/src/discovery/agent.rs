@@ -5,8 +5,8 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::config::Config;
-use crate::discovery::{DiscoveryMessage, tools};
 use crate::discovery::intent::QueryIntent;
+use crate::discovery::{DiscoveryMessage, tools};
 
 const MAX_ITERATIONS: usize = 8;
 const API_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
@@ -155,15 +155,15 @@ List at most 10, most significant first.";
 
 fn system_for_intent(intent: QueryIntent) -> &'static str {
   match intent {
-    QueryIntent::FindPapers       => SYSTEM_FIND,
+    QueryIntent::FindPapers => SYSTEM_FIND,
     QueryIntent::LiteratureReview => SYSTEM_LIT_REVIEW,
-    QueryIntent::SotaLookup       => SYSTEM_SOTA,
-    QueryIntent::ReadingList      => SYSTEM_READING_LIST,
-    QueryIntent::CodeSearch       => SYSTEM_CODE,
-    QueryIntent::Compare          => SYSTEM_COMPARE,
-    QueryIntent::Digest           => SYSTEM_DIGEST,
-    QueryIntent::AuthorSearch     => SYSTEM_AUTHOR,
-    QueryIntent::Trending         => SYSTEM_TRENDING,
+    QueryIntent::SotaLookup => SYSTEM_SOTA,
+    QueryIntent::ReadingList => SYSTEM_READING_LIST,
+    QueryIntent::CodeSearch => SYSTEM_CODE,
+    QueryIntent::Compare => SYSTEM_COMPARE,
+    QueryIntent::Digest => SYSTEM_DIGEST,
+    QueryIntent::AuthorSearch => SYSTEM_AUTHOR,
+    QueryIntent::Trending => SYSTEM_TRENDING,
   }
 }
 
@@ -218,7 +218,8 @@ fn run_inner(
   let system = system_for_intent(intent);
 
   for step in 0..MAX_ITERATIONS {
-    let response = call_claude(&client, api_key, system, &messages, &tools_json)?;
+    let response =
+      call_claude(&client, api_key, system, &messages, &tools_json)?;
 
     // Collect tool_use blocks before moving content into messages.
     let tool_uses: Vec<Value> = response
@@ -272,9 +273,12 @@ fn run_inner(
   Ok(())
 }
 
-fn emit_snapshot(messages: &[Value], intent: QueryIntent, tx: &Sender<DiscoveryMessage>) {
-  let initial_query =
-    messages[0]["content"].as_str().unwrap_or("").to_string();
+fn emit_snapshot(
+  messages: &[Value],
+  intent: QueryIntent,
+  tx: &Sender<DiscoveryMessage>,
+) {
+  let initial_query = messages[0]["content"].as_str().unwrap_or("").to_string();
   let mut snapshot = crate::discovery::SessionHistory {
     messages: messages.to_vec(),
     initial_query,

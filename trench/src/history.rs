@@ -36,7 +36,9 @@ pub struct HistoryEntry {
   pub title_lower: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(
+  Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize,
+)]
 pub enum HistoryFilter {
   #[default]
   All,
@@ -59,8 +61,14 @@ impl HistoryFilter {
     }
   }
 
-  pub const ORDER: [Self; 6] =
-    [Self::All, Self::Today, Self::Last24h, Self::Last48h, Self::Week, Self::Month];
+  pub const ORDER: [Self; 6] = [
+    Self::All,
+    Self::Today,
+    Self::Last24h,
+    Self::Last48h,
+    Self::Week,
+    Self::Month,
+  ];
 
   pub fn next(self) -> Self {
     let idx = Self::ORDER.iter().position(|f| *f == self).unwrap_or(0);
@@ -78,12 +86,20 @@ impl HistoryFilter {
 
   /// Variant that operates on a raw timestamp — used by Library smart filters
   /// where the timestamp comes from a paper's most-recent open in history.
-  pub fn matches_time(self, opened_at: DateTime<Utc>, now: DateTime<Utc>) -> bool {
+  pub fn matches_time(
+    self,
+    opened_at: DateTime<Utc>,
+    now: DateTime<Utc>,
+  ) -> bool {
     match self {
       Self::All => true,
       Self::Today => opened_at.date_naive() == now.date_naive(),
-      Self::Last24h => now.signed_duration_since(opened_at) <= Duration::hours(24),
-      Self::Last48h => now.signed_duration_since(opened_at) <= Duration::hours(48),
+      Self::Last24h => {
+        now.signed_duration_since(opened_at) <= Duration::hours(24)
+      }
+      Self::Last48h => {
+        now.signed_duration_since(opened_at) <= Duration::hours(48)
+      }
       Self::Week => now.signed_duration_since(opened_at) <= Duration::days(7),
       Self::Month => now.signed_duration_since(opened_at) <= Duration::days(30),
     }
@@ -102,9 +118,8 @@ pub fn record_paper(
   meta: HistoryPaperMeta,
 ) {
   let now = Utc::now();
-  if let Some(pos) = history
-    .iter()
-    .position(|e| e.kind == HistoryKind::Paper && e.key == url)
+  if let Some(pos) =
+    history.iter().position(|e| e.kind == HistoryKind::Paper && e.key == url)
   {
     let mut entry = history.remove(pos);
     entry.opened_at = now;
@@ -134,12 +149,17 @@ pub fn record_paper(
 }
 
 /// Record a discovery query. Dedupes the head if the same topic was logged < 60s ago.
-pub fn record_query(history: &mut Vec<HistoryEntry>, topic: String, intent_label: &str) {
+pub fn record_query(
+  history: &mut Vec<HistoryEntry>,
+  topic: String,
+  intent_label: &str,
+) {
   let now = Utc::now();
   if let Some(head) = history.first_mut() {
     if head.kind == HistoryKind::Query
       && head.key == topic
-      && now.signed_duration_since(head.opened_at).num_seconds() < REFINEMENT_DEDUP_WINDOW_SECS
+      && now.signed_duration_since(head.opened_at).num_seconds()
+        < REFINEMENT_DEDUP_WINDOW_SECS
     {
       head.opened_at = now;
       head.visit_count = head.visit_count.saturating_add(1);
@@ -147,9 +167,8 @@ pub fn record_query(history: &mut Vec<HistoryEntry>, topic: String, intent_label
       return;
     }
   }
-  if let Some(pos) = history
-    .iter()
-    .position(|e| e.kind == HistoryKind::Query && e.key == topic)
+  if let Some(pos) =
+    history.iter().position(|e| e.kind == HistoryKind::Query && e.key == topic)
   {
     let mut entry = history.remove(pos);
     entry.opened_at = now;

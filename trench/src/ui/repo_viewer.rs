@@ -32,12 +32,7 @@ pub fn draw_repo_viewer(frame: &mut Frame, app: &mut App) {
   draw_help(frame, app, rows[4], &t);
 }
 
-fn draw_workspace_rule(
-  frame: &mut Frame,
-  area: Rect,
-  title: &str,
-  t: &Theme,
-) {
+fn draw_workspace_rule(frame: &mut Frame, area: Rect, title: &str, t: &Theme) {
   let width = area.width as usize;
   let style = t.style_border();
   let title_style = t.style_header().add_modifier(Modifier::BOLD);
@@ -64,9 +59,7 @@ fn draw_summary_row(frame: &mut Frame, app: &App, area: Rect, t: &Theme) {
   } else {
     ctx.default_branch.clone()
   };
-  let status = app
-    .repo_status_label()
-    .unwrap_or_else(|| "ready".to_string());
+  let status = app.repo_status_label().unwrap_or_else(|| "ready".to_string());
 
   let line = Line::from(vec![
     Span::styled("  ", t.style_dim()),
@@ -172,12 +165,8 @@ fn draw_tree_pane(
   let max_name = area.width.saturating_sub(4) as usize;
 
   let mut y = area.y;
-  for (i, node) in ctx
-    .tree_nodes
-    .iter()
-    .enumerate()
-    .skip(scroll)
-    .take(visible_h)
+  for (i, node) in
+    ctx.tree_nodes.iter().enumerate().skip(scroll).take(visible_h)
   {
     let is_selected = i == ctx.tree_cursor;
     let (icon, icon_style, name_style) = match node.node_type {
@@ -212,18 +201,17 @@ fn draw_tree_pane(
     let line = Line::from(vec![
       Span::styled(
         if is_selected { "› " } else { "  " },
-        if is_selected {
-          t.style_selection_text()
-        } else {
-          t.style_dim()
-        },
+        if is_selected { t.style_selection_text() } else { t.style_dim() },
       ),
       Span::styled(format!("{icon} "), icon_style),
       Span::styled(name, name_style),
     ]);
     let row_rect = Rect::new(area.x, y, area.width, 1);
     if is_selected {
-      frame.render_widget(Paragraph::new(line).style(t.style_selection()), row_rect);
+      frame.render_widget(
+        Paragraph::new(line).style(t.style_selection()),
+        row_rect,
+      );
     } else {
       frame.render_widget(Paragraph::new(line), row_rect);
     }
@@ -302,10 +290,8 @@ fn draw_file_pane(
       .skip(ctx.file_scroll)
       .take(visible_h)
       .map(|(i, spans)| {
-        let mut line_spans = vec![Span::styled(
-          format!("{:>line_num_w$} ", i + 1),
-          t.style_dim(),
-        )];
+        let mut line_spans =
+          vec![Span::styled(format!("{:>line_num_w$} ", i + 1), t.style_dim())];
         let content: String =
           spans.iter().map(|(_, _, _, text)| text.as_str()).collect();
         let content_sliced = apply_h_offset(&content, h_off, render_w);
@@ -365,10 +351,8 @@ fn draw_file_pane(
     let x = area.x + area.width.saturating_sub(indicator.len() as u16 + 1);
     let indicator_area =
       Rect { x, y: area.y, width: indicator.len() as u16 + 1, height: 1 };
-    let p = Paragraph::new(Span::styled(
-      indicator,
-      Style::default().fg(t.warning),
-    ));
+    let p =
+      Paragraph::new(Span::styled(indicator, Style::default().fg(t.warning)));
     frame.render_widget(p, indicator_area);
   }
 }
@@ -437,11 +421,8 @@ fn draw_repo_shell_box(
   focused: bool,
   t: &Theme,
 ) {
-  let border_style = if focused {
-    t.style_border_active()
-  } else {
-    t.style_border()
-  };
+  let border_style =
+    if focused { t.style_border_active() } else { t.style_border() };
 
   let block = if title.is_empty() {
     Block::default().borders(Borders::ALL).border_style(border_style)
@@ -473,11 +454,7 @@ fn draw_pane_rule(
   if area.width == 0 {
     return;
   }
-  let style = if focused {
-    t.style_border_active()
-  } else {
-    t.style_border()
-  };
+  let style = if focused { t.style_border_active() } else { t.style_border() };
   let title_style = if focused {
     t.style_accent().add_modifier(Modifier::BOLD)
   } else {
@@ -548,10 +525,8 @@ fn render_center_state(
       Style::default().fg(t.text_dim),
     )));
   }
-  frame.render_widget(
-    Paragraph::new(rendered).alignment(Alignment::Center),
-    area,
-  );
+  frame
+    .render_widget(Paragraph::new(rendered).alignment(Alignment::Center), area);
 }
 
 fn repo_context_path(ctx: &crate::app::RepoContext) -> String {

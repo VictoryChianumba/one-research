@@ -3117,20 +3117,6 @@ fn handle_library_tab(key: KeyEvent, app: &mut App) -> bool {
       app.invalidate_visible_cache();
       true
     }
-    KeyCode::Char('}') => {
-      app.library_time_filter = app.library_time_filter.next();
-      app.library_selected_index = 0;
-      app.library_list_offset = 0;
-      app.invalidate_visible_cache();
-      true
-    }
-    KeyCode::Char('{') => {
-      app.library_time_filter = app.library_time_filter.prev();
-      app.library_selected_index = 0;
-      app.library_list_offset = 0;
-      app.invalidate_visible_cache();
-      true
-    }
     KeyCode::Char('v') => {
       app.library_visual_mode = true;
       app.library_visual_anchor = app.library_selected_index;
@@ -3197,7 +3183,6 @@ fn handle_history_tab(key: KeyEvent, app: &mut App) -> bool {
       };
       let key_to_delete = (target.kind, target.key.clone());
       app.history.retain(|e| (e.kind, e.key.clone()) != key_to_delete);
-      app.rebuild_history_paper_index();
       crate::store::history::save(&app.history);
       let len = app.filtered_history().len();
       if len > 0 && app.history_selected_index >= len {

@@ -1743,11 +1743,9 @@ fn draw_library_tab(frame: &mut Frame, app: &mut App, area: Rect) {
     return;
   }
 
-  // ── Filter chip rows ──────────────────────────────────────────────────
-  // Row 0: workflow chips · Row 1: time chips · Row 2: separator
+  // ── Filter chip row ───────────────────────────────────────────────────
   let chips_area = Rect { height: 1, ..area };
-  let time_area = Rect { y: area.y + 1, height: 1, ..area };
-  let chips_sep_area = Rect { y: area.y + 2, height: 1, ..area };
+  let chips_sep_area = Rect { y: area.y + 1, height: 1, ..area };
 
   // Per-chip count via the memoized aggregate. Eliminates the ~6 full
   // O(N) scans of `app.items` that previously ran on every draw.
@@ -1797,35 +1795,6 @@ fn draw_library_tab(frame: &mut Frame, app: &mut App, area: Rect) {
   }
   frame.render_widget(Paragraph::new(Line::from(chip_spans)), chips_area);
 
-  // Time chip row (smart filter: workflow × time)
-  let mut time_spans: Vec<Span> = vec![Span::raw("  ")];
-  for (i, filter) in crate::history::HistoryFilter::ORDER.iter().enumerate() {
-    let active = *filter == app.library_time_filter;
-    let style = if active {
-      Style::default().fg(t.accent).add_modifier(Modifier::BOLD)
-    } else {
-      Style::default().fg(t.text_dim)
-    };
-    let label = if matches!(*filter, crate::history::HistoryFilter::All) {
-      "Anytime".to_string()
-    } else {
-      filter.label().to_string()
-    };
-    time_spans.push(Span::styled(format!("[{label}]"), style));
-    if i + 1 < crate::history::HistoryFilter::ORDER.len() {
-      time_spans.push(Span::raw("  "));
-    }
-  }
-  let time_hint = "{ } cycle time";
-  let time_used: usize =
-    time_spans.iter().map(|s| s.content.chars().count()).sum();
-  if (area.width as usize) > time_used + time_hint.chars().count() + 4 {
-    let pad = (area.width as usize) - time_used - time_hint.chars().count() - 2;
-    time_spans.push(Span::raw(" ".repeat(pad)));
-    time_spans.push(Span::styled(time_hint, Style::default().fg(t.text_dim)));
-  }
-  frame.render_widget(Paragraph::new(Line::from(time_spans)), time_area);
-
   frame.render_widget(
     Paragraph::new("─".repeat(area.width as usize))
       .style(Style::default().fg(t.border)),
@@ -1835,9 +1804,9 @@ fn draw_library_tab(frame: &mut Frame, app: &mut App, area: Rect) {
   // ── Item list (reuse the table renderer) ─────────────────────────────
   let list_area = Rect {
     x: area.x,
-    y: area.y + 3,
+    y: area.y + 2,
     width: area.width,
-    height: area.height.saturating_sub(3),
+    height: area.height.saturating_sub(2),
   };
   if list_area.height == 0 {
     return;
@@ -3813,7 +3782,7 @@ fn footer_command_line(app: &App) -> Line<'static> {
     let keys = if app.library_visual_mode {
       ": j/k select | r read | w queue | x archive | t tag | Esc cancel"
     } else {
-      ": [/] state | {/} time | v select | t tag | Tab discoveries | ? help"
+      ": [/] state | v select | t tag | Tab discoveries | ? help"
     };
     spans.push(Span::styled(label, accent));
     spans.push(Span::styled(keys, ordinary));
@@ -4277,8 +4246,7 @@ fn draw_bottom_pane_feed(frame: &mut Frame, app: &mut App, area: Rect) {
     return;
   }
 
-  let window =
-    app.visible_window(offset, offset.saturating_add(viewport_rows));
+  let window = app.visible_window(offset, offset.saturating_add(viewport_rows));
   for (rel_i, item) in window.iter().enumerate() {
     let i = offset + rel_i;
     let is_selected = i == sel;
@@ -5804,7 +5772,6 @@ const HELP_SECTIONS: &[(&str, &[(&str, &str)])] = &[
     &[
       ("Scope", "Items where state ≠ Inbox"),
       ("[ / ]", "Cycle workflow chip (All/Queue/Read/Archived)"),
-      ("{ / }", "Cycle time chip (Anytime/Today/24h/48h/Week/Month)"),
       ("v", "Enter visual selection mode"),
       ("t", "Open tag picker"),
       ("Workflow keys", "i / r / w / x apply to current row"),

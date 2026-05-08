@@ -522,7 +522,8 @@ fn github_url_re() -> &'static regex::Regex {
 
 fn canonicalise_match(caps: &regex::Captures<'_>) -> Option<String> {
   let owner = caps.get(1)?.as_str();
-  let repo = caps.get(2)?.as_str().trim_end_matches(['.', ',', ';', ':', ')', ']', '}']);
+  let repo =
+    caps.get(2)?.as_str().trim_end_matches(['.', ',', ';', ':', ')', ']', '}']);
   let repo = repo.strip_suffix(".git").unwrap_or(repo);
   if owner.is_empty() || repo.is_empty() {
     return None;
@@ -549,14 +550,16 @@ pub(crate) fn extract_unique_github_from_text(text: &str) -> Option<String> {
       match &found {
         None => found = Some(canonical),
         Some(existing) if existing == &canonical => {} // dup of same repo
-        Some(_) => return None,                         // distinct second hit
+        Some(_) => return None,                        // distinct second hit
       }
     }
   }
   found
 }
 
-pub(crate) fn parse_github_owner_repo(url: &str) -> (Option<String>, Option<String>) {
+pub(crate) fn parse_github_owner_repo(
+  url: &str,
+) -> (Option<String>, Option<String>) {
   let path = url
     .trim_end_matches('/')
     .strip_prefix("https://github.com/")
@@ -676,15 +679,27 @@ mod tests {
   #[test]
   fn extract_github_from_text_handles_common_styles() {
     let cases = [
-      ("Code at https://github.com/foo/bar", Some("https://github.com/foo/bar")),
+      (
+        "Code at https://github.com/foo/bar",
+        Some("https://github.com/foo/bar"),
+      ),
       ("Code at github.com/foo/bar", Some("https://github.com/foo/bar")),
       ("see www.github.com/foo/bar.", Some("https://github.com/foo/bar")),
       ("(https://github.com/foo/bar).", Some("https://github.com/foo/bar")),
       ("\\url{https://github.com/foo/bar}", Some("https://github.com/foo/bar")),
-      ("Trailing comma github.com/foo/bar,", Some("https://github.com/foo/bar")),
+      (
+        "Trailing comma github.com/foo/bar,",
+        Some("https://github.com/foo/bar"),
+      ),
       // .git clone-URL suffix must be stripped from the canonical form.
-      ("git clone https://github.com/foo/bar.git", Some("https://github.com/foo/bar")),
-      ("see https://github.com/foo/bar.git/", Some("https://github.com/foo/bar")),
+      (
+        "git clone https://github.com/foo/bar.git",
+        Some("https://github.com/foo/bar"),
+      ),
+      (
+        "see https://github.com/foo/bar.git/",
+        Some("https://github.com/foo/bar"),
+      ),
       ("(https://github.com/foo/bar.git)", Some("https://github.com/foo/bar")),
       // .gitignore is NOT a .git suffix — must remain intact.
       (
@@ -725,9 +740,7 @@ mod tests {
     assert!(is_anonymous_review_url(
       "https://github.com/anonymousforneurips64/repo"
     ));
-    assert!(is_anonymous_review_url(
-      "https://github.com/anonymous-iclr2024/x"
-    ));
+    assert!(is_anonymous_review_url("https://github.com/anonymous-iclr2024/x"));
     assert!(is_anonymous_review_url("https://github.com/Anonymous/x"));
     // Even without the protocol prefix the owner check still works.
     assert!(is_anonymous_review_url("anonymousfoo/x"));
@@ -738,9 +751,7 @@ mod tests {
     ));
     assert!(!is_anonymous_review_url("https://github.com/foo/bar"));
     // Embedded "anonymous" in the middle of an owner shouldn't match.
-    assert!(!is_anonymous_review_url(
-      "https://github.com/notanonymousowner/x"
-    ));
+    assert!(!is_anonymous_review_url("https://github.com/notanonymousowner/x"));
   }
 
   #[test]
@@ -774,8 +785,11 @@ mod tests {
   fn extract_paper_arxiv_id_accepts_id_or_url() {
     // Bare ID via id (HF case).
     assert_eq!(
-      extract_paper_arxiv_id(&item("2312.12345", "https://huggingface.co/papers/2312.12345"))
-        .as_deref(),
+      extract_paper_arxiv_id(&item(
+        "2312.12345",
+        "https://huggingface.co/papers/2312.12345"
+      ))
+      .as_deref(),
       Some("2312.12345"),
     );
     // Full Atom URL via id (arXiv case).

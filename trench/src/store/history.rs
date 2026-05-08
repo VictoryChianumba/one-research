@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use crate::history::{HistoryEntry, HISTORY_CAP};
+use crate::history::{HISTORY_CAP, HistoryEntry};
 
 pub fn load() -> Vec<HistoryEntry> {
   let Some(path) = path() else { return Vec::new() };
@@ -28,11 +28,8 @@ pub fn save(entries: &[HistoryEntry]) {
   if let Some(parent) = path.parent() {
     let _ = fs::create_dir_all(parent);
   }
-  let trimmed: &[HistoryEntry] = if entries.len() > HISTORY_CAP {
-    &entries[..HISTORY_CAP]
-  } else {
-    entries
-  };
+  let trimmed: &[HistoryEntry] =
+    if entries.len() > HISTORY_CAP { &entries[..HISTORY_CAP] } else { entries };
   if let Ok(json) = serde_json::to_vec(trimmed) {
     let _ = super::atomic_write(&path, &json);
   }

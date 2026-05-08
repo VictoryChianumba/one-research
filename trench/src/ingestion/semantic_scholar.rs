@@ -137,7 +137,9 @@ fn fetch_entry(
   };
 
   if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
-    log::warn!("semantic_scholar: rate limited (429) for arXiv:{id} — stopping enrichment run");
+    log::warn!(
+      "semantic_scholar: rate limited (429) for arXiv:{id} — stopping enrichment run"
+    );
     return Err(());
   }
 

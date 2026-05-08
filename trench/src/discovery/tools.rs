@@ -53,7 +53,12 @@ pub fn all_tool_defs(config: &Config) -> Vec<ToolDef> {
     },
   ];
 
-  if config.perplexity_api_key.as_deref().map(|k| !k.trim().is_empty()).unwrap_or(false) {
+  if config
+    .perplexity_api_key
+    .as_deref()
+    .map(|k| !k.trim().is_empty())
+    .unwrap_or(false)
+  {
     tools.push(ToolDef {
       name: "search_web",
       description: "Search the web for recent AI/ML news, blog posts, and discussions. Returns synthesized context.",
@@ -126,10 +131,12 @@ fn exec_search_web(input: &Value, config: &Config) -> ToolResult {
     Some(q) => q,
     None => return err_result("Missing query"),
   };
-  let api_key = match config.perplexity_api_key.as_deref().filter(|k| !k.trim().is_empty()) {
-    Some(k) => k.to_string(),
-    None => return err_result("Perplexity API key not configured"),
-  };
+  let api_key =
+    match config.perplexity_api_key.as_deref().filter(|k| !k.trim().is_empty())
+    {
+      Some(k) => k.to_string(),
+      None => return err_result("Perplexity API key not configured"),
+    };
 
   match perplexity_search(query, &api_key) {
     Ok(text) => ToolResult { items: vec![], text },
@@ -178,7 +185,8 @@ fn items_summary(items: &[FeedItem], source: &str) -> String {
     .map(|i| format!("- {}", i.title))
     .collect::<Vec<_>>()
     .join("\n");
-  let note = if n > 5 { format!(" (showing first 5 of {n})") } else { String::new() };
+  let note =
+    if n > 5 { format!(" (showing first 5 of {n})") } else { String::new() };
   format!("Found {n} papers from {source}{note}:\n{preview}")
 }
 

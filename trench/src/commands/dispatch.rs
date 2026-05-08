@@ -17,7 +17,6 @@ pub fn dispatch_slash_command(app: &mut App, cmd: SlashCommandInvocation) {
     }
     SlashCommandInvocation::ClearHistory => {
       app.history.clear();
-      app.rebuild_history_paper_index();
       app.history_selected_index = 0;
       app.history_list_offset = 0;
       crate::store::history::save(&app.history);

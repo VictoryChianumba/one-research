@@ -3,8 +3,8 @@ use std::sync::mpsc;
 use serde_json::Value;
 
 use crate::config::Config;
-use crate::discovery::{DiscoveryMessage, agent, ai_query};
 use crate::discovery::intent::QueryIntent;
+use crate::discovery::{DiscoveryMessage, agent, ai_query};
 
 /// Spawn a discovery thread. Uses the ReAct agent when a Claude API key is
 /// available; falls back to the single-shot arXiv plan otherwise.
@@ -17,14 +17,18 @@ pub fn spawn_discovery(
 ) {
   std::thread::spawn(move || {
     let tx_panic = tx.clone();
-    let result =
-      std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        if config.claude_api_key.as_deref().map(|k| !k.trim().is_empty()).unwrap_or(false) {
-          agent::run(&topic, &config, &tx, prior_history, intent);
-        } else {
-          run_fallback(&topic, &config, &tx);
-        }
-      }));
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+      if config
+        .claude_api_key
+        .as_deref()
+        .map(|k| !k.trim().is_empty())
+        .unwrap_or(false)
+      {
+        agent::run(&topic, &config, &tx, prior_history, intent);
+      } else {
+        run_fallback(&topic, &config, &tx);
+      }
+    }));
     if let Err(payload) = result {
       let msg = crate::panic_msg(payload);
       log::error!("discovery::spawn_discovery: thread panicked — {msg}");

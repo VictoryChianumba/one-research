@@ -1228,11 +1228,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
       item.workflow_state = *state;
     }
   }
-  app.rebuild_history_paper_index();
-  log::debug!(
-    "startup: persisted state apply + history index {}ms",
-    t.elapsed().as_millis()
-  );
+  log::debug!("startup: persisted state apply {}ms", t.elapsed().as_millis());
 
   app.list_offset = 0;
 

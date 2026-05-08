@@ -32,10 +32,7 @@
 /// Returns `Cow<str>` so the common case (input already short enough) is
 /// allocation-free — most error messages truncate to 80-100 chars but
 /// most messages are shorter than that.
-pub(crate) fn truncate_chars(
-  s: &str,
-  max: usize,
-) -> std::borrow::Cow<'_, str> {
+pub(crate) fn truncate_chars(s: &str, max: usize) -> std::borrow::Cow<'_, str> {
   if s.chars().count() <= max {
     std::borrow::Cow::Borrowed(s)
   } else {
@@ -189,7 +186,6 @@ mod tests {
     assert_eq!(once, twice);
   }
 
-
   #[test]
   fn passes_through_plain_ascii() {
     let s = "Hello world! 123 -- foo.bar/baz";
@@ -238,7 +234,8 @@ mod tests {
   #[test]
   fn strips_osc_8_hyperlink_introducers() {
     // `ESC ] 8 ; ; <url> ST <text> ESC ] 8 ; ; ST` — clickable link.
-    let s = "before\x1b]8;;https://evil.example/\x1b\\trusted\x1b]8;;\x1b\\after";
+    let s =
+      "before\x1b]8;;https://evil.example/\x1b\\trusted\x1b]8;;\x1b\\after";
     // After stripping both OSC 8 sequences, only the visible text + before/after remain.
     assert_eq!(sanitize_terminal_text(s), "beforetrustedafter");
   }
@@ -316,7 +313,8 @@ mod tests {
     assert_eq!(sanitize_terminal_text(cursor_hide), "beforeafter");
 
     // 3. 8-bit color set + reset, mixed with prose.
-    let color_mix = "Authors: \x1b[38;2;255;0;0mAlice\x1b[0m, \x1b[38;2;0;255;0mBob\x1b[0m";
+    let color_mix =
+      "Authors: \x1b[38;2;255;0;0mAlice\x1b[0m, \x1b[38;2;0;255;0mBob\x1b[0m";
     assert_eq!(sanitize_terminal_text(color_mix), "Authors: Alice, Bob");
 
     // 4. Concatenated CSI sequences with parameter bytes.

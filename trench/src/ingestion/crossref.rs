@@ -51,7 +51,9 @@ fn item_to_feed(work: CrWork) -> Option<FeedItem> {
   }
 
   let summary = super::collapse_whitespace(
-    &work.r#abstract.unwrap_or_default()
+    &work
+      .r#abstract
+      .unwrap_or_default()
       .replace("<jats:p>", "")
       .replace("</jats:p>", " "),
   );
@@ -70,13 +72,11 @@ fn item_to_feed(work: CrWork) -> Option<FeedItem> {
   let published_at = work
     .published
     .and_then(|p| p.date_parts.into_iter().next())
-    .map(|parts| {
-      match parts.as_slice() {
-        [y, m, d] => format!("{y:04}-{m:02}-{d:02}"),
-        [y, m] => format!("{y:04}-{m:02}-01"),
-        [y] => format!("{y:04}-01-01"),
-        _ => String::new(),
-      }
+    .map(|parts| match parts.as_slice() {
+      [y, m, d] => format!("{y:04}-{m:02}-{d:02}"),
+      [y, m] => format!("{y:04}-{m:02}-01"),
+      [y] => format!("{y:04}-01-01"),
+      _ => String::new(),
     })
     .unwrap_or_default();
 
