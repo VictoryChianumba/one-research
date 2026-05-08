@@ -1263,9 +1263,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     spawn_fetch(tx, app.config.clone());
   }
 
-  // 3. Start the TUI loop.
+  // 3. Start the TUI loop. Wrap the loop body in an inner closure so
+  // cleanup at the end of `main` runs unconditionally — even if
+  // `terminal.draw(...)?` returns Err mid-frame (TTY dropped, SSH
+  // session died, etc.) we still execute disable_raw_mode +
+  // LeaveAlternateScreen + flag-pop (audit Rel HIGH H7). The panic
+  // hook covers panics; this closure covers Err returns.
   let mut first_draw_logged = false;
-  loop {
+  let run_result: std::io::Result<()> = (|| -> std::io::Result<()> {
+    loop {
     // Drain any pending fetch results before drawing. process_incoming +
     // process_incoming_discovery internally call mark_dirty when state
     // changes; the spinner increment is now gated on is_loading.
@@ -1605,7 +1611,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if app.should_quit {
       break;
     }
-  }
+    }
+    Ok(())
+  })();
 
   // Drain any pending cache write the background writer hasn't flushed yet,
   // so the on-disk cache.json reflects the final in-memory state.
@@ -1620,15 +1628,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     secondary_notes_active_tab: app.secondary_notes_active_tab,
   });
 
-  // Balance the kitty-keyboard push from setup.  Ignored on terminals
-  // that didn't accept it.
+  // Balance the kitty-keyboard push from setup. Best-effort — if any of
+  // these cleanup steps fails (already-closed TTY, etc.), keep going so
+  // the rest still run. Propagate the loop's error AFTER cleanup so the
+  // user sees both the cleanup attempt and the original failure.
   let _ = execute!(terminal.backend_mut(), PopKeyboardEnhancementFlags);
-  disable_raw_mode()?;
-  execute!(
+  let _ = disable_raw_mode();
+  let _ = execute!(
     terminal.backend_mut(),
     LeaveAlternateScreen,
     DisableMouseCapture,
     DisableFocusChange,
-  )?;
-  Ok(())
+  );
+  run_result.map_err(Into::into)
 }
