@@ -1319,10 +1319,27 @@ impl ChatUi {
         self.is_streaming && is_last && matches!(meta.role, Role::Assistant);
       let key = (filt_i, has_streaming_cursor);
 
-      // Cache hit fast path — content_len match means the cached lines
-      // are still valid for this message. No content access, no clone.
+      // Cache hit fast path. For non-streaming messages we require an
+      // exact content_len match. For the streaming-tail message we
+      // bucket the comparison: as long as the cached render is within
+      // STREAM_BUCKET bytes of the current content, treat it as a hit.
+      // This drops the per-word streaming re-render from one full
+      // markdown+wrap pass per word to one per ~STREAM_BUCKET chars
+      // (~10 words at typical token sizes), bringing the total work
+      // over an N-word stream from O(N²) to ~O(N²/STREAM_BUCKET)
+      // (audit chat HIGH #1 / Perf HIGH H1). The user-visible effect
+      // is that streaming reveal happens in chunks instead of word-
+      // by-word; on stream end (has_streaming_cursor flips to false)
+      // the cache key changes and a final exact render fires.
+      const STREAM_BUCKET: usize = 64;
       if let Some(cached) = self.line_cache.get(&key) {
-        if cached.content_len == meta.content_len {
+        let same_enough = if has_streaming_cursor {
+          cached.content_len / STREAM_BUCKET == meta.content_len / STREAM_BUCKET
+            && cached.content_len <= meta.content_len
+        } else {
+          cached.content_len == meta.content_len
+        };
+        if same_enough {
           lines.extend(cached.lines.iter().cloned());
           let next_role = metas.get(filt_i + 1).map(|m| m.role);
           if message_gap_needed(meta.role, next_role) {
