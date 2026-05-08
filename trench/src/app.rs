@@ -1164,30 +1164,35 @@ impl App {
     visible[start..end].to_vec()
   }
 
+  /// Bare cache invalidators. Prefer the `mutate_*` helpers (mutate_search_query,
+  /// mutate_filters, mutate_history, mutate_history_filter, mutate_library_filter,
+  /// set_workflow_state_for_url) — they invalidate the right caches for you.
+  /// These bare methods exist as building blocks for the mutators and as
+  /// escape hatches for the rare external mutation sites that don't fit a
+  /// mutator (e.g. config.sources toggling in keys.rs).
   pub(crate) fn invalidate_visible_cache(&self) {
     *self.visible_cache.borrow_mut() = None;
   }
 
-  pub(crate) fn invalidate_counts_cache(&self) {
+  fn invalidate_counts_cache(&self) {
     *self.counts_cache.borrow_mut() = None;
   }
 
-  pub(crate) fn invalidate_filter_source_names_cache(&self) {
+  fn invalidate_filter_source_names_cache(&self) {
     *self.filter_source_names_cache.borrow_mut() = None;
   }
 
-  pub(crate) fn invalidate_filter_summary_cache(&self) {
+  fn invalidate_filter_summary_cache(&self) {
     *self.filter_summary_cache.borrow_mut() = None;
   }
 
-  pub(crate) fn invalidate_filtered_history_cache(&self) {
+  fn invalidate_filtered_history_cache(&self) {
     *self.filtered_history_cache.borrow_mut() = None;
   }
 
   /// Aggregate invalidator for every cache that derives from `app.items`.
-  /// Call from any mutation site that changes the items vec or any item's
-  /// workflow_state / source_name / published_at fields.
-  pub(crate) fn invalidate_items_derived_caches(&self) {
+  /// Internal use only — callers should go through the mutate_* helpers.
+  fn invalidate_items_derived_caches(&self) {
     self.invalidate_counts_cache();
     self.invalidate_filter_source_names_cache();
   }
