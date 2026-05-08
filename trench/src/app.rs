@@ -197,7 +197,7 @@ pub struct ReaderTab {
   pub image_state: tread::ImageState,
   /// Last (width, height) we passed to `reader.resize`. Used to skip
   /// no-op resize calls every frame in the steady state — `tread::Reader`
-  /// doesn't guarantee its own short-circuit (audit Perf MED #2).
+  /// doesn't guarantee its own short-circuit.
   pub last_resize: Option<(u16, u16)>,
 }
 
@@ -366,7 +366,7 @@ pub struct App {
   pub discovery_query: String,
   /// Lowercased mirror of `discovery_query`. Refreshed by the discovery
   /// mutator helpers below. Avoids the per-frame `to_lowercase` heap
-  /// allocation in `draw_discovery_palette` (audit Perf MED #3).
+  /// allocation in `draw_discovery_palette`.
   pub discovery_query_lower: String,
   /// Whether the persistent search bar at the bottom of Discoveries has focus.
   pub discovery_search_focused: bool,
@@ -579,26 +579,18 @@ pub struct App {
   // Cached indices of items visible under the current search/filter.
   // Keyed by (FeedTab) so a tab switch automatically misses the cache.
   visible_cache: RefCell<Option<(FeedTab, Vec<usize>)>>,
-  /// Lazy memo of aggregate item counts (workflow breakdown + recent-48h
-  /// fused + 2 queue-preview titles). Invalidated by every items/workflow
-  /// mutation site via `invalidate_counts_cache`.
+  /// Memoized item counts (workflow breakdown + recent-48h + queue preview).
+  /// Invalidated by every items/workflow mutation site.
   counts_cache: RefCell<Option<ItemCounts>>,
-  /// Lazy memo of the sorted unique source-label set, used by the filter
-  /// panel. Previously rebuilt per render frame AND per j/k keystroke
-  /// while focused — full O(N items) BTreeSet build with String clones
-  /// (audit Perf CRIT C4). Invalidated alongside `counts_cache`.
+  /// Memoized sorted unique source-label set used by the filter panel.
+  /// Invalidated alongside `counts_cache`.
   filter_source_names_cache: RefCell<Option<Vec<String>>>,
-  /// Lazy memo of the rendered `filter_summary` string. Previously rebuilt
-  /// per-frame via 4 `summarize_ordered_set` passes + a sort + a final
-  /// format! (audit Perf MED #8). Invalidated only by `active_filters`
-  /// mutation — does NOT depend on items / search query.
+  /// Memoized filter-summary string. Invalidated only by `active_filters`
+  /// mutation — does NOT depend on items or search query.
   pub filter_summary_cache: RefCell<Option<String>>,
-  /// Lazy memo of `filtered_history` results as indices into `self.history`.
-  /// `filtered_history` was called 2× per History-tab frame after T4c (down
-  /// from 3); this memo cuts that to 1 compute per filter-input change
-  /// (audit Perf MED #9). Cache is invalidated by every input the filter
-  /// depends on: history mutation, search_query mutation, history_filter
-  /// time-window mutation, and active_filters mutation.
+  /// Memoized `filtered_history` indices into `self.history`. Invalidated
+  /// by history mutation, search_query mutation, history_filter mutation,
+  /// and active_filters mutation.
   pub filtered_history_cache: RefCell<Option<Vec<usize>>>,
 }
 
@@ -1201,9 +1193,9 @@ impl App {
   }
 
   /// Reset the primary items vec and every parallel index/cache that mirrors
-  /// it. Replaces ad-hoc `app.items.clear()` callers, which used to leave
-  /// `url_index` / `arxiv_id_index` populated with stale offsets and panic on
-  /// the next `process_incoming` batch (audit Rel CRIT C1).
+  /// it. Direct `app.items.clear()` would leave `url_index` /
+  /// `arxiv_id_index` populated with stale offsets and panic on the next
+  /// `process_incoming` batch.
   pub fn reset_items(&mut self) {
     self.items.clear();
     self.url_index.clear();
@@ -1212,10 +1204,8 @@ impl App {
     self.invalidate_items_derived_caches();
   }
 
-  /// Same shape as `reset_items` but for the discovery-side mirrors. Replaces
-  /// `app.discovery_items.clear()` callers that left `discovery_url_index` /
-  /// `discovery_arxiv_id_index` stale and panicked on the next merge (audit
-  /// Rel CRIT C2).
+  /// Same shape as `reset_items` but for the discovery-side mirrors —
+  /// keeps the parallel indexes in sync.
   pub fn reset_discovery_items(&mut self) {
     self.discovery_items.clear();
     self.discovery_url_index.clear();
@@ -1224,9 +1214,8 @@ impl App {
   }
 
   /// Cheap O(1) read from the memoized count cache. On miss, runs a single
-  /// fused pass over `self.items` that produces every counter the dashboard
-  /// and chip bar need. Returns a `Ref` so cache hits don't pay a clone
-  /// (audit Perf MED #7).
+  /// Fused pass over `self.items` that produces every counter the dashboard
+  /// and chip bar need. Returns a `Ref` so cache hits don't pay a clone.
   pub fn item_counts(&self) -> std::cell::Ref<'_, ItemCounts> {
     if self.counts_cache.borrow().is_none() {
       let counts = self.compute_item_counts();
@@ -1338,7 +1327,7 @@ impl App {
     let url = self.selected_item().map(|i| i.url.clone());
     // Sanitize at the chokepoint — set_notification is called from many
     // sites including ones that interpolate reqwest errors / GitHub
-    // tree paths / API messages (audit Sec MED #18 cluster).
+    // tree paths / API messages.
     self.notification = Some(crate::sanitize::sanitize_terminal_text(&msg));
     self.notification_item_id = url;
   }
@@ -1409,8 +1398,7 @@ impl App {
   /// Clear the search bar. Pairs with `push_search_char` / `pop_search_char`
   /// so the lowercased mirror never drifts out of sync with `search_query`.
   /// Also invalidates the visible-items cache so stale filtered results
-  /// can't survive across the clear (audit Rel MED #6 — was a documented
-  /// "callers are responsible" footgun).
+  /// can't survive across the clear (was a "callers are responsible" footgun).
   pub fn clear_search_query(&mut self) {
     self.search_query.clear();
     self.search_query_lower.clear();
@@ -1465,10 +1453,9 @@ impl App {
 
   /// Move the visual-mode cursor to `new_cursor` and update
   /// `library_selected_urls` incrementally — adds/removes only the items at
-  /// the boundary between the old and new selection ranges. For the typical
-  /// single-step j/k move this means exactly one HashSet insert OR remove
-  /// per keystroke, instead of cloning every URL in [lo..=hi] (audit Perf
-  /// HIGH H7). Falls back to a no-op when not in visual mode.
+  /// the boundary between the old and new selection ranges. Single-step j/k
+  /// is one HashSet insert or remove per keystroke, instead of cloning every
+  /// URL in [lo..=hi]. Falls back to a no-op when not in visual mode.
   pub fn library_extend_selection(&mut self, new_cursor: usize) {
     if !self.library_visual_mode {
       self.library_selected_index = new_cursor;
@@ -1750,7 +1737,7 @@ impl App {
     if let Some(ctx) = &mut self.repo_context {
       // Sanitize at the setter chokepoint — repo status renders into a
       // styled Span and reqwest error strings include URLs that may
-      // carry attacker-supplied bytes via redirects (audit Sec MED #18).
+      // carry attacker-supplied bytes via redirects.
       ctx.status_message =
         Some(crate::sanitize::sanitize_terminal_text(&msg.into()));
     }
@@ -1979,7 +1966,7 @@ impl App {
     // Strip any terminal-control bytes embedded in the GitHub-derived path
     // before writing to the OS clipboard. Otherwise a hostile repo could
     // ship ESC bytes that survive into whichever terminal the user later
-    // pastes into (audit Sec MED #10).
+    // pastes into.
     let safe_path = crate::sanitize::sanitize_terminal_text(&path);
     match arboard::Clipboard::new() {
       Ok(mut cb) => match cb.set_text(&safe_path) {
@@ -1997,7 +1984,7 @@ impl App {
     };
 
     // Strip any terminal-control bytes from the GitHub-derived URL before
-    // writing to the OS clipboard (audit Sec MED #10).
+    // writing to the OS clipboard.
     let safe_url = crate::sanitize::sanitize_terminal_text(&url);
     match arboard::Clipboard::new() {
       Ok(mut cb) => match cb.set_text(&safe_url) {
@@ -2242,7 +2229,7 @@ impl App {
           // Status bar shows the loading-sources list; without
           // mark_dirty, a phantom in-progress source can sit on
           // screen for ~250ms until any other event ticks the
-          // redraw flag (audit Rel HIGH H9).
+          // redraw flag.
           self.mark_dirty();
         }
         FetchMessage::SourceError(name, err) => {
@@ -2369,7 +2356,7 @@ impl App {
       // sanitizes at ingestion, but the unbarriered injection point
       // is a future-contributor footgun — a new source added without
       // ingestion-time sanitize would silently ship terminal-control
-      // bytes to the renderer (audit Rel HIGH H8).
+      // bytes to the renderer.
       item.sanitize_in_place();
       if let Some(state) = self.persisted_states.get(&item.url) {
         item.workflow_state = *state;
@@ -2586,9 +2573,8 @@ impl App {
       // Unconditional invalidate even when the mutation lands on
       // discovery_items: counts_cache reads only from app.items today,
       // so the call is technically redundant on the Discoveries tab.
-      // Keeping it unconditional preserves invariant safety — if anyone
-      // later folds discovery_items into counts, the invalidation
-      // discipline doesn't silently drift (audit Rel MED #7).
+      // Keeping it unconditional preserves invariant safety if anyone
+      // later folds discovery_items into counts.
       self.invalidate_items_derived_caches();
     }
   }
