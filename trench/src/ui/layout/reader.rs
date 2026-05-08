@@ -314,7 +314,7 @@ fn draw_bottom_pane_details(frame: &mut Frame, app: &App, area: Rect) {
   ));
   let meta = Line::from(vec![
     Span::styled(
-      super::feed_source_label(item),
+      super::feed::feed_source_label(item),
       Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
     ),
     Span::styled("  ", Style::default().fg(t.text_dim)),
@@ -460,7 +460,7 @@ pub(super) fn drawer_feed_row_line(
   let gap_w = 3usize;
   let title_w = width.saturating_sub(source_w + kind_w + date_w + gap_w).max(8);
 
-  let source = truncate_str(&super::feed_source_label(item), source_w);
+  let source = truncate_str(&super::feed::feed_source_label(item), source_w);
   let kind = truncate_str(item.content_type.short_label(), kind_w);
   let title = truncate_str(&item.title, title_w);
   let date = truncate_str(&item.published_at, date_w);
