@@ -2,29 +2,32 @@ use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use std::sync::mpsc;
 
 use crate::app::{
-  App, AppView, CustomThemeEditorMode, CustomThemeEditorState, DiscoverResult,
-  FeedTab, FocusedReader, NavDirection, NotesMode, NotesTab, PaneId,
-  QuitPopupKind, RepoContext, RepoPane, SourcesDetectState,
+  App, AppView, CustomThemeEditorMode, CustomThemeEditorState, FeedTab,
+  FocusedReader, NavDirection, NotesMode, NotesTab, PaneId, QuitPopupKind,
+  RepoContext, RepoPane, SourcesDetectState,
 };
 use crate::config::{self, CUSTOM_THEME_ROLES, CustomThemeConfig};
 use crate::models::WorkflowState;
 use ui_theme::ThemeId;
 
 use super::{
-  do_refresh, force_refresh, get_pane_by_number, kbd_scroll_ok, open_url,
-  spawn_ai_discovery, spawn_discovery, spawn_fulltext_fetch, spawn_repo_dir,
-  spawn_repo_file, spawn_repo_open, truncate_for_notif,
+  do_refresh, get_pane_by_number, kbd_scroll_ok, open_url, spawn_ai_discovery,
+  spawn_fulltext_fetch, spawn_repo_open, truncate_for_notif,
 };
 
 mod help;
 mod popups;
 mod reader;
+mod repo;
+mod sources;
 use help::handle_help_overlay;
 use popups::handle_tag_picker;
 use reader::{
   close_all_readers, handle_reader_bottom_pane, handle_reader_pane,
   reader_back, reader_pane_focused,
 };
+use repo::handle_repo_viewer;
+use sources::handle_sources_popup;
 
 const NOTES_MODE_ORDER: [NotesMode; 3] =
   [NotesMode::PaperNotes, NotesMode::Library, NotesMode::Capture];
@@ -1432,257 +1435,6 @@ fn handle_notes_pane(key: KeyEvent, app: &mut App) -> bool {
 
 
 // ── View handlers ─────────────────────────────────────────────────────────────
-
-fn handle_repo_viewer(key: KeyEvent, app: &mut App) -> bool {
-  if app.view != AppView::RepoViewer {
-    return false;
-  }
-  log::debug!("routing to repo viewer");
-  match key.code {
-    KeyCode::Char('q') => app.close_repo_viewer(),
-    KeyCode::Esc => {
-      if app
-        .repo_context
-        .as_ref()
-        .is_some_and(|ctx| ctx.pane_focus == RepoPane::File)
-      {
-        app.repo_switch_pane();
-      } else {
-        app.close_repo_viewer();
-      }
-    }
-    KeyCode::Tab | KeyCode::BackTab => app.repo_switch_pane(),
-    KeyCode::Char('j') | KeyCode::Down => app.repo_nav_down(0),
-    KeyCode::Char('k') | KeyCode::Up => app.repo_nav_up(),
-    KeyCode::Char('h') | KeyCode::Left => app.repo_pan_left(),
-    KeyCode::Char('l') | KeyCode::Right => app.repo_pan_right(),
-    KeyCode::Char('+') | KeyCode::Char('=') => app.repo_zoom_in(),
-    KeyCode::Char('-') => app.repo_zoom_out(),
-    KeyCode::Char('y') => app.repo_copy_path(),
-    KeyCode::Char('u') => app.repo_copy_url(),
-    KeyCode::Char('o') => {
-      if let Some(url) = app.repo_current_url() {
-        open_url(&url);
-        app.set_repo_status(format!("Opened: {url}"));
-      } else {
-        app.set_repo_status("No repo URL available.".to_string());
-      }
-    }
-    KeyCode::Char('d') => app.repo_download_file(),
-    KeyCode::Enter => {
-      log::debug!(
-        "repo Enter: repo_fetch_rx active={}",
-        app.repo_fetch_rx.is_some()
-      );
-      if app.repo_fetch_rx.is_none() {
-        if let Some(target) = app.repo_enter_target() {
-          let token = app.github_token.clone().unwrap_or_default();
-          match target {
-            crate::app::RepoEnterTarget::Dir(path) => {
-              if let Some(ctx) = &app.repo_context {
-                let (owner, repo, branch) = (
-                  ctx.owner.clone(),
-                  ctx.repo_name.clone(),
-                  ctx.default_branch.clone(),
-                );
-                log::debug!("repo Enter: spawning dir fetch path={:?}", path);
-                app.set_repo_status("Loading…");
-                let (tx, rx) = mpsc::channel();
-                app.repo_fetch_rx = Some(rx);
-                spawn_repo_dir(owner, repo, branch, path, token, tx);
-              }
-            }
-            crate::app::RepoEnterTarget::File(path, name) => {
-              if let Some(ctx) = &app.repo_context {
-                let (owner, repo) = (ctx.owner.clone(), ctx.repo_name.clone());
-                log::debug!("repo Enter: spawning file fetch path={:?}", path);
-                app.set_repo_status("Loading…");
-                let (tx, rx) = mpsc::channel();
-                app.repo_fetch_rx = Some(rx);
-                spawn_repo_file(owner, repo, path, name, token, tx);
-              }
-            }
-          }
-        }
-      }
-    }
-    KeyCode::Char('b') | KeyCode::Backspace => {
-      if app.repo_back_target().is_none()
-        && app.repo_context.as_ref().is_some_and(|c| !c.no_token)
-      {
-        app.set_repo_status("Already at root");
-      } else if let Some(parent) = app.repo_back_target() {
-        if app.repo_fetch_rx.is_none() {
-          if let Some(ctx) = &app.repo_context {
-            let (owner, repo, branch) = (
-              ctx.owner.clone(),
-              ctx.repo_name.clone(),
-              ctx.default_branch.clone(),
-            );
-            let token = app.github_token.clone().unwrap_or_default();
-            app.set_repo_status("Loading…");
-            let (tx, rx) = mpsc::channel();
-            app.repo_fetch_rx = Some(rx);
-            spawn_repo_dir(owner, repo, branch, parent, token, tx);
-          }
-        }
-      }
-    }
-    _ => {}
-  }
-  true
-}
-
-fn handle_sources_popup(key: KeyEvent, app: &mut App) -> bool {
-  if app.view != AppView::Sources {
-    return false;
-  }
-  if app.sources_popup.input_active {
-    match key.code {
-      KeyCode::Esc => {
-        app.sources_popup.input_active = false;
-        app.sources_popup.detect_state = SourcesDetectState::Idle;
-        app.sources_popup.input.clear();
-      }
-      KeyCode::Enter => {
-        match &app.sources_popup.detect_state {
-          SourcesDetectState::Idle => {
-            if !app.sources_popup.input.is_empty() {
-              app.sources_popup.detect_state = SourcesDetectState::Detecting;
-              let url = app.sources_popup.input.clone();
-              let (dtx, drx) = mpsc::channel();
-              app.sources_popup.detect_rx = Some(drx);
-              spawn_discovery(url, dtx);
-            }
-          }
-          SourcesDetectState::Detecting => {
-            // waiting — do nothing
-          }
-          SourcesDetectState::Result(result) => {
-            let result = result.clone();
-            match &result {
-              DiscoverResult::ArxivCategory(code) => {
-                if !app.config.sources.arxiv_categories.contains(code) {
-                  log::debug!(
-                    "sources_popup: adding arxiv category via detection: {code}"
-                  );
-                  app.config.sources.arxiv_categories.push(code.clone());
-                  app.config.save();
-                  log::debug!(
-                    "sources_popup: saved — arxiv categories now: [{}]",
-                    app.config.sources.arxiv_categories.join(", ")
-                  );
-                  force_refresh(app);
-                }
-              }
-              DiscoverResult::RssFeed { url, name } => {
-                let exists =
-                  app.config.sources.custom_feeds.iter().any(|f| &f.url == url);
-                if !exists {
-                  app.config.sources.custom_feeds.push(config::CustomFeed {
-                    url: url.clone(),
-                    name: name.clone(),
-                    feed_type: "rss".to_string(),
-                  });
-                  app.config.save();
-                  force_refresh(app);
-                }
-              }
-              DiscoverResult::HuggingFaceAlreadyEnabled
-              | DiscoverResult::Failed(_) => {}
-            }
-            app.sources_popup.input.clear();
-            app.sources_popup.detect_state = SourcesDetectState::Idle;
-            app.sources_popup.input_active = false;
-          }
-        }
-      }
-      KeyCode::Backspace => {
-        app.sources_popup.input.pop();
-        app.sources_popup.detect_state = SourcesDetectState::Idle;
-      }
-      KeyCode::Char(c) => {
-        app.sources_popup.input.push(c);
-        app.sources_popup.detect_state = SourcesDetectState::Idle;
-      }
-      _ => {}
-    }
-  } else {
-    let cats = app.sources_popup_arxiv_cats();
-    let cats_count = cats.len();
-    let sources_count = config::PREDEFINED_SOURCES.len();
-    let custom_count = app.config.sources.custom_feeds.len();
-    let total = app.sources_popup_total_items();
-
-    match key.code {
-      KeyCode::Esc | KeyCode::Char('q') => {
-        app.view = AppView::Settings;
-        app.sources_popup.cursor = 0;
-        app.sources_popup.input.clear();
-        app.sources_popup.detect_state = SourcesDetectState::Idle;
-      }
-      KeyCode::Char('j') | KeyCode::Down => {
-        app.sources_popup.cursor =
-          (app.sources_popup.cursor + 1).min(total.saturating_sub(1));
-      }
-      KeyCode::Char('k') | KeyCode::Up => {
-        app.sources_popup.cursor = app.sources_popup.cursor.saturating_sub(1);
-      }
-      KeyCode::Enter | KeyCode::Char('/') => {
-        if app.sources_popup.cursor == 0 {
-          app.sources_popup.input_active = true;
-        }
-      }
-      KeyCode::Char(' ') => {
-        let c = app.sources_popup.cursor;
-        if c == 0 {
-          app.sources_popup.input_active = true;
-        } else if c <= cats_count {
-          let code = cats[c - 1].0.clone();
-          if app.config.sources.arxiv_categories.contains(&code) {
-            log::debug!("sources_popup: removing arxiv category: {code}");
-            app.config.sources.arxiv_categories.retain(|x| x != &code);
-          } else {
-            log::debug!("sources_popup: adding arxiv category: {code}");
-            app.config.sources.arxiv_categories.push(code);
-          }
-          app.config.save();
-          log::debug!(
-            "sources_popup: saved — arxiv categories now: [{}]",
-            app.config.sources.arxiv_categories.join(", ")
-          );
-          force_refresh(app);
-        } else if c <= cats_count + sources_count {
-          let src = config::PREDEFINED_SOURCES[c - cats_count - 1];
-          let cur = app
-            .config
-            .sources
-            .enabled_sources
-            .get(src)
-            .copied()
-            .unwrap_or(true);
-          app.config.sources.enabled_sources.insert(src.to_string(), !cur);
-          app.config.save();
-          app.invalidate_visible_cache();
-          force_refresh(app);
-        }
-        // custom feeds: no toggle (present = enabled, use d to delete)
-      }
-      KeyCode::Char('d') => {
-        let c = app.sources_popup.cursor;
-        let custom_start = 1 + cats_count + sources_count;
-        if c >= custom_start && c < custom_start + custom_count {
-          let idx = c - custom_start;
-          app.config.sources.custom_feeds.remove(idx);
-          app.config.save();
-          app.sources_popup.cursor = app.sources_popup.cursor.saturating_sub(1);
-        }
-      }
-      _ => {}
-    }
-  }
-  true
-}
 
 fn handle_settings_view(key: KeyEvent, app: &mut App) -> bool {
   if app.view != AppView::Settings {
