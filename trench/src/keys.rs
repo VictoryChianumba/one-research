@@ -184,7 +184,7 @@ fn is_text_entry_context(app: &App) -> bool {
   if app.search_active || app.sources_popup.input_active || app.settings.editing {
     return true;
   }
-  if app.feed_tab == FeedTab::Discoveries && app.discovery_search_focused {
+  if app.feed_tab == FeedTab::Discoveries && app.discovery.search_focused {
     return true;
   }
   if app.chat.active && app.focused_pane == PaneId::Chat {
@@ -902,9 +902,9 @@ fn find_item_by_url<'a>(
 ) -> Option<&'a crate::models::FeedItem> {
   app.url_index.get(url).and_then(|&idx| app.items.get(idx)).or_else(|| {
     app
-      .discovery_url_index
+      .discovery.url_index
       .get(url)
-      .and_then(|&idx| app.discovery_items.get(idx))
+      .and_then(|&idx| app.discovery.items.get(idx))
   })
 }
 
@@ -915,9 +915,9 @@ fn find_item_by_arxiv_id<'a>(
   app.arxiv_id_index.get(arxiv_id).and_then(|&idx| app.items.get(idx)).or_else(
     || {
       app
-        .discovery_arxiv_id_index
+        .discovery.arxiv_id_index
         .get(arxiv_id)
-        .and_then(|&idx| app.discovery_items.get(idx))
+        .and_then(|&idx| app.discovery.items.get(idx))
     },
   )
 }
@@ -2607,44 +2607,44 @@ fn normalize_hex(value: &str) -> String {
 
 fn handle_feed_view(key: KeyEvent, app: &mut App) {
   // Discoveries tab — search bar input (when focused).
-  if app.feed_tab == FeedTab::Discoveries && app.discovery_search_focused {
-    let palette_active = app.discovery_query.starts_with('/');
+  if app.feed_tab == FeedTab::Discoveries && app.discovery.search_focused {
+    let palette_active = app.discovery.query.starts_with('/');
     match key.code {
       KeyCode::Esc => {
-        app.discovery_search_focused = false;
-        app.discovery_palette_selected = 0;
-        app.discovery_palette_scroll = 0;
+        app.discovery.search_focused = false;
+        app.discovery.palette_selected = 0;
+        app.discovery.palette_scroll = 0;
       }
       KeyCode::Up if palette_active => {
-        app.discovery_palette_selected =
-          app.discovery_palette_selected.saturating_sub(1);
+        app.discovery.palette_selected =
+          app.discovery.palette_selected.saturating_sub(1);
         clamp_discovery_palette_scroll(app);
       }
       KeyCode::Down if palette_active => {
-        let count = discovery_palette_count(&app.discovery_query);
-        if app.discovery_palette_selected + 1 < count {
-          app.discovery_palette_selected += 1;
+        let count = discovery_palette_count(&app.discovery.query);
+        if app.discovery.palette_selected + 1 < count {
+          app.discovery.palette_selected += 1;
           clamp_discovery_palette_scroll(app);
         }
       }
       KeyCode::Tab if palette_active => {
         // Complete selected command into the input.
         if let Some(completion) = discovery_palette_completion(
-          &app.discovery_query,
-          app.discovery_palette_selected,
+          &app.discovery.query,
+          app.discovery.palette_selected,
         ) {
           app.set_discovery_query(completion);
-          app.discovery_palette_selected = 0;
-          app.discovery_palette_scroll = 0;
+          app.discovery.palette_selected = 0;
+          app.discovery.palette_scroll = 0;
         }
       }
       KeyCode::Enter => {
-        if !app.discovery_query.is_empty() && !app.discovery_loading {
-          let query = app.discovery_query.clone();
-          app.discovery_palette_selected = 0;
-          app.discovery_palette_scroll = 0;
+        if !app.discovery.query.is_empty() && !app.discovery.loading {
+          let query = app.discovery.query.clone();
+          app.discovery.palette_selected = 0;
+          app.discovery.palette_scroll = 0;
           if query.starts_with('/') {
-            app.discovery_search_focused = false;
+            app.discovery.search_focused = false;
             app.clear_discovery_query();
             let cmd = crate::commands::parser::parse_slash_command(&query);
             crate::commands::dispatch::dispatch_slash_command(app, cmd);
@@ -2655,22 +2655,22 @@ fn handle_feed_view(key: KeyEvent, app: &mut App) {
         }
       }
       KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-        app.discovery_force_new = true;
+        app.discovery.force_new = true;
         app.clear_discovery_query();
-        app.discovery_palette_selected = 0;
-        app.discovery_palette_scroll = 0;
+        app.discovery.palette_selected = 0;
+        app.discovery.palette_scroll = 0;
       }
       KeyCode::Backspace => {
         app.pop_discovery_char();
-        if !app.discovery_query.starts_with('/') {
-          app.discovery_palette_selected = 0;
-          app.discovery_palette_scroll = 0;
+        if !app.discovery.query.starts_with('/') {
+          app.discovery.palette_selected = 0;
+          app.discovery.palette_scroll = 0;
         }
       }
       KeyCode::Char(c) => {
         app.push_discovery_char(c);
-        app.discovery_palette_selected = 0;
-        app.discovery_palette_scroll = 0;
+        app.discovery.palette_selected = 0;
+        app.discovery.palette_scroll = 0;
       }
       _ => {}
     }
@@ -2681,7 +2681,7 @@ fn handle_feed_view(key: KeyEvent, app: &mut App) {
   if app.feed_tab == FeedTab::Discoveries {
     if let KeyCode::Char(c) = key.code {
       if c != 'q' {
-        app.discovery_search_focused = true;
+        app.discovery.search_focused = true;
         app.push_discovery_char(c);
         return;
       }
@@ -3227,7 +3227,7 @@ fn handle_history_tab(key: KeyEvent, app: &mut App) -> bool {
           let topic = entry.key.clone();
           let config = app.config.clone();
           // Re-running a query starts a fresh discovery session.
-          app.discovery_force_new = true;
+          app.discovery.force_new = true;
           app.feed_tab = FeedTab::Discoveries;
           app.reset_active_feed_position();
           spawn_ai_discovery(topic, config, app);
@@ -3299,10 +3299,10 @@ fn discovery_palette_completion(
 
 fn clamp_discovery_palette_scroll(app: &mut App) {
   let visible = 8usize;
-  let sel = app.discovery_palette_selected;
-  if sel < app.discovery_palette_scroll {
-    app.discovery_palette_scroll = sel;
-  } else if sel >= app.discovery_palette_scroll + visible {
-    app.discovery_palette_scroll = sel + 1 - visible;
+  let sel = app.discovery.palette_selected;
+  if sel < app.discovery.palette_scroll {
+    app.discovery.palette_scroll = sel;
+  } else if sel >= app.discovery.palette_scroll + visible {
+    app.discovery.palette_scroll = sel + 1 - visible;
   }
 }

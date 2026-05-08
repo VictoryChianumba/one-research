@@ -80,8 +80,8 @@ fn draw_discoveries_with_searchbar(
 fn draw_discovery_searchbar(frame: &mut Frame, app: &App, area: Rect) {
   let t = app.theme();
   let w = area.width as usize;
-  let has_session = !app.discovery_session.is_empty();
-  let intent_label = app.discovery_intent.label();
+  let has_session = !app.discovery.session.is_empty();
+  let intent_label = app.discovery.intent.label();
 
   // Separator line — title shows current status inline rather than a separate row.
   let intent_badge = if intent_label != "papers" {
@@ -89,9 +89,9 @@ fn draw_discovery_searchbar(frame: &mut Frame, app: &App, area: Rect) {
   } else {
     String::new()
   };
-  let (title_text, title_style) = if app.discovery_loading {
+  let (title_text, title_style) = if app.discovery.loading {
     let short =
-      app.discovery_status.trim_end_matches('…').trim_end_matches("...");
+      app.discovery.status.trim_end_matches('…').trim_end_matches("...");
     (
       format!("{}…{}", short, intent_badge),
       Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
@@ -112,8 +112,8 @@ fn draw_discovery_searchbar(frame: &mut Frame, app: &App, area: Rect) {
   ]);
 
   // Input line — prompt only when focused, query dim when unfocused.
-  let cursor = if app.discovery_search_focused { "█" } else { "" };
-  let (prompt, query_style) = if app.discovery_search_focused {
+  let cursor = if app.discovery.search_focused { "█" } else { "" };
+  let (prompt, query_style) = if app.discovery.search_focused {
     (
       Span::styled("  ", Style::default().fg(t.accent)),
       Style::default().fg(t.text),
@@ -126,12 +126,12 @@ fn draw_discovery_searchbar(frame: &mut Frame, app: &App, area: Rect) {
   };
   let input_line = Line::from(vec![
     prompt,
-    Span::styled(format!("{}{}", app.discovery_query, cursor), query_style),
+    Span::styled(format!("{}{}", app.discovery.query, cursor), query_style),
   ]);
 
   // Hint line — contextual, always rendered to avoid height jitter.
-  let hint_text = if app.discovery_search_focused {
-    if app.discovery_query.starts_with('/') {
+  let hint_text = if app.discovery.search_focused {
+    if app.discovery.query.starts_with('/') {
       "Tab: complete  ↑↓: navigate  Enter: run  Esc: cancel"
     } else if has_session {
       "Enter: refine  Ctrl+N: new search  Esc: unfocus"
@@ -151,12 +151,12 @@ fn draw_discovery_searchbar(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_discovery_palette(frame: &mut Frame, app: &App, list_area: Rect) {
-  if !app.discovery_search_focused || !app.discovery_query.starts_with('/') {
+  if !app.discovery.search_focused || !app.discovery.query.starts_with('/') {
     return;
   }
 
   let all_specs = crate::commands::registry::discovery_slash_specs();
-  let query_lower = app.discovery_query_lower.as_str();
+  let query_lower = app.discovery.query_lower.as_str();
   let suggestions: Vec<_> = all_specs
     .iter()
     .filter(|s| {
@@ -171,8 +171,8 @@ fn draw_discovery_palette(frame: &mut Frame, app: &App, list_area: Rect) {
   let t = app.theme();
   let w = list_area.width as usize;
   let visible = suggestions.len().min(8);
-  let selected = app.discovery_palette_selected.min(suggestions.len() - 1);
-  let scroll = app.discovery_palette_scroll;
+  let selected = app.discovery.palette_selected.min(suggestions.len() - 1);
+  let scroll = app.discovery.palette_scroll;
   let start = scroll;
   let end = (start + visible).min(suggestions.len());
 
@@ -498,9 +498,9 @@ fn draw_history_tab(frame: &mut Frame, app: &App, area: Rect) {
         .map(|&idx| &app.items[idx])
         .or_else(|| {
           app
-            .discovery_url_index
+            .discovery.url_index
             .get(&entry.key)
-            .map(|&idx| &app.discovery_items[idx])
+            .map(|&idx| &app.discovery.items[idx])
         });
       let row_style =
         if is_selected { t.style_selection() } else { Style::default() };

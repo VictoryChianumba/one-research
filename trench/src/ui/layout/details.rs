@@ -268,9 +268,9 @@ fn details_subject<'a>(
           .map(|&i| &app.items[i])
           .or_else(|| {
             app
-              .discovery_url_index
+              .discovery.url_index
               .get(&entry.key)
-              .map(|&i| &app.discovery_items[i])
+              .map(|&i| &app.discovery.items[i])
           });
         Some(DetailsSubject::HistoryPaper {
           entry,

@@ -421,6 +421,39 @@ pub struct ThemePickerState {
   pub custom_editor: Option<CustomThemeEditorState>,
 }
 
+/// Discovery pane state — agent results, search bar, palette, multi-turn
+/// session. Largest cluster on App; grouped to make ownership explicit.
+#[derive(Default)]
+pub struct DiscoveryState {
+  pub items: Vec<FeedItem>,
+  pub url_index: HashMap<String, usize>,
+  pub arxiv_id_index: HashMap<String, usize>,
+  pub selected_index: usize,
+  pub list_offset: usize,
+  pub rx: Option<Receiver<DiscoveryMessage>>,
+  /// Last status line from the agent ("Searching…", "Found N papers", etc.).
+  pub status: String,
+  pub query: String,
+  /// Lowercased mirror of `query`. Refreshed by mutator helpers.
+  /// Avoids the per-frame `to_lowercase` heap allocation in the palette draw.
+  pub query_lower: String,
+  /// Whether the persistent search bar at the bottom of Discoveries has focus.
+  pub search_focused: bool,
+  pub loading: bool,
+  /// Accumulated agent message history — enables multi-turn refinement.
+  pub session: crate::discovery::SessionHistory,
+  /// Set by Ctrl+N — forces a fresh session even when history exists.
+  pub force_new: bool,
+  /// Classified intent of the current/last discovery query.
+  pub intent: crate::discovery::intent::QueryIntent,
+  /// When set by a slash command, overrides heuristic classification once.
+  pub forced_intent: Option<crate::discovery::intent::QueryIntent>,
+  /// Selected row index in the slash-command palette.
+  pub palette_selected: usize,
+  /// Scroll offset for the palette (when suggestions exceed visible rows).
+  pub palette_scroll: usize,
+}
+
 pub struct App {
   /// True when the UI needs to be redrawn. Set by `mark_dirty()`, cleared by
   /// `check_needs_redraw()`. Defaults to `true` so the first frame always draws.
@@ -433,10 +466,6 @@ pub struct App {
   /// `arxiv_id → index in self.items`. Same role as `url_index` for the
   /// HF/arXiv-collapse path.
   pub arxiv_id_index: HashMap<String, usize>,
-  /// Same as `url_index` but for `discovery_items`.
-  pub discovery_url_index: HashMap<String, usize>,
-  /// Same as `arxiv_id_index` but for `discovery_items`.
-  pub discovery_arxiv_id_index: HashMap<String, usize>,
 
   pub should_quit: bool,
   pub quit_popup: QuitPopupState,
@@ -444,33 +473,11 @@ pub struct App {
   pub items: Vec<FeedItem>,
   pub selected_index: usize,
   pub list_offset: usize,
-  pub discovery_items: Vec<FeedItem>,
-  pub discovery_selected_index: usize,
-  pub discovery_list_offset: usize,
-  pub discovery_rx: Option<Receiver<DiscoveryMessage>>,
-  /// Last status line from the agent ("Searching…", "Found N papers", etc.).
-  pub discovery_status: String,
-  pub discovery_query: String,
-  /// Lowercased mirror of `discovery_query`. Refreshed by the discovery
-  /// mutator helpers below. Avoids the per-frame `to_lowercase` heap
-  /// allocation in `draw_discovery_palette`.
-  pub discovery_query_lower: String,
-  /// Whether the persistent search bar at the bottom of Discoveries has focus.
-  pub discovery_search_focused: bool,
+
+  /// All discovery-related state grouped into one sub-state.
+  pub discovery: DiscoveryState,
+
   pub feed_tab: FeedTab,
-  pub discovery_loading: bool,
-  /// Accumulated agent message history — enables multi-turn refinement.
-  pub discovery_session: crate::discovery::SessionHistory,
-  /// Set by Ctrl+N — forces a fresh session even when history exists.
-  pub discovery_force_new: bool,
-  /// Classified intent of the current/last discovery query.
-  pub discovery_intent: crate::discovery::intent::QueryIntent,
-  /// When set by a slash command, overrides heuristic classification once.
-  pub discovery_forced_intent: Option<crate::discovery::intent::QueryIntent>,
-  /// Selected row index in the discovery slash-command palette.
-  pub discovery_palette_selected: usize,
-  /// Scroll offset for the discovery palette (for when suggestions exceed visible rows).
-  pub discovery_palette_scroll: usize,
   /// Activity log — paper opens and discovery queries.
   pub history: Vec<crate::history::HistoryEntry>,
   pub history_filter: crate::history::HistoryFilter,
@@ -666,29 +673,17 @@ impl App {
       needs_redraw: true,
       url_index: HashMap::new(),
       arxiv_id_index: HashMap::new(),
-      discovery_url_index: HashMap::new(),
-      discovery_arxiv_id_index: HashMap::new(),
       should_quit: false,
       quit_popup: QuitPopupState::default(),
       items: Vec::new(),
       selected_index: 0,
       list_offset: 0,
-      discovery_items: crate::store::discovery_cache::load(),
-      discovery_selected_index: 0,
-      discovery_list_offset: 0,
-      discovery_rx: None,
-      discovery_status: String::new(),
-      discovery_query: String::new(),
-      discovery_query_lower: String::new(),
-      discovery_search_focused: false,
+      discovery: DiscoveryState {
+        items: crate::store::discovery_cache::load(),
+        session: crate::store::session::load(),
+        ..DiscoveryState::default()
+      },
       feed_tab: FeedTab::Inbox,
-      discovery_loading: false,
-      discovery_session: crate::store::session::load(),
-      discovery_force_new: false,
-      discovery_intent: crate::discovery::intent::QueryIntent::default(),
-      discovery_forced_intent: None,
-      discovery_palette_selected: 0,
-      discovery_palette_scroll: 0,
       history: crate::store::history::load(),
       history_filter: crate::history::HistoryFilter::default(),
       history_selected_index: 0,
@@ -1032,13 +1027,13 @@ impl App {
 
   /// Same as `rebuild_indices` but for `discovery_items`.
   pub fn rebuild_discovery_indices(&mut self) {
-    self.discovery_url_index.clear();
-    self.discovery_arxiv_id_index.clear();
-    self.discovery_url_index.reserve(self.discovery_items.len());
-    for (idx, item) in self.discovery_items.iter().enumerate() {
-      self.discovery_url_index.insert(item.url.clone(), idx);
+    self.discovery.url_index.clear();
+    self.discovery.arxiv_id_index.clear();
+    self.discovery.url_index.reserve(self.discovery.items.len());
+    for (idx, item) in self.discovery.items.iter().enumerate() {
+      self.discovery.url_index.insert(item.url.clone(), idx);
       if let Some(aid) = arxiv_id_from_url(&item.url) {
-        self.discovery_arxiv_id_index.insert(aid.to_string(), idx);
+        self.discovery.arxiv_id_index.insert(aid.to_string(), idx);
       }
     }
   }
@@ -1062,7 +1057,7 @@ impl App {
   /// - `discovery_loading` — discovery agent in flight
   /// - `settings_save_time` — TTL window for the "Saved." indicator
   pub fn has_active_animation(&self) -> bool {
-    if self.is_loading || self.is_refreshing || self.discovery_loading {
+    if self.is_loading || self.is_refreshing || self.discovery.loading {
       return true;
     }
     if self.settings.save_time.is_some() {
@@ -1249,9 +1244,9 @@ impl App {
   /// Same shape as `reset_items` but for the discovery-side mirrors —
   /// keeps the parallel indexes in sync.
   pub fn reset_discovery_items(&mut self) {
-    self.discovery_items.clear();
-    self.discovery_url_index.clear();
-    self.discovery_arxiv_id_index.clear();
+    self.discovery.items.clear();
+    self.discovery.url_index.clear();
+    self.discovery.arxiv_id_index.clear();
     self.invalidate_visible_cache();
   }
 
@@ -1306,7 +1301,7 @@ impl App {
     match self.feed_tab {
       FeedTab::Inbox => &self.items,
       FeedTab::Library => &self.items,
-      FeedTab::Discoveries => &self.discovery_items,
+      FeedTab::Discoveries => &self.discovery.items,
       FeedTab::History => &[],
     }
   }
@@ -1315,7 +1310,7 @@ impl App {
     match self.feed_tab {
       FeedTab::Inbox => &mut self.items,
       FeedTab::Library => &mut self.items,
-      FeedTab::Discoveries => &mut self.discovery_items,
+      FeedTab::Discoveries => &mut self.discovery.items,
       // History doesn't use FeedItem; callers should not dispatch here for this tab.
       FeedTab::History => &mut self.items,
     }
@@ -1325,7 +1320,7 @@ impl App {
     match self.feed_tab {
       FeedTab::Inbox => self.selected_index,
       FeedTab::Library => self.library_selected_index,
-      FeedTab::Discoveries => self.discovery_selected_index,
+      FeedTab::Discoveries => self.discovery.selected_index,
       FeedTab::History => self.history_selected_index,
     }
   }
@@ -1334,7 +1329,7 @@ impl App {
     match self.feed_tab {
       FeedTab::Inbox => self.list_offset,
       FeedTab::Library => self.library_list_offset,
-      FeedTab::Discoveries => self.discovery_list_offset,
+      FeedTab::Discoveries => self.discovery.list_offset,
       FeedTab::History => self.history_list_offset,
     }
   }
@@ -1343,7 +1338,7 @@ impl App {
     match self.feed_tab {
       FeedTab::Inbox => self.selected_index = value,
       FeedTab::Library => self.library_selected_index = value,
-      FeedTab::Discoveries => self.discovery_selected_index = value,
+      FeedTab::Discoveries => self.discovery.selected_index = value,
       FeedTab::History => self.history_selected_index = value,
     }
   }
@@ -1352,7 +1347,7 @@ impl App {
     match self.feed_tab {
       FeedTab::Inbox => self.list_offset = value,
       FeedTab::Library => self.library_list_offset = value,
-      FeedTab::Discoveries => self.discovery_list_offset = value,
+      FeedTab::Discoveries => self.discovery.list_offset = value,
       FeedTab::History => self.history_list_offset = value,
     }
   }
@@ -1453,25 +1448,25 @@ impl App {
 
   /// Mirror of `push_search_char` for the discovery palette.
   pub fn push_discovery_char(&mut self, c: char) {
-    self.discovery_query.push(c);
-    self.discovery_query_lower = self.discovery_query.to_lowercase();
+    self.discovery.query.push(c);
+    self.discovery.query_lower = self.discovery.query.to_lowercase();
   }
 
   pub fn pop_discovery_char(&mut self) {
-    self.discovery_query.pop();
-    self.discovery_query_lower = self.discovery_query.to_lowercase();
+    self.discovery.query.pop();
+    self.discovery.query_lower = self.discovery.query.to_lowercase();
   }
 
   pub fn clear_discovery_query(&mut self) {
-    self.discovery_query.clear();
-    self.discovery_query_lower.clear();
+    self.discovery.query.clear();
+    self.discovery.query_lower.clear();
   }
 
   /// Set the discovery query to an arbitrary string (used by slash-palette
   /// completion). Refreshes the lowercased mirror.
   pub fn set_discovery_query(&mut self, s: String) {
-    self.discovery_query = s;
-    self.discovery_query_lower = self.discovery_query.to_lowercase();
+    self.discovery.query = s;
+    self.discovery.query_lower = self.discovery.query.to_lowercase();
   }
 
   pub fn selected_item(&self) -> Option<&FeedItem> {
@@ -1613,7 +1608,7 @@ impl App {
       }
     }
     if !found {
-      for item in self.discovery_items.iter_mut() {
+      for item in self.discovery.items.iter_mut() {
         if item.url == url {
           item.workflow_state = state;
           found = true;
@@ -1672,7 +1667,7 @@ impl App {
   pub fn show_quit_popup(&mut self) {
     let kind = if self.focused_pane == PaneId::Reader && self.reader_active {
       QuitPopupKind::LeaveReader
-    } else if self.discovery_loading || self.is_loading {
+    } else if self.discovery.loading || self.is_loading {
       QuitPopupKind::QuitWithProgress
     } else if self.chat.active
       && self.chat.ui.as_ref().map_or(false, |c| !c.input.trim().is_empty())
@@ -2377,7 +2372,7 @@ impl App {
     let mut messages = Vec::new();
     let mut disconnected = false;
 
-    if let Some(rx) = &self.discovery_rx {
+    if let Some(rx) = &self.discovery.rx {
       loop {
         match rx.try_recv() {
           Ok(msg) => messages.push(msg),
@@ -2391,8 +2386,8 @@ impl App {
     }
 
     if disconnected {
-      self.discovery_rx = None;
-      self.discovery_loading = false;
+      self.discovery.rx = None;
+      self.discovery.loading = false;
     }
 
     let had_messages = !messages.is_empty();
@@ -2400,27 +2395,27 @@ impl App {
     for msg in messages {
       match msg {
         DiscoveryMessage::StatusUpdate(s) => {
-          self.discovery_status = s;
+          self.discovery.status = s;
         }
         DiscoveryMessage::Items(items) => {
           self.merge_discovery_items(items);
-          save_discovery_items(&self.discovery_items);
+          save_discovery_items(&self.discovery.items);
         }
         DiscoveryMessage::SessionSnapshot(snapshot) => {
-          self.discovery_session = snapshot;
-          crate::store::session::save(&self.discovery_session);
+          self.discovery.session = snapshot;
+          crate::store::session::save(&self.discovery.session);
         }
         DiscoveryMessage::Complete => {
-          self.discovery_rx = None;
-          self.discovery_loading = false;
-          let n = self.discovery_items.len();
-          self.discovery_status = format!("Found {n} papers");
+          self.discovery.rx = None;
+          self.discovery.loading = false;
+          let n = self.discovery.items.len();
+          self.discovery.status = format!("Found {n} papers");
           self.status_message = Some("Discovery complete".to_string());
 
-          let topic = self.discovery_session.initial_query.clone();
+          let topic = self.discovery.session.initial_query.clone();
           if !topic.is_empty() {
             let titles: String = self
-              .discovery_items
+              .discovery.items
               .iter()
               .take(3)
               .map(|i| format!("• {}", i.title))
@@ -2437,9 +2432,9 @@ impl App {
           }
         }
         DiscoveryMessage::Error(e) => {
-          self.discovery_rx = None;
-          self.discovery_loading = false;
-          self.discovery_status = format!("Error: {e}");
+          self.discovery.rx = None;
+          self.discovery.loading = false;
+          self.discovery.status = format!("Error: {e}");
           self.push_chat_assistant_message(format!("Discovery failed: {e}"));
           self.status_message = Some("Discovery failed".to_string());
         }
@@ -2465,32 +2460,32 @@ impl App {
       }
 
       // URL dedup via index — O(1).
-      if let Some(&pos) = self.discovery_url_index.get(&item.url) {
-        self.discovery_items[pos] = item;
+      if let Some(&pos) = self.discovery.url_index.get(&item.url) {
+        self.discovery.items[pos] = item;
         continue;
       }
 
       // ArXiv ID dedup — O(1).
       if let Some(aid) = arxiv_id_from_url(&item.url) {
-        if let Some(&pos) = self.discovery_arxiv_id_index.get(aid) {
+        if let Some(&pos) = self.discovery.arxiv_id_index.get(aid) {
           if item.source_platform == SourcePlatform::ArXiv {
-            let ws = self.discovery_items[pos].workflow_state;
-            self.discovery_items[pos] = item;
-            self.discovery_items[pos].workflow_state = ws;
+            let ws = self.discovery.items[pos].workflow_state;
+            self.discovery.items[pos] = item;
+            self.discovery.items[pos].workflow_state = ws;
           }
           continue;
         }
       }
 
       // New item: push and update indices incrementally.
-      let new_idx = self.discovery_items.len();
-      self.discovery_url_index.insert(item.url.clone(), new_idx);
+      let new_idx = self.discovery.items.len();
+      self.discovery.url_index.insert(item.url.clone(), new_idx);
       if let Some(aid) = arxiv_id_from_url(&item.url) {
-        self.discovery_arxiv_id_index.insert(aid.to_string(), new_idx);
+        self.discovery.arxiv_id_index.insert(aid.to_string(), new_idx);
       }
-      self.discovery_items.push(item);
+      self.discovery.items.push(item);
     }
-    self.discovery_items.sort_by(|a, b| b.published_at.cmp(&a.published_at));
+    self.discovery.items.sort_by(|a, b| b.published_at.cmp(&a.published_at));
     // Sort invalidated positions; rebuild for correctness.
     self.rebuild_discovery_indices();
     self.invalidate_visible_cache();
@@ -2919,20 +2914,20 @@ mod tests {
   #[test]
   fn reset_discovery_items_clears_indices() {
     let mut app = App::new();
-    app.discovery_items = mock_items();
+    app.discovery.items = mock_items();
     // Manually populate the discovery indices to mirror what
     // merge_discovery_items would do; rebuild_indices targets the primary
     // items vec, not discovery_items.
-    for (idx, item) in app.discovery_items.iter().enumerate() {
-      app.discovery_url_index.insert(item.url.clone(), idx);
+    for (idx, item) in app.discovery.items.iter().enumerate() {
+      app.discovery.url_index.insert(item.url.clone(), idx);
     }
-    assert!(!app.discovery_url_index.is_empty());
+    assert!(!app.discovery.url_index.is_empty());
 
     app.reset_discovery_items();
 
-    assert!(app.discovery_items.is_empty());
-    assert!(app.discovery_url_index.is_empty());
-    assert!(app.discovery_arxiv_id_index.is_empty());
+    assert!(app.discovery.items.is_empty());
+    assert!(app.discovery.url_index.is_empty());
+    assert!(app.discovery.arxiv_id_index.is_empty());
   }
 
   #[test]
@@ -2945,7 +2940,7 @@ mod tests {
     app.is_refreshing = true;
     assert!(app.has_active_animation());
     app.is_refreshing = false;
-    app.discovery_loading = true;
+    app.discovery.loading = true;
     assert!(app.has_active_animation());
   }
 

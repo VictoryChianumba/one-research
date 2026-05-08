@@ -731,10 +731,10 @@ pub(crate) fn spawn_ai_discovery(
     .unwrap_or(false);
 
   let is_refinement =
-    !app.discovery_session.is_empty() && !app.discovery_force_new && has_claude;
+    !app.discovery.session.is_empty() && !app.discovery.force_new && has_claude;
 
   let prior_history = if is_refinement {
-    Some(app.discovery_session.messages.clone())
+    Some(app.discovery.session.messages.clone())
   } else {
     None
   };
@@ -743,23 +743,23 @@ pub(crate) fn spawn_ai_discovery(
     app.reset_discovery_items();
   }
 
-  app.discovery_force_new = false;
+  app.discovery.force_new = false;
 
-  let intent = if let Some(forced) = app.discovery_forced_intent.take() {
+  let intent = if let Some(forced) = app.discovery.forced_intent.take() {
     forced
   } else if is_refinement {
-    app.discovery_session.query_intent
+    app.discovery.session.query_intent
   } else {
     discovery::intent::classify(&topic)
   };
-  app.discovery_intent = intent;
+  app.discovery.intent = intent;
 
   app.record_discovery_query(&topic, intent);
 
   let (tx, rx) = mpsc::channel::<discovery::DiscoveryMessage>();
-  app.discovery_rx = Some(rx);
-  app.discovery_loading = true;
-  app.discovery_status = if is_refinement {
+  app.discovery.rx = Some(rx);
+  app.discovery.loading = true;
+  app.discovery.status = if is_refinement {
     format!("Refining [{}]: '{topic}'…", intent.label())
   } else {
     format!("Searching [{}]…", intent.label())
@@ -1336,7 +1336,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
       item.workflow_state = *state;
     }
   }
-  for item in &mut app.discovery_items {
+  for item in &mut app.discovery.items {
     if let Some(state) = app.persisted_states.get(&item.url) {
       item.workflow_state = *state;
     }

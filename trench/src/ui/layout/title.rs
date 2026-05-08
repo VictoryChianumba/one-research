@@ -64,7 +64,7 @@ fn draw_compact_title_bar(frame: &mut Frame, app: &App, area: Rect) {
   } else {
     inactive_style
   };
-  let discovery_spin = if app.discovery_loading {
+  let discovery_spin = if app.discovery.loading {
     format!(" {}", SPINNER[app.spinner_frame % SPINNER.len()])
   } else {
     String::new()
@@ -76,7 +76,7 @@ fn draw_compact_title_bar(frame: &mut Frame, app: &App, area: Rect) {
   ];
   let nav_text = format!(
     "Inbox {inbox_count}  Library {library_count}  Discoveries {}{}  History {}  Total {total}",
-    app.discovery_items.len(),
+    app.discovery.items.len(),
     discovery_spin,
     app.history.len(),
   );
@@ -101,7 +101,7 @@ fn draw_compact_title_bar(frame: &mut Frame, app: &App, area: Rect) {
     Span::styled(library_count.to_string(), library_style),
     Span::styled("  Discoveries ", discoveries_style),
     Span::styled(
-      format!("{}{}", app.discovery_items.len(), discovery_spin),
+      format!("{}{}", app.discovery.items.len(), discovery_spin),
       discoveries_style,
     ),
     Span::styled("  History ", history_style),

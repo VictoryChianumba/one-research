@@ -25,12 +25,12 @@ pub fn dispatch_slash_command(app: &mut App, cmd: SlashCommandInvocation) {
     }
     SlashCommandInvocation::ClearDiscoveries => {
       app.reset_discovery_items();
-      app.discovery_selected_index = 0;
-      app.discovery_list_offset = 0;
-      app.discovery_status = String::new();
-      app.discovery_loading = false;
-      app.discovery_session = crate::discovery::SessionHistory::default();
-      crate::store::discovery_cache::save(&app.discovery_items);
+      app.discovery.selected_index = 0;
+      app.discovery.list_offset = 0;
+      app.discovery.status = String::new();
+      app.discovery.loading = false;
+      app.discovery.session = crate::discovery::SessionHistory::default();
+      crate::store::discovery_cache::save(&app.discovery.items);
       crate::store::session::clear();
       app.push_chat_assistant_message(
         "Cleared discovery results and session history.".to_string(),
@@ -115,7 +115,7 @@ pub fn dispatch_slash_command(app: &mut App, cmd: SlashCommandInvocation) {
       );
     }
     SlashCommandInvocation::Digest => {
-      app.discovery_forced_intent = Some(QueryIntent::Digest);
+      app.discovery.forced_intent = Some(QueryIntent::Digest);
       crate::workflows::discover::start(
         app,
         "what happened in AI/ML this week".to_string(),
@@ -198,7 +198,7 @@ fn dispatch_discovery_with_intent(
   if topic.is_empty() {
     app.push_chat_assistant_message(format!("Usage: {command} TOPIC"));
   } else {
-    app.discovery_forced_intent = Some(intent);
+    app.discovery.forced_intent = Some(intent);
     crate::workflows::discover::start(app, topic);
   }
 }
