@@ -24,6 +24,9 @@ pub const RIGHT_COL_WIDTH: u16 = 50;
 
 const VERSION: &str = "v0.1.0";
 
+const SPINNER: &[&str] =
+  &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
 pub fn draw(frame: &mut Frame, app: &mut App) {
   let t_total = std::time::Instant::now();
   match app.view {
@@ -261,7 +264,7 @@ fn draw_compact_title_bar(frame: &mut Frame, app: &App, area: Rect) {
 
   let width = area.width as usize;
   // Use the memoized counts cache instead of two full O(N) scans per
-  // frame for inbox / library counts (audit Perf MED #1).
+  // frame for inbox / library counts.
   let counts = app.item_counts();
   let inbox_count = counts.inbox;
   let library_count = counts.total - counts.inbox;
@@ -285,7 +288,6 @@ fn draw_compact_title_bar(frame: &mut Frame, app: &App, area: Rect) {
   } else {
     inactive_style
   };
-  const SPINNER: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
   let discovery_spin = if app.discovery_loading {
     format!(" {}", SPINNER[app.spinner_frame % SPINNER.len()])
   } else {
@@ -389,9 +391,9 @@ fn draw_search_row(frame: &mut Frame, app: &App, area: Rect) {
 
 fn filter_summary(app: &App) -> std::cell::Ref<'_, str> {
   // Lazy memoize: the 4 summarize_ordered_set passes + sort + format!
-  // ran every frame regardless of whether active_filters changed
-  // (audit Perf MED #8). Invalidation hooks fire from
-  // `toggle_filter_at_cursor` and `clear_filters` in app.rs.
+  // ran every frame regardless of whether active_filters changed.
+  // Invalidation hooks fire from `toggle_filter_at_cursor` and
+  // `clear_filters` in app.rs.
   if app.filter_summary_cache.borrow().is_none() {
     let summary = compute_filter_summary(app);
     *app.filter_summary_cache.borrow_mut() = Some(summary);
@@ -993,7 +995,7 @@ fn draw_notes_surface(
   let is_focused = app.focused_pane == note_pane_for_side(side);
   // Inline the field access so Rust's split-borrow rules can keep the
   // `tabs` borrow disjoint from the later `app.notes_app.as_mut()` —
-  // saves a per-draw `Vec<NotesTab>` clone (audit Perf MED #6).
+  // saves a per-draw `Vec<NotesTab>` clone.
   let (tabs, active) = match side {
     FocusedReader::Primary => (&app.notes_tabs, app.notes_active_tab),
     FocusedReader::Secondary => {
@@ -1776,11 +1778,9 @@ fn draw_library_tab(frame: &mut Frame, app: &mut App, area: Rect) {
   let chips_area = Rect { height: 1, ..area };
   let chips_sep_area = Rect { y: area.y + 1, height: 1, ..area };
 
-  // Per-chip count via the memoized aggregate. Eliminates the ~6 full
-  // O(N) scans of `app.items` that previously ran on every draw.
-  // Extract the three workflow counts into local copies so the Ref<ItemCounts>
-  // drops immediately — the rest of the function dispatches to mutating
-  // helpers that need &mut app (audit Perf MED #7).
+  // Per-chip count via the memoized aggregate. Extract the three workflow
+  // counts into local copies so the Ref<ItemCounts> drops immediately — the
+  // rest of the function dispatches to mutating helpers that need &mut app.
   let (count_queued, count_deep_read, count_archived) = {
     let counts = app.item_counts();
     (counts.queued, counts.deep_read, counts.archived)
@@ -1990,7 +1990,7 @@ fn draw_history_tab(frame: &mut Frame, app: &App, area: Rect) {
   let end = (offset + viewport_rows + 2).min(total);
   let window = &entries[offset..end];
   // Store raw title strings (not Vec<Line>) — see draw_item_table's
-  // window_data shape for the same rationale (audit Perf HIGH H5/H4).
+  // window_data shape for the same rationale.
   let window_data: Vec<(u16, Vec<String>)> = window
     .iter()
     .map(|entry| {
@@ -2017,9 +2017,8 @@ fn draw_history_tab(frame: &mut Frame, app: &App, area: Rect) {
       let item_idx = offset + i;
       let is_selected = item_idx == selected;
       let (content_height, title_lines) = &window_data[i];
-      // O(1) hashmap lookup (audit Perf CRIT C1, sibling site missed
-      // by T4c which only fixed details_subject). Was a per-row
-      // O(items + discovery_items) chain+find scan against ~3K items.
+      // O(1) hashmap lookup. Was a per-row O(items + discovery_items)
+      // chain+find scan against ~3K items.
       let cached_item = app
         .url_index
         .get(&entry.key)
@@ -2183,9 +2182,9 @@ fn draw_narrow_feed(frame: &mut Frame, app: &mut App, area: Rect) {
   // window at viewport_rows is a safe upper bound for what gets drawn.
   let visible =
     app.visible_window(offset, offset.saturating_add(viewport_rows));
-  // Pre-wrap titles once per item — `reader_feed_row_lines` previously
+  // Pre-wrap titles once per item; `reader_feed_row_lines` previously
   // re-ran textwrap on each call, doubling work against the same
-  // textwrap done for row-height counting (audit Perf HIGH H6).
+  // textwrap done for row-height counting.
   let pre_wrapped: Vec<Vec<String>> = visible
     .iter()
     .map(|item| reader_feed_title_lines(&item.title, title_w))
@@ -2291,7 +2290,7 @@ fn reader_feed_title_lines(title: &str, title_w: usize) -> Vec<String> {
 
 /// Build the per-row Line<'static>s for a single visible item in the
 /// narrow-feed table. Takes pre-wrapped title lines so the caller can
-/// share the textwrap output with height-counting (audit Perf HIGH H6).
+/// share the textwrap output with height-counting.
 fn reader_feed_row_lines_with_wrapped(
   item: &crate::models::FeedItem,
   title_lines: &[String],
@@ -2491,7 +2490,7 @@ fn draw_item_table(frame: &mut Frame, app: &mut App, area: Rect) {
   let t_heights = std::time::Instant::now();
   // Store raw title strings (not pre-wrapped Lines). Building the styled
   // Lines directly at row time saves a Vec<Line>::clone + Span content
-  // into_owned re-conversion per row (audit Perf HIGH H5).
+  // into_owned re-conversion per row.
   let window_data: Vec<(u16, Vec<String>)> = window
     .iter()
     .map(|item| {
@@ -3034,11 +3033,10 @@ fn draw_details_panel(frame: &mut Frame, app: &mut App, area: Rect) {
     }
   }
 
-  // Re-borrow filtered_history for the render path. With the prior
-  // implementation this filter ran 3× per History-tab frame (once in
-  // draw_history_tab, once each in details_subject + details_subject_key);
-  // threading it through brings the per-render-call count from 3 to 2 —
-  // full deduplication would require a memo on App (audit Perf CRIT C3).
+  // Re-borrow filtered_history for the render path. The cache memoizes
+  // on App so this is cheap; without the memo this filter would run
+  // multiple times per History-tab frame (draw_history_tab +
+  // details_subject + details_subject_key).
   let history = app.filtered_history();
   if let Some(subject) = details_subject(app, &history) {
     let title_style = Style::default().fg(t.text).add_modifier(Modifier::BOLD);
@@ -3121,7 +3119,7 @@ fn details_subject<'a>(
     return match entry.kind {
       crate::history::HistoryKind::Paper => {
         // O(1) hashmap lookup vs the prior O(N) chain+find scan that
-        // ran per row × per frame on the History tab (audit Perf CRIT C1).
+        // ran per row × per frame on the History tab.
         let item = app
           .url_index
           .get(&entry.key)
@@ -3689,8 +3687,6 @@ fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
     .split(area);
 
   let status_line: Option<Line> = if app.fulltext_loading {
-    const SPINNER: &[&str] =
-      &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
     let spin = SPINNER[app.spinner_frame % SPINNER.len()];
     Some(Line::from(Span::styled(
       format!("{spin} fetching article…"),
@@ -3699,8 +3695,6 @@ fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
   } else if let Some(msg) = &app.status_message {
     Some(Line::from(Span::styled(msg.clone(), Style::default().fg(t.warning))))
   } else if app.is_loading {
-    const SPINNER: &[&str] =
-      &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
     let spin = SPINNER[app.spinner_frame % SPINNER.len()];
     let sources = app.loading_sources.join(", ");
     let prefix = if app.is_refreshing { "↻ refreshing" } else { "fetching" };
