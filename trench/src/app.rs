@@ -2197,6 +2197,12 @@ impl App {
 
   fn merge_discovery_items(&mut self, items: Vec<FeedItem>) {
     for mut item in items {
+      // Belt-and-suspenders: every current discovery source already
+      // sanitizes at ingestion, but the unbarriered injection point
+      // is a future-contributor footgun — a new source added without
+      // ingestion-time sanitize would silently ship terminal-control
+      // bytes to the renderer (audit Rel HIGH H8).
+      item.sanitize_in_place();
       if let Some(state) = self.persisted_states.get(&item.url) {
         item.workflow_state = *state;
       }

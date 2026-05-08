@@ -22,13 +22,21 @@ pub fn load() -> Vec<FeedItem> {
     Err(_) => return Vec::new(),
   };
 
-  match serde_json::from_slice(&bytes) {
+  let mut items: Vec<FeedItem> = match serde_json::from_slice(&bytes) {
     Ok(v) => v,
     Err(e) => {
       super::quarantine_corrupted(&path, "trench/discovery_cache", &e);
-      Vec::new()
+      return Vec::new();
     }
+  };
+  // Mirror `cache::load` — items persisted before sanitize-at-ingestion
+  // shipped may have raw escape sequences in their string fields, plus
+  // `title_lower` / `authors_lower` are `#[serde(skip)]` and need
+  // backfill on load (audit Rel HIGH H1).
+  for item in &mut items {
+    item.sanitize_in_place();
   }
+  items
 }
 
 pub fn save(items: &[FeedItem]) {
