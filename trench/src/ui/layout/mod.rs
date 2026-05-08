@@ -54,7 +54,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
   if app.help.active {
     draw_help_overlay(frame, app);
   }
-  if app.theme_picker_active {
+  if app.theme_picker.active {
     draw_theme_picker(frame, app);
   }
   if app.tag_picker.active {

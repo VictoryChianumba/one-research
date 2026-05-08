@@ -409,6 +409,18 @@ impl Default for SettingsEditState {
   }
 }
 
+/// Theme picker popup state. Grouped from `theme_picker_*` and
+/// `custom_theme_editor` (the editor is logically a sub-state of the picker).
+#[derive(Default)]
+pub struct ThemePickerState {
+  pub active: bool,
+  pub cursor: usize,
+  pub scroll: usize,
+  /// Original theme before picker opened — restored on Esc cancel.
+  pub original: Option<(ui_theme::ThemeId, Option<String>)>,
+  pub custom_editor: Option<CustomThemeEditorState>,
+}
+
 pub struct App {
   /// True when the UI needs to be redrawn. Set by `mark_dirty()`, cleared by
   /// `check_needs_redraw()`. Defaults to `true` so the first frame always draws.
@@ -530,11 +542,7 @@ pub struct App {
 
   // Settings screen
   pub settings: SettingsEditState,
-  pub theme_picker_active: bool,
-  pub theme_picker_cursor: usize,
-  pub theme_picker_scroll: usize,
-  pub theme_picker_original: Option<(ui_theme::ThemeId, Option<String>)>,
-  pub custom_theme_editor: Option<CustomThemeEditorState>,
+  pub theme_picker: ThemePickerState,
 
   // Sources popup
   pub sources_popup: SourcesPopupState,
@@ -719,11 +727,7 @@ impl App {
       active_theme: ui_theme::ThemeId::Dark,
       active_custom_theme_id: None,
       settings: SettingsEditState::default(),
-      theme_picker_active: false,
-      theme_picker_cursor: 0,
-      theme_picker_scroll: 0,
-      theme_picker_original: None,
-      custom_theme_editor: None,
+      theme_picker: ThemePickerState::default(),
       sources_popup: SourcesPopupState::default(),
       notes_app: None,
       notes_active: false,

@@ -196,7 +196,7 @@ fn is_text_entry_context(app: &App) -> bool {
   if app.secondary_notes_active && app.focused_pane == PaneId::SecondaryNotes {
     return true;
   }
-  app.custom_theme_editor.as_ref().is_some_and(|editor| {
+  app.theme_picker.custom_editor.as_ref().is_some_and(|editor| {
     matches!(
       editor.mode,
       CustomThemeEditorMode::Name | CustomThemeEditorMode::Hex
@@ -2022,7 +2022,7 @@ fn handle_settings_view(key: KeyEvent, app: &mut App) -> bool {
   if app.view != AppView::Settings {
     return false;
   }
-  if app.theme_picker_active {
+  if app.theme_picker.active {
     handle_theme_picker(key, app);
     return true;
   }
@@ -2132,50 +2132,50 @@ fn handle_settings_view(key: KeyEvent, app: &mut App) -> bool {
 }
 
 fn open_theme_picker(app: &mut App) {
-  app.theme_picker_active = true;
-  app.custom_theme_editor = None;
-  app.theme_picker_original =
+  app.theme_picker.active = true;
+  app.theme_picker.custom_editor = None;
+  app.theme_picker.original =
     Some((app.active_theme, app.active_custom_theme_id.clone()));
-  app.theme_picker_cursor = theme_picker_active_row(app);
-  app.theme_picker_scroll = app.theme_picker_cursor.saturating_sub(4);
+  app.theme_picker.cursor = theme_picker_active_row(app);
+  app.theme_picker.scroll = app.theme_picker.cursor.saturating_sub(4);
 }
 
 fn handle_theme_picker(key: KeyEvent, app: &mut App) {
-  if app.custom_theme_editor.is_some() {
+  if app.theme_picker.custom_editor.is_some() {
     handle_custom_theme_editor(key, app);
     return;
   }
 
   let total = theme_picker_row_count(app);
   if total == 0 {
-    app.theme_picker_active = false;
+    app.theme_picker.active = false;
     return;
   }
 
   match key.code {
     KeyCode::Char('q') | KeyCode::Esc => {
-      if let Some((theme, custom_id)) = app.theme_picker_original.take() {
+      if let Some((theme, custom_id)) = app.theme_picker.original.take() {
         app.active_theme = theme;
         app.active_custom_theme_id = custom_id;
       }
-      app.theme_picker_active = false;
+      app.theme_picker.active = false;
     }
     KeyCode::Enter => {
       activate_theme_picker_row(app, true);
     }
     KeyCode::Char('j') | KeyCode::Down => {
-      app.theme_picker_cursor = (app.theme_picker_cursor + 1).min(total - 1);
+      app.theme_picker.cursor = (app.theme_picker.cursor + 1).min(total - 1);
       activate_theme_picker_row(app, false);
       clamp_theme_picker_scroll(app);
     }
     KeyCode::Char('k') | KeyCode::Up => {
-      app.theme_picker_cursor = app.theme_picker_cursor.saturating_sub(1);
+      app.theme_picker.cursor = app.theme_picker.cursor.saturating_sub(1);
       activate_theme_picker_row(app, false);
       clamp_theme_picker_scroll(app);
     }
     KeyCode::Char('e') => {
       if let Some(custom) = selected_custom_theme(app).cloned() {
-        app.custom_theme_editor = Some(CustomThemeEditorState {
+        app.theme_picker.custom_editor = Some(CustomThemeEditorState {
           theme: custom.clone(),
           is_new: false,
           mode: CustomThemeEditorMode::Palette,
@@ -2188,7 +2188,7 @@ fn handle_theme_picker(key: KeyEvent, app: &mut App) {
     }
     KeyCode::Char('d') => {
       if let Some(custom) = selected_custom_theme(app).cloned() {
-        app.custom_theme_editor = Some(CustomThemeEditorState {
+        app.theme_picker.custom_editor = Some(CustomThemeEditorState {
           theme: custom.clone(),
           is_new: false,
           mode: CustomThemeEditorMode::DeleteConfirm,
@@ -2205,11 +2205,11 @@ fn handle_theme_picker(key: KeyEvent, app: &mut App) {
 
 fn clamp_theme_picker_scroll(app: &mut App) {
   const VISIBLE_ROWS: usize = 10;
-  if app.theme_picker_cursor < app.theme_picker_scroll {
-    app.theme_picker_scroll = app.theme_picker_cursor;
-  } else if app.theme_picker_cursor >= app.theme_picker_scroll + VISIBLE_ROWS {
-    app.theme_picker_scroll =
-      app.theme_picker_cursor.saturating_sub(VISIBLE_ROWS - 1);
+  if app.theme_picker.cursor < app.theme_picker.scroll {
+    app.theme_picker.scroll = app.theme_picker.cursor;
+  } else if app.theme_picker.cursor >= app.theme_picker.scroll + VISIBLE_ROWS {
+    app.theme_picker.scroll =
+      app.theme_picker.cursor.saturating_sub(VISIBLE_ROWS - 1);
   }
 }
 
@@ -2230,7 +2230,7 @@ fn theme_picker_active_row(app: &App) -> usize {
 
 fn selected_custom_theme(app: &App) -> Option<&CustomThemeConfig> {
   let presets = ThemeId::all().len();
-  let idx = app.theme_picker_cursor.checked_sub(presets)?;
+  let idx = app.theme_picker.cursor.checked_sub(presets)?;
   app.config.custom_themes.get(idx)
 }
 
@@ -2239,7 +2239,7 @@ fn activate_theme_picker_row(app: &mut App, commit: bool) {
   let preset_count = presets.len();
   let custom_count = app.config.custom_themes.len();
   let row =
-    app.theme_picker_cursor.min(theme_picker_row_count(app).saturating_sub(1));
+    app.theme_picker.cursor.min(theme_picker_row_count(app).saturating_sub(1));
 
   if row < preset_count {
     app.active_theme = presets[row];
@@ -2247,8 +2247,8 @@ fn activate_theme_picker_row(app: &mut App, commit: bool) {
     app.config.theme = app.active_theme;
     app.config.active_custom_theme_id = None;
     if commit {
-      app.theme_picker_original = None;
-      app.theme_picker_active = false;
+      app.theme_picker.original = None;
+      app.theme_picker.active = false;
     }
   } else if row < preset_count + custom_count {
     let custom = &app.config.custom_themes[row - preset_count];
@@ -2257,8 +2257,8 @@ fn activate_theme_picker_row(app: &mut App, commit: bool) {
     app.config.theme = app.active_theme;
     app.config.active_custom_theme_id = app.active_custom_theme_id.clone();
     if commit {
-      app.theme_picker_original = None;
-      app.theme_picker_active = false;
+      app.theme_picker.original = None;
+      app.theme_picker.active = false;
     }
   } else if commit {
     open_new_custom_theme_editor(app);
@@ -2275,7 +2275,7 @@ fn open_new_custom_theme_editor(app: &mut App) {
     base,
     app.theme(),
   );
-  app.custom_theme_editor = Some(CustomThemeEditorState {
+  app.theme_picker.custom_editor = Some(CustomThemeEditorState {
     theme,
     is_new: true,
     mode: CustomThemeEditorMode::Name,
@@ -2307,7 +2307,7 @@ fn next_custom_theme_name(app: &App) -> String {
 }
 
 fn handle_custom_theme_editor(key: KeyEvent, app: &mut App) {
-  let Some(mode) = app.custom_theme_editor.as_ref().map(|editor| editor.mode)
+  let Some(mode) = app.theme_picker.custom_editor.as_ref().map(|editor| editor.mode)
   else {
     return;
   };
@@ -2327,7 +2327,7 @@ fn handle_custom_theme_editor(key: KeyEvent, app: &mut App) {
 fn handle_custom_theme_name_editor(key: KeyEvent, app: &mut App) {
   match key.code {
     KeyCode::Enter => {
-      if let Some(editor) = app.custom_theme_editor.as_mut() {
+      if let Some(editor) = app.theme_picker.custom_editor.as_mut() {
         let name = editor.edit_buf.trim();
         if !name.is_empty() {
           editor.theme.name = name.to_string();
@@ -2337,9 +2337,9 @@ fn handle_custom_theme_name_editor(key: KeyEvent, app: &mut App) {
       }
     }
     KeyCode::Esc => {
-      if let Some(editor) = app.custom_theme_editor.as_mut() {
+      if let Some(editor) = app.theme_picker.custom_editor.as_mut() {
         if editor.is_new {
-          app.custom_theme_editor = None;
+          app.theme_picker.custom_editor = None;
         } else {
           editor.mode = CustomThemeEditorMode::Palette;
           editor.edit_buf.clear();
@@ -2347,12 +2347,12 @@ fn handle_custom_theme_name_editor(key: KeyEvent, app: &mut App) {
       }
     }
     KeyCode::Backspace => {
-      if let Some(editor) = app.custom_theme_editor.as_mut() {
+      if let Some(editor) = app.theme_picker.custom_editor.as_mut() {
         editor.edit_buf.pop();
       }
     }
     KeyCode::Char(c) => {
-      if let Some(editor) = app.custom_theme_editor.as_mut() {
+      if let Some(editor) = app.theme_picker.custom_editor.as_mut() {
         editor.edit_buf.push(c);
       }
     }
@@ -2363,7 +2363,7 @@ fn handle_custom_theme_name_editor(key: KeyEvent, app: &mut App) {
 fn handle_custom_theme_hex_editor(key: KeyEvent, app: &mut App) {
   match key.code {
     KeyCode::Enter => {
-      let Some(editor) = app.custom_theme_editor.as_mut() else {
+      let Some(editor) = app.theme_picker.custom_editor.as_mut() else {
         return;
       };
       let value = editor.edit_buf.trim();
@@ -2381,18 +2381,18 @@ fn handle_custom_theme_hex_editor(key: KeyEvent, app: &mut App) {
       }
     }
     KeyCode::Esc => {
-      if let Some(editor) = app.custom_theme_editor.as_mut() {
+      if let Some(editor) = app.theme_picker.custom_editor.as_mut() {
         editor.mode = CustomThemeEditorMode::Palette;
         editor.edit_buf.clear();
       }
     }
     KeyCode::Backspace => {
-      if let Some(editor) = app.custom_theme_editor.as_mut() {
+      if let Some(editor) = app.theme_picker.custom_editor.as_mut() {
         editor.edit_buf.pop();
       }
     }
     KeyCode::Char(c) => {
-      if let Some(editor) = app.custom_theme_editor.as_mut() {
+      if let Some(editor) = app.theme_picker.custom_editor.as_mut() {
         if c == '#' && editor.edit_buf.is_empty() || c.is_ascii_hexdigit() {
           editor.edit_buf.push(c);
         }
@@ -2405,7 +2405,7 @@ fn handle_custom_theme_hex_editor(key: KeyEvent, app: &mut App) {
 fn handle_custom_theme_delete_confirm(key: KeyEvent, app: &mut App) {
   match key.code {
     KeyCode::Char('y') | KeyCode::Char('Y') => {
-      let Some(editor) = app.custom_theme_editor.take() else {
+      let Some(editor) = app.theme_picker.custom_editor.take() else {
         return;
       };
       let delete_id = editor.theme.id;
@@ -2420,12 +2420,12 @@ fn handle_custom_theme_delete_confirm(key: KeyEvent, app: &mut App) {
       }
       app.config.save();
       app.settings.save_time = Some(std::time::Instant::now());
-      app.theme_picker_cursor =
-        app.theme_picker_cursor.min(theme_picker_row_count(app) - 1);
+      app.theme_picker.cursor =
+        app.theme_picker.cursor.min(theme_picker_row_count(app) - 1);
       clamp_theme_picker_scroll(app);
     }
     KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
-      if let Some(editor) = app.custom_theme_editor.as_mut() {
+      if let Some(editor) = app.theme_picker.custom_editor.as_mut() {
         editor.mode = CustomThemeEditorMode::Palette;
       }
     }
@@ -2436,19 +2436,19 @@ fn handle_custom_theme_delete_confirm(key: KeyEvent, app: &mut App) {
 fn handle_custom_theme_palette_editor(key: KeyEvent, app: &mut App) {
   match key.code {
     KeyCode::Char('q') | KeyCode::Esc => {
-      app.custom_theme_editor = None;
+      app.theme_picker.custom_editor = None;
     }
     KeyCode::Char('s') | KeyCode::Enter => {
       save_custom_theme_editor(app);
     }
     KeyCode::Char('n') => {
-      if let Some(editor) = app.custom_theme_editor.as_mut() {
+      if let Some(editor) = app.theme_picker.custom_editor.as_mut() {
         editor.mode = CustomThemeEditorMode::Name;
         editor.edit_buf = editor.theme.name.clone();
       }
     }
     KeyCode::Char('x') => {
-      if let Some(editor) = app.custom_theme_editor.as_mut() {
+      if let Some(editor) = app.theme_picker.custom_editor.as_mut() {
         let key = CUSTOM_THEME_ROLES
           [editor.role_cursor.min(CUSTOM_THEME_ROLES.len() - 1)]
         .key;
@@ -2458,53 +2458,53 @@ fn handle_custom_theme_palette_editor(key: KeyEvent, app: &mut App) {
       }
     }
     KeyCode::Char('d') => {
-      if let Some(editor) = app.custom_theme_editor.as_mut() {
+      if let Some(editor) = app.theme_picker.custom_editor.as_mut() {
         if !editor.is_new {
           editor.mode = CustomThemeEditorMode::DeleteConfirm;
         }
       }
     }
     KeyCode::Char('r') => {
-      if let Some(editor) = app.custom_theme_editor.as_mut() {
+      if let Some(editor) = app.theme_picker.custom_editor.as_mut() {
         editor.theme.colors =
           config::CustomThemeColors::from_theme(editor.theme.base.theme());
       }
     }
     KeyCode::Char('j') | KeyCode::Down => {
-      if let Some(editor) = app.custom_theme_editor.as_mut() {
+      if let Some(editor) = app.theme_picker.custom_editor.as_mut() {
         editor.role_cursor =
           (editor.role_cursor + 1).min(CUSTOM_THEME_ROLES.len() - 1);
       }
     }
     KeyCode::Char('k') | KeyCode::Up => {
-      if let Some(editor) = app.custom_theme_editor.as_mut() {
+      if let Some(editor) = app.theme_picker.custom_editor.as_mut() {
         editor.role_cursor = editor.role_cursor.saturating_sub(1);
       }
     }
     KeyCode::Char('h') | KeyCode::Left => {
-      if let Some(editor) = app.custom_theme_editor.as_mut() {
+      if let Some(editor) = app.theme_picker.custom_editor.as_mut() {
         editor.hue_cursor = editor.hue_cursor.saturating_sub(1);
       }
     }
     KeyCode::Char('l') | KeyCode::Right => {
-      if let Some(editor) = app.custom_theme_editor.as_mut() {
+      if let Some(editor) = app.theme_picker.custom_editor.as_mut() {
         editor.hue_cursor =
           (editor.hue_cursor + 1).min(THEME_PALETTE[0].len() - 1);
       }
     }
     KeyCode::Char('[') | KeyCode::Char('-') => {
-      if let Some(editor) = app.custom_theme_editor.as_mut() {
+      if let Some(editor) = app.theme_picker.custom_editor.as_mut() {
         editor.shade_cursor = editor.shade_cursor.saturating_sub(1);
       }
     }
     KeyCode::Char(']') | KeyCode::Char('+') | KeyCode::Char('=') => {
-      if let Some(editor) = app.custom_theme_editor.as_mut() {
+      if let Some(editor) = app.theme_picker.custom_editor.as_mut() {
         editor.shade_cursor =
           (editor.shade_cursor + 1).min(THEME_PALETTE.len() - 1);
       }
     }
     KeyCode::Char(' ') => {
-      if let Some(editor) = app.custom_theme_editor.as_mut() {
+      if let Some(editor) = app.theme_picker.custom_editor.as_mut() {
         let role = CUSTOM_THEME_ROLES
           [editor.role_cursor.min(CUSTOM_THEME_ROLES.len() - 1)]
         .key;
@@ -2519,7 +2519,7 @@ fn handle_custom_theme_palette_editor(key: KeyEvent, app: &mut App) {
 }
 
 fn save_custom_theme_editor(app: &mut App) {
-  let Some(editor) = app.custom_theme_editor.take() else {
+  let Some(editor) = app.theme_picker.custom_editor.take() else {
     return;
   };
   let theme = editor.theme;
@@ -2534,9 +2534,9 @@ fn save_custom_theme_editor(app: &mut App) {
   app.active_custom_theme_id = Some(theme.id.clone());
   app.config.theme = app.active_theme;
   app.config.active_custom_theme_id = app.active_custom_theme_id.clone();
-  app.theme_picker_cursor = theme_picker_active_row(app);
-  app.theme_picker_original = None;
-  app.theme_picker_active = false;
+  app.theme_picker.cursor = theme_picker_active_row(app);
+  app.theme_picker.original = None;
+  app.theme_picker.active = false;
   app.config.save();
   app.settings.save_time = Some(std::time::Instant::now());
   clamp_theme_picker_scroll(app);

@@ -169,7 +169,7 @@ pub fn draw_theme_picker(frame: &mut Frame, app: &App) {
     }
 
     let theme = id.theme();
-    let selected = idx == app.theme_picker_cursor;
+    let selected = idx == app.theme_picker.cursor;
     let row_style = if selected {
       t.style_selection_text()
     } else {
@@ -206,7 +206,7 @@ pub fn draw_theme_picker(frame: &mut Frame, app: &App) {
   for (idx, custom) in app.config.custom_themes.iter().enumerate() {
     let row_idx = custom_start + idx;
     let theme = custom.to_theme();
-    let selected = row_idx == app.theme_picker_cursor;
+    let selected = row_idx == app.theme_picker.cursor;
     let row_style = if selected {
       t.style_selection_text()
     } else {
@@ -234,7 +234,7 @@ pub fn draw_theme_picker(frame: &mut Frame, app: &App) {
   }
 
   let new_row = custom_start + app.config.custom_themes.len();
-  let selected = new_row == app.theme_picker_cursor;
+  let selected = new_row == app.theme_picker.cursor;
   let row_style = if selected {
     t.style_selection_text()
   } else {
@@ -251,10 +251,10 @@ pub fn draw_theme_picker(frame: &mut Frame, app: &App) {
 
   let selected_line = rows
     .iter()
-    .position(|(idx, _)| *idx == Some(app.theme_picker_cursor))
+    .position(|(idx, _)| *idx == Some(app.theme_picker.cursor))
     .unwrap_or(0);
   let max_start = rows.len().saturating_sub(list_h as usize);
-  let mut start = app.theme_picker_scroll.min(max_start);
+  let mut start = app.theme_picker.scroll.min(max_start);
   if selected_line < start {
     start = selected_line;
   } else if selected_line >= start + list_h as usize {
@@ -280,13 +280,13 @@ pub fn draw_theme_picker(frame: &mut Frame, app: &App) {
     "  j/k preview · enter select/new · e edit · d delete · esc cancel",
   );
 
-  if app.custom_theme_editor.is_some() {
+  if app.theme_picker.custom_editor.is_some() {
     draw_custom_theme_editor(frame, app);
   }
 }
 
 fn draw_custom_theme_editor(frame: &mut Frame, app: &App) {
-  let Some(editor) = app.custom_theme_editor.as_ref() else {
+  let Some(editor) = app.theme_picker.custom_editor.as_ref() else {
     return;
   };
   let t = editor.theme.to_theme();
@@ -372,7 +372,7 @@ fn draw_custom_theme_editor(frame: &mut Frame, app: &App) {
 }
 
 fn draw_custom_theme_roles(frame: &mut Frame, area: Rect, app: &App) {
-  let Some(editor) = app.custom_theme_editor.as_ref() else {
+  let Some(editor) = app.theme_picker.custom_editor.as_ref() else {
     return;
   };
   let t = editor.theme.to_theme();
@@ -418,7 +418,7 @@ fn draw_custom_theme_roles(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 fn draw_custom_theme_palette(frame: &mut Frame, area: Rect, app: &App) {
-  let Some(editor) = app.custom_theme_editor.as_ref() else {
+  let Some(editor) = app.theme_picker.custom_editor.as_ref() else {
     return;
   };
   let t = editor.theme.to_theme();
