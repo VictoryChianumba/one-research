@@ -14,11 +14,11 @@ mod history;
 use trench_http as http;
 mod ingestion;
 mod keys;
-mod fetch;
 mod library;
 mod models;
 mod primitives;
 mod sanitize;
+mod services;
 mod store;
 mod surfaces;
 mod syntax;
@@ -26,9 +26,12 @@ mod tags;
 pub mod theme;
 mod ui;
 mod workflows;
-use fetch::spawn_fetch;
+use services::{
+  spawn_ai_discovery, spawn_discovery, spawn_fetch, spawn_fulltext_fetch,
+  spawn_repo_dir, spawn_repo_file, spawn_repo_open,
+};
 
-use app::{App, DiscoverResult, FocusedReader, PaneId, RepoFetchResult};
+use app::{App, FocusedReader, PaneId, RepoFetchResult};
 use crossterm::{
   event::{
     self, DisableFocusChange, DisableMouseCapture, EnableFocusChange,
@@ -186,41 +189,6 @@ mod url_scheme_tests {
   }
 }
 
-#[cfg(test)]
-mod extract_rss_link_tests {
-  use super::extract_rss_link;
-
-  #[test]
-  fn rejects_javascript_href() {
-    let html = r#"<link rel="alternate" type="application/rss+xml" href="javascript:alert(1)">"#;
-    assert_eq!(extract_rss_link(html, "https://example.com"), None);
-  }
-
-  #[test]
-  fn rejects_file_href() {
-    let html = r#"<link rel="alternate" type="application/rss+xml" href="file:///etc/passwd">"#;
-    assert_eq!(extract_rss_link(html, "https://example.com"), None);
-  }
-
-  #[test]
-  fn accepts_https_href() {
-    let html = r#"<link rel="alternate" type="application/rss+xml" href="https://example.com/feed.xml">"#;
-    assert_eq!(
-      extract_rss_link(html, "https://example.com"),
-      Some("https://example.com/feed.xml".to_string())
-    );
-  }
-
-  #[test]
-  fn accepts_relative_href_with_safe_base() {
-    let html = r#"<link rel="alternate" type="application/rss+xml" href="/feed.xml">"#;
-    assert_eq!(
-      extract_rss_link(html, "https://example.com"),
-      Some("https://example.com/feed.xml".to_string())
-    );
-  }
-}
-
 pub(crate) fn truncate_for_notif(s: &str, max: usize) -> String {
   let mut chars = s.chars();
   let mut out = String::new();
@@ -238,183 +206,6 @@ pub(crate) fn truncate_for_notif(s: &str, max: usize) -> String {
   out
 }
 
-
-// ── URL discovery pipeline ────────────────────────────────────────────────
-
-pub(crate) fn spawn_discovery(
-  url: String,
-  tx: std::sync::mpsc::Sender<DiscoverResult>,
-) {
-  std::thread::spawn(move || {
-    let tx_panic = tx.clone();
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-      let _ = tx.send(discover_feed(&url));
-    }));
-    if let Err(payload) = result {
-      let msg = panic_msg(payload);
-      log::error!("spawn_discovery: thread panicked — {msg}");
-      let _ = tx_panic.send(DiscoverResult::Failed(format!(
-        "discovery thread panicked: {msg}"
-      )));
-    }
-  });
-}
-
-fn discover_feed(url: &str) -> DiscoverResult {
-  // Step 1: arXiv category patterns.
-  for prefix in &[
-    "arxiv.org/list/",
-    "arxiv.org/abs/",
-    "arxiv.org/rss/",
-    "export.arxiv.org/rss/",
-  ] {
-    if let Some(pos) = url.find(prefix) {
-      let rest = &url[pos + prefix.len()..];
-      let code: String = rest
-        .chars()
-        .take_while(|&c| c != '/' && c != '?' && c != '#' && c != ' ')
-        .collect();
-      // Looks like a category code if it contains a dot or is short (cs.LG, stat.ML …)
-      if !code.is_empty() && (code.contains('.') || code.len() <= 8) {
-        return DiscoverResult::ArxivCategory(code);
-      }
-    }
-  }
-
-  // Step 2: HuggingFace.
-  if url.contains("huggingface.co/papers")
-    || url.contains("huggingface.co/daily-papers")
-  {
-    return DiscoverResult::HuggingFaceAlreadyEnabled;
-  }
-
-  // Step 3: Substack — derive RSS URL from subdomain.
-  if url.contains(".substack.com") {
-    let stripped =
-      url.trim_start_matches("https://").trim_start_matches("http://");
-    let subdomain = stripped.split('.').next().unwrap_or("feed");
-    let feed_url = format!("https://{subdomain}.substack.com/feed");
-    return DiscoverResult::RssFeed {
-      url: feed_url,
-      name: subdomain.to_string(),
-    };
-  }
-
-  let client = crate::http::client();
-  let base_url = url.trim_end_matches('/').to_string();
-
-  // Step 4: Fetch page and scan <head> for RSS link element.
-  if let Ok(resp) = client.get(url).send() {
-    if resp.status().is_success() {
-      if let Ok(body) = resp.text() {
-        if let Some(feed_url) = extract_rss_link(&body, &base_url) {
-          let name = domain_name(url);
-          return DiscoverResult::RssFeed { url: feed_url, name };
-        }
-      }
-    }
-  }
-
-  // Step 5: Try common feed paths.
-  let suffixes = ["/feed", "/rss", "/atom.xml", "/feed.xml", "/rss.xml"];
-  for suffix in suffixes {
-    let candidate = format!("{base_url}{suffix}");
-    if let Ok(resp) = client.head(&candidate).send() {
-      if resp.status().is_success() {
-        let name = domain_name(&candidate);
-        return DiscoverResult::RssFeed { url: candidate, name };
-      }
-    }
-  }
-
-  // Step 6: Failure.
-  let tried = suffixes
-    .iter()
-    .map(|s| format!("{base_url}{s}"))
-    .collect::<Vec<_>>()
-    .join(", ");
-  DiscoverResult::Failed(format!("Could not find a feed. Tried: {tried}"))
-}
-
-/// Scan HTML for `<link rel="alternate" type="application/rss+xml" href="...">`.
-fn extract_rss_link(html: &str, base_url: &str) -> Option<String> {
-  let needle = "application/rss+xml";
-  let mut search = html;
-  while let Some(pos) = search.find(needle) {
-    let tag_start = search[..pos].rfind('<').unwrap_or(0);
-    let tag_end =
-      search[pos..].find('>').map(|p| pos + p + 1).unwrap_or(search.len());
-    let tag = &search[tag_start..tag_end];
-    if let Some(href) = attr_value(tag, "href") {
-      // Reject hrefs that look like a non-http(s) scheme attempt before
-      // any joining with base_url. Anything with a `:` before the first
-      // path/query/fragment delimiter is a scheme: javascript:, file:,
-      // data:, mailto:, etc. If the scheme is http(s), pass it through;
-      // otherwise drop the link.
-      let scheme_end =
-        href.find(|c: char| c == '/' || c == '?' || c == '#');
-      let pre = scheme_end.map(|i| &href[..i]).unwrap_or(&href[..]);
-      if pre.contains(':') && !is_safe_url_scheme(&href) {
-        search = &search[pos + needle.len()..];
-        continue;
-      }
-      let url = if is_safe_url_scheme(&href) {
-        href
-      } else if href.starts_with('/') {
-        let origin = url_origin(base_url);
-        format!("{origin}{href}")
-      } else {
-        format!("{base_url}/{href}")
-      };
-      // Final guard: confirm we're returning an http(s) URL before
-      // handing it back, in case base_url itself was non-http(s).
-      if is_safe_url_scheme(&url) {
-        return Some(url);
-      }
-    }
-    search = &search[pos + needle.len()..];
-  }
-  None
-}
-
-/// Extract the value of a named attribute from a tag string.
-fn attr_value(tag: &str, attr: &str) -> Option<String> {
-  let needle = format!("{attr}=");
-  let pos = tag.find(&needle)?;
-  let rest = &tag[pos + needle.len()..];
-  if rest.starts_with('"') {
-    let end = rest[1..].find('"')?;
-    Some(rest[1..end + 1].to_string())
-  } else if rest.starts_with('\'') {
-    let end = rest[1..].find('\'')?;
-    Some(rest[1..end + 1].to_string())
-  } else {
-    let end =
-      rest.find(|c: char| c.is_whitespace() || c == '>').unwrap_or(rest.len());
-    Some(rest[..end].to_string())
-  }
-}
-
-/// Extract `https://host` from a URL.
-fn url_origin(url: &str) -> String {
-  let stripped =
-    url.trim_start_matches("https://").trim_start_matches("http://");
-  let host = stripped.split('/').next().unwrap_or("");
-  if url.starts_with("https://") {
-    format!("https://{host}")
-  } else {
-    format!("http://{host}")
-  }
-}
-
-/// Derive a short source name from a URL (e.g. `"openai"` from `openai.com/…`).
-fn domain_name(url: &str) -> String {
-  let stripped =
-    url.trim_start_matches("https://").trim_start_matches("http://");
-  let host = stripped.split('/').next().unwrap_or("");
-  let host = host.strip_prefix("www.").unwrap_or(host);
-  host.split('.').next().unwrap_or(host).to_string()
-}
 
 // ── Refresh helper ────────────────────────────────────────────────────────
 
@@ -461,61 +252,6 @@ pub(crate) fn do_refresh(app: &mut App) {
   spawn_fetch(tx, app.config.clone());
 }
 
-/// Spawn an AI discovery query thread using the pipeline and attach the receiver.
-pub(crate) fn spawn_ai_discovery(
-  topic: String,
-  config: config::Config,
-  app: &mut App,
-) {
-  let has_claude = config
-    .claude_api_key
-    .as_deref()
-    .map(|k| !k.trim().is_empty())
-    .unwrap_or(false);
-
-  let is_refinement =
-    !app.discovery.session.is_empty() && !app.discovery.force_new && has_claude;
-
-  let prior_history = if is_refinement {
-    Some(app.discovery.session.messages.clone())
-  } else {
-    None
-  };
-
-  if !is_refinement {
-    app.reset_discovery_items();
-  }
-
-  app.discovery.force_new = false;
-
-  let intent = if let Some(forced) = app.discovery.forced_intent.take() {
-    forced
-  } else if is_refinement {
-    app.discovery.session.query_intent
-  } else {
-    discovery::intent::classify(&topic)
-  };
-  app.discovery.intent = intent;
-
-  app.record_discovery_query(&topic, intent);
-
-  let (tx, rx) = mpsc::channel::<discovery::DiscoveryMessage>();
-  app.discovery.rx = Some(rx);
-  app.discovery.loading = true;
-  app.discovery.status = if is_refinement {
-    format!("Refining [{}]: '{topic}'…", intent.label())
-  } else {
-    format!("Searching [{}]…", intent.label())
-  };
-
-  discovery::pipeline::spawn_discovery(
-    topic,
-    config,
-    tx,
-    prior_history,
-    intent,
-  );
-}
 
 /// Like do_refresh, but always runs — reloads config from disk, abandons any
 /// in-flight fetch, clears the item cache, then starts a fresh fetch.
@@ -730,114 +466,6 @@ fn handle_mouse(
   }
 }
 
-// ── Background fetch helpers ──────────────────────────────────────────────
-
-pub(crate) fn spawn_fulltext_fetch(
-  item: models::FeedItem,
-  tx: mpsc::Sender<Result<tread::PaperData, String>>,
-) {
-  std::thread::spawn(move || {
-    let tx_panic = tx.clone();
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-      let _ = tx.send(ingestion::fulltext::fetch(&item));
-    }));
-    if let Err(payload) = result {
-      let msg = panic_msg(payload);
-      log::error!("spawn_fulltext_fetch: thread panicked — {msg}");
-      let _ = tx_panic.send(Err(format!("fulltext thread panicked: {msg}")));
-    }
-  });
-}
-
-pub(crate) fn spawn_repo_open(
-  owner: String,
-  repo: String,
-  token: String,
-  tx: mpsc::Sender<RepoFetchResult>,
-) {
-  std::thread::spawn(move || {
-    let tx_panic = tx.clone();
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-      let branch = match github::get_default_branch(&owner, &repo, &token) {
-        Err(e) => {
-          let _ = tx.send(RepoFetchResult::RepoOpened {
-            branch: String::new(),
-            tree: Err(e),
-          });
-          return;
-        }
-        Ok(b) => b,
-      };
-      let tree = github::fetch_tree_dir(&owner, &repo, &branch, "", &token);
-      let _ = tx.send(RepoFetchResult::RepoOpened { branch, tree });
-    }));
-    if let Err(payload) = result {
-      let msg = panic_msg(payload);
-      log::error!("spawn_repo_open: thread panicked — {msg}");
-      let _ = tx_panic.send(RepoFetchResult::RepoOpened {
-        branch: String::new(),
-        tree: Err(format!("repo-open thread panicked: {msg}")),
-      });
-    }
-  });
-}
-
-pub(crate) fn spawn_repo_dir(
-  owner: String,
-  repo: String,
-  branch: String,
-  path: String,
-  token: String,
-  tx: mpsc::Sender<RepoFetchResult>,
-) {
-  std::thread::spawn(move || {
-    let tx_panic = tx.clone();
-    let path_panic = path.clone();
-    let outcome =
-      std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let result =
-          github::fetch_tree_dir(&owner, &repo, &branch, &path, &token);
-        let _ = tx.send(RepoFetchResult::DirLoaded { path, result });
-      }));
-    if let Err(payload) = outcome {
-      let msg = panic_msg(payload);
-      log::error!("spawn_repo_dir: thread panicked — {msg}");
-      let _ = tx_panic.send(RepoFetchResult::DirLoaded {
-        path: path_panic,
-        result: Err(format!("repo-dir thread panicked: {msg}")),
-      });
-    }
-  });
-}
-
-pub(crate) fn spawn_repo_file(
-  owner: String,
-  repo: String,
-  path: String,
-  name: String,
-  token: String,
-  tx: mpsc::Sender<RepoFetchResult>,
-) {
-  std::thread::spawn(move || {
-    let tx_panic = tx.clone();
-    let path_panic = path.clone();
-    let name_panic = name.clone();
-    let outcome =
-      std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let result = github::fetch_file(&owner, &repo, &path, &token);
-        let _ = tx.send(RepoFetchResult::FileLoaded { path, name, result });
-      }));
-    if let Err(payload) = outcome {
-      let msg = panic_msg(payload);
-      log::error!("spawn_repo_file: thread panicked — {msg}");
-      let _ = tx_panic.send(RepoFetchResult::FileLoaded {
-        path: path_panic,
-        name: name_panic,
-        result: Err(format!("repo-file thread panicked: {msg}")),
-      });
-    }
-  });
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 
