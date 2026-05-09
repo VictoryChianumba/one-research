@@ -8,6 +8,7 @@ use std::sync::Arc;
 use std::sync::mpsc::Receiver;
 use std::time::Instant;
 
+mod caches;
 mod methods;
 pub mod notifications;
 mod state;

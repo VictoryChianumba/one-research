@@ -1,10 +1,26 @@
 use crate::app::{App, FilterState};
+use crate::effect::Effect;
 use crate::models::WorkflowState;
 
-/// Cache invalidators + mutator chokepoints. Five caches with five mutator
-/// helpers — every state-mutation that affects a cache must go through a
-/// mutator. The bare `invalidate_*` methods are private (except
-/// `invalidate_visible_cache` which has one external caller).
+/// Cache invalidators + the effect-routing observer.
+///
+/// Five independent caches:
+/// - `visible_cache`: filtered + searched item indices (per FeedTab)
+/// - `counts_cache`: workflow-state breakdown + recent-48h + queue preview
+/// - `filter_source_names_cache`: sorted unique source-label set
+/// - `filter_summary_cache`: human-readable summary of `active_filters`
+/// - `filtered_history_cache`: indices of history entries visible under
+///   the current time window + search + active filters
+///
+/// Phase 3 reframes invalidation: instead of every mutator calling
+/// `invalidate_*` directly, mutators emit [`Effect`] variants and the
+/// observer below translates each effect into the correct invalidations.
+/// This decouples surfaces from cache-implementation details — surfaces
+/// know what semantically happened, not which caches it touched.
+///
+/// The chokepoint mutators (`mutate_search_query`, `mutate_history`,
+/// etc.) remain as the API surface; their bodies progressively migrate
+/// from direct invalidation to effect emission.
 impl App {
   pub(crate) fn invalidate_visible_cache(&self) {
     *self.visible_cache.borrow_mut() = None;
@@ -27,18 +43,67 @@ impl App {
   }
 
   /// Aggregate invalidator for every cache that derives from `app.items`.
-  /// Internal use only — callers should go through the mutate_* helpers.
   pub(crate) fn invalidate_items_derived_caches(&self) {
     self.invalidate_counts_cache();
     self.invalidate_filter_source_names_cache();
   }
 
+  // ── Effect routing ──────────────────────────────────────────────────
+
+  /// Drain a vec of effects, applying each to the cache layer.
+  /// Phase 3 keystone: surfaces emit semantic events, the observer
+  /// translates to invalidations. Future non-cache observers (focus,
+  /// notifications, audit logs) plug in alongside without changing
+  /// the surface emit sites.
+  pub(crate) fn route_effects(&self, effects: &[Effect]) {
+    for effect in effects {
+      self.observe_effect(effect);
+    }
+  }
+
+  /// Translate one [`Effect`] into the correct set of cache
+  /// invalidations. The match is the *contract* between effects and
+  /// caches; adding a new cache means updating one match arm, not
+  /// auditing every emit site.
+  fn observe_effect(&self, effect: &Effect) {
+    match effect {
+      Effect::SearchQueryChanged => {
+        self.invalidate_visible_cache();
+        self.invalidate_filtered_history_cache();
+      }
+      Effect::WorkflowStateChanged { .. } => {
+        self.invalidate_visible_cache();
+        self.invalidate_counts_cache();
+      }
+      Effect::HistoryMutated | Effect::HistoryFilterChanged => {
+        self.invalidate_filtered_history_cache();
+      }
+      Effect::LibraryFilterChanged | Effect::SourcesEnabledChanged => {
+        self.invalidate_visible_cache();
+      }
+      Effect::FiltersChanged => {
+        self.invalidate_visible_cache();
+        self.invalidate_filter_summary_cache();
+        self.invalidate_filtered_history_cache();
+      }
+      Effect::ItemsChanged => {
+        self.invalidate_visible_cache();
+        self.invalidate_items_derived_caches();
+      }
+    }
+  }
+
+  // ── Mutator chokepoints ─────────────────────────────────────────────
+  //
+  // These wrap state mutations with effect emission + routing. The
+  // public-facing helpers (`push_search_char`, `pop_search_char`,
+  // `clear_search_query`, etc.) call into these so individual call
+  // sites don't need to remember which effect to emit.
 
   pub(crate) fn mutate_search_query(&mut self, f: impl FnOnce(&mut String)) {
     f(&mut self.search_query);
     self.search_query_lower = self.search_query.to_lowercase();
-    self.invalidate_visible_cache();
-    self.invalidate_filtered_history_cache();
+    self.route_effects(&[Effect::SearchQueryChanged]);
   }
 
   pub fn push_search_char(&mut self, c: char) {
@@ -104,8 +169,10 @@ impl App {
     }
     if found {
       self.persisted_states.insert(url.to_string(), state);
-      self.invalidate_visible_cache();
-      self.invalidate_counts_cache();
+      self.route_effects(&[Effect::WorkflowStateChanged {
+        url: url.to_string(),
+        state,
+      }]);
     }
     found
   }
@@ -115,7 +182,7 @@ impl App {
     f: impl FnOnce(&mut Vec<crate::history::HistoryEntry>) -> R,
   ) -> R {
     let r = f(&mut self.history);
-    self.invalidate_filtered_history_cache();
+    self.route_effects(&[Effect::HistoryMutated]);
     r
   }
 
@@ -126,7 +193,7 @@ impl App {
     f: impl FnOnce(&mut crate::history::HistoryFilter),
   ) {
     f(&mut self.history_filter);
-    self.invalidate_filtered_history_cache();
+    self.route_effects(&[Effect::HistoryFilterChanged]);
   }
 
   /// Mutator chokepoint for `library_filter`. The visible_cache for the
@@ -137,13 +204,11 @@ impl App {
     f: impl FnOnce(&mut crate::library::LibraryFilter),
   ) {
     f(&mut self.library_filter);
-    self.invalidate_visible_cache();
+    self.route_effects(&[Effect::LibraryFilterChanged]);
   }
 
   pub(crate) fn mutate_filters(&mut self, f: impl FnOnce(&mut FilterState)) {
     f(&mut self.active_filters);
-    self.invalidate_visible_cache();
-    self.invalidate_filter_summary_cache();
-    self.invalidate_filtered_history_cache();
+    self.route_effects(&[Effect::FiltersChanged]);
   }
 }

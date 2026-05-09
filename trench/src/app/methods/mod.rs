@@ -3,7 +3,6 @@
 //! be `pub` — methods are reachable on App regardless of which file
 //! their impl block lives in.
 
-mod cache;
 mod history;
 mod library_filter;
 mod notes;
