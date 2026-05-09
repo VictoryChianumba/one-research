@@ -106,7 +106,7 @@ pub(super) fn handle_settings_view(key: KeyEvent, app: &mut App) -> bool {
       KeyCode::Char('p') => {
         app.sources_popup.cursor = 0;
         app.sources_popup.input.clear();
-        app.sources_popup.input_active = false;
+        app.sources_popup.input.blur();
         app.sources_popup.detect_state = SourcesDetectState::Idle;
         app.view = AppView::Sources;
         log::debug!(

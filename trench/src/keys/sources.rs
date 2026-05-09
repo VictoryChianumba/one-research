@@ -9,10 +9,10 @@ pub(super) fn handle_sources_popup(key: KeyEvent, app: &mut App) -> bool {
   if app.view != AppView::Sources {
     return false;
   }
-  if app.sources_popup.input_active {
+  if app.sources_popup.input.is_focused() {
     match key.code {
       KeyCode::Esc => {
-        app.sources_popup.input_active = false;
+        app.sources_popup.input.blur();
         app.sources_popup.detect_state = SourcesDetectState::Idle;
         app.sources_popup.input.clear();
       }
@@ -21,7 +21,7 @@ pub(super) fn handle_sources_popup(key: KeyEvent, app: &mut App) -> bool {
           SourcesDetectState::Idle => {
             if !app.sources_popup.input.is_empty() {
               app.sources_popup.detect_state = SourcesDetectState::Detecting;
-              let url = app.sources_popup.input.clone();
+              let url = app.sources_popup.input.buffer().to_string();
               let (dtx, drx) = mpsc::channel();
               app.sources_popup.detect_rx = Some(drx);
               spawn_discovery(url, dtx);
@@ -65,16 +65,16 @@ pub(super) fn handle_sources_popup(key: KeyEvent, app: &mut App) -> bool {
             }
             app.sources_popup.input.clear();
             app.sources_popup.detect_state = SourcesDetectState::Idle;
-            app.sources_popup.input_active = false;
+            app.sources_popup.input.blur();
           }
         }
       }
       KeyCode::Backspace => {
-        app.sources_popup.input.pop();
+        app.sources_popup.input.pop_char();
         app.sources_popup.detect_state = SourcesDetectState::Idle;
       }
       KeyCode::Char(c) => {
-        app.sources_popup.input.push(c);
+        app.sources_popup.input.push_char(c);
         app.sources_popup.detect_state = SourcesDetectState::Idle;
       }
       _ => {}
@@ -102,13 +102,13 @@ pub(super) fn handle_sources_popup(key: KeyEvent, app: &mut App) -> bool {
       }
       KeyCode::Enter | KeyCode::Char('/') => {
         if app.sources_popup.cursor == 0 {
-          app.sources_popup.input_active = true;
+          app.sources_popup.input.focus();
         }
       }
       KeyCode::Char(' ') => {
         let c = app.sources_popup.cursor;
         if c == 0 {
-          app.sources_popup.input_active = true;
+          app.sources_popup.input.focus();
         } else if c <= cats_count {
           let code = cats[c - 1].0.clone();
           if app.config.sources.arxiv_categories.contains(&code) {

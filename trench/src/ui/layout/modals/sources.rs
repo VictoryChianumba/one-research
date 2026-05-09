@@ -120,14 +120,14 @@ pub fn draw_sources_popup(frame: &mut Frame, app: &App) {
   lines.push(Line::from(""));
   lines.push(Line::from(Span::styled("  Add source", header_style)));
 
-  let input_active = app.sources_popup.input_active;
+  let input_active = app.sources_popup.input.is_focused();
   let input_focused = cursor == 0;
   let input_display = if app.sources_popup.input.is_empty() && !input_active {
     "paste a URL...".to_string()
   } else if input_active {
-    format!("{}_", app.sources_popup.input)
+    format!("{}_", app.sources_popup.input.buffer())
   } else {
-    app.sources_popup.input.clone()
+    app.sources_popup.input.buffer().to_string()
   };
   lines.push(Line::from(vec![
     Span::styled(

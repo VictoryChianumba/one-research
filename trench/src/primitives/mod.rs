@@ -8,6 +8,8 @@
 
 pub mod list_state;
 pub mod scroll_state;
+pub mod text_input;
 
 pub use list_state::ListState;
 pub use scroll_state::ScrollState;
+pub use text_input::TextInputState;

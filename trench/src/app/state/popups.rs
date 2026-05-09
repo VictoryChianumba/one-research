@@ -49,8 +49,9 @@ pub enum SourcesDetectState {
 #[derive(Default)]
 pub struct SourcesPopupState {
   pub cursor: usize,
-  pub input: String,
-  pub input_active: bool,
+  /// URL detection input. `input.is_focused()` replaces the prior
+  /// `input_active: bool` companion field.
+  pub input: crate::primitives::TextInputState,
   pub detect_state: SourcesDetectState,
   pub detect_rx: Option<std::sync::mpsc::Receiver<DiscoverResult>>,
 }

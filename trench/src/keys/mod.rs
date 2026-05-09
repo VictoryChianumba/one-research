@@ -182,7 +182,7 @@ pub fn dispatch(key: KeyEvent, app: &mut App) {
 /// a hotkey — search bar, sources popup input, settings field editing,
 /// discovery palette, focused chat/notes panes, custom theme editor.
 fn is_text_entry_context(app: &App) -> bool {
-  if app.search_active || app.sources_popup.input_active || app.settings.editing {
+  if app.search_active || app.sources_popup.input.is_focused() || app.settings.editing {
     return true;
   }
   if app.feed_tab == FeedTab::Discoveries && app.discovery.search_focused {
@@ -888,7 +888,7 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
       app.settings.editing = false;
       app.sources_popup.cursor = 0;
       app.sources_popup.input.clear();
-      app.sources_popup.input_active = false;
+      app.sources_popup.input.blur();
       app.sources_popup.detect_state = SourcesDetectState::Idle;
       app.view = AppView::Settings;
     }
