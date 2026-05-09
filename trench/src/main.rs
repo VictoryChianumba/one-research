@@ -26,6 +26,7 @@ mod syntax;
 mod tags;
 pub mod theme;
 mod ui;
+mod view_models;
 mod workflows;
 use services::{
   spawn_ai_discovery, spawn_discovery, spawn_fetch, spawn_fulltext_fetch,

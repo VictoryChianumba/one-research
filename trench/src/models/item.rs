@@ -51,7 +51,7 @@ impl ContentType {
 }
 
 #[derive(
-  Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
+  Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
 )]
 pub enum SignalLevel {
   Primary,

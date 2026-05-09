@@ -934,7 +934,9 @@ pub fn draw_item_table(frame: &mut Frame, app: &mut App, area: Rect) {
       let is_selected = is_cursor || in_visual;
       let (content_height, title_lines) = &window_data[i];
 
-      let signal_style = match item.signal {
+      let vm = crate::view_models::FeedRowVm::from_item(item);
+
+      let signal_style = match vm.signal {
         crate::models::SignalLevel::Primary => Style::default().fg(t.accent),
         crate::models::SignalLevel::Secondary => {
           Style::default().fg(t.text_dim)
@@ -947,19 +949,16 @@ pub fn draw_item_table(frame: &mut Frame, app: &mut App, area: Rect) {
       let selected_text_style = t.style_selection_text();
       let selected_dim_style = t.style_selection_dim();
 
-      let author =
-        truncate(item.authors.first().map(|s| s.as_str()).unwrap_or(""), 13);
-
       let row_height = content_height + 1;
 
       Row::new(vec![
         feed_cell(
-          item.signal.indicator(),
+          vm.signal_indicator,
           if is_selected { selected_text_style } else { signal_style },
           is_selected,
         ),
         feed_cell(
-          &feed_source_label(item),
+          &vm.source_label,
           if is_selected {
             selected_text_style
           } else {
@@ -968,7 +967,7 @@ pub fn draw_item_table(frame: &mut Frame, app: &mut App, area: Rect) {
           is_selected,
         ),
         feed_cell(
-          item.content_type.short_label(),
+          vm.content_type_short,
           if is_selected {
             selected_dim_style
           } else {
@@ -990,7 +989,7 @@ pub fn draw_item_table(frame: &mut Frame, app: &mut App, area: Rect) {
           lines
         })),
         feed_cell(
-          &author,
+          &vm.author,
           if is_selected {
             selected_dim_style
           } else {
@@ -1068,17 +1067,10 @@ pub fn draw_item_table(frame: &mut Frame, app: &mut App, area: Rect) {
   );
 }
 
-pub(super) fn feed_source_label(item: &crate::models::FeedItem) -> String {
-  match item.source_platform {
-    SourcePlatform::HuggingFace => "hf".to_string(),
-    SourcePlatform::ArXiv => "arxiv".to_string(),
-    SourcePlatform::Rss if !item.source_name.is_empty() => {
-      truncate(&item.source_name, 7)
-    }
-    _ if !item.source_name.is_empty() => truncate(&item.source_name, 7),
-    _ => item.source_platform.short_label().to_string(),
-  }
-}
+// feed_source_label moved to view_models/feed_row.rs as part of Phase 4
+// view-model consolidation. Re-export the VM helper for callers in this
+// crate that still construct labels inline.
+pub(super) use crate::view_models::feed_source_label;
 
 fn feed_header_cell(label: &'static str, style: Style) -> Cell<'static> {
   Cell::from(Text::from(vec![
