@@ -5,6 +5,8 @@
 //! [`ModalStack`] holds them as variants of [`ActiveModal`]; the top
 //! variant intercepts input.
 
+pub mod modal_stack;
 pub mod sources;
 
+pub use modal_stack::{ActiveModal, ModalStack};
 pub use sources::SourcesSurface;

@@ -116,6 +116,11 @@ pub struct App {
   // surface struct from surfaces/overlays/sources.rs.
   pub sources_popup: crate::surfaces::overlays::SourcesSurface,
 
+  /// Active overlay stack (Phase 2). Top of the stack intercepts
+  /// input. Variants accrete as more overlays migrate; for now only
+  /// Sources tags itself here.
+  pub modals: crate::surfaces::overlays::ModalStack,
+
   // Embedded notes pane
   pub notes_app: Option<notes::app::App>,
   pub notes_active: bool,
@@ -285,6 +290,7 @@ impl App {
       settings: SettingsEditState::default(),
       theme_picker: ThemePickerState::default(),
       sources_popup: crate::surfaces::overlays::SourcesSurface::new(),
+      modals: crate::surfaces::overlays::ModalStack::new(),
       notes_app: None,
       notes_active: false,
       notes_tabs: Vec::new(),

@@ -14,6 +14,7 @@ use crate::app::{App, AppView, DiscoverResult};
 use crate::config;
 use crate::effect::Effect;
 use crate::primitives::{AsyncLoadState, TextInputState};
+use crate::surfaces::overlays::ActiveModal;
 
 /// Sources popup surface state. Was `SourcesPopupState` in
 /// app/state/popups.rs.
@@ -42,6 +43,7 @@ impl SourcesSurface {
         // Both treat the modal as dismissed; OpenSettings additionally
         // routes the active view back to Settings.
         app.view = AppView::Settings;
+        app.modals.remove(&ActiveModal::Sources);
         self.cursor = 0;
         self.input.clear();
         self.input.blur();

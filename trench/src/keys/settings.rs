@@ -108,6 +108,7 @@ pub(super) fn handle_settings_view(key: KeyEvent, app: &mut App) -> bool {
         app.sources_popup.input.blur();
         app.sources_popup.detect.reset();
         app.view = AppView::Sources;
+        app.modals.push(crate::surfaces::overlays::ActiveModal::Sources);
         log::debug!(
           "sources_popup: opened — current arxiv categories: [{}]",
           app.config.sources.arxiv_categories.join(", ")

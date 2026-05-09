@@ -890,6 +890,7 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
       app.sources_popup.input.clear();
       app.sources_popup.input.blur();
       app.sources_popup.detect.reset();
+      app.modals.remove(&crate::surfaces::overlays::ActiveModal::Sources);
       app.view = AppView::Settings;
     }
     KeyCode::Char('z') => {
