@@ -33,6 +33,10 @@ pub const RIGHT_COL_WIDTH: u16 = 50;
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
   let t_total = std::time::Instant::now();
+  // Pre-draw update phase: any state mutation that conceptually belongs
+  // to "react to selection / state change" runs here, so the render
+  // path proper stays read-only. Phase 4 — render purification.
+  app.pre_draw_update();
   match app.view {
     AppView::Feed => draw_feed(frame, app),
     AppView::Settings => {

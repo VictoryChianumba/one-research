@@ -161,24 +161,9 @@ pub fn draw_details_panel(frame: &mut Frame, app: &mut App, area: Rect) {
     ..top_area
   };
 
-  // Reset scroll when the selected item changes, before borrowing item data.
-  // The filtered_history call is scoped so the borrow drops before the
-  // mutable access below; we'll re-borrow for the render path.
-  {
-    let history = app.filtered_history();
-    let current_key = details_subject_key(app, &history);
-    if current_key != app.details_last_item_url {
-      // Note: actual mutation happens after the scope ends; capture state.
-      drop(history);
-      app.details_scroll = 0;
-      app.details_last_item_url = current_key;
-    }
-  }
-
-  // Re-borrow filtered_history for the render path. The cache memoizes
-  // on App so this is cheap; without the memo this filter would run
-  // multiple times per History-tab frame (draw_history_tab +
-  // details_subject + details_subject_key).
+  // The selection-change reset for details_scroll lives in
+  // App::pre_draw_update (Phase 4 hoist). By the time draw runs,
+  // details_scroll is already correct for the current selection.
   let history = app.filtered_history();
   if let Some(subject) = details_subject(app, &history) {
     let title_style = Style::default().fg(t.text).add_modifier(Modifier::BOLD);
@@ -285,17 +270,6 @@ fn details_subject<'a>(
     };
   }
   app.selected_item().map(DetailsSubject::FeedItem)
-}
-
-fn details_subject_key(
-  app: &App,
-  history: &[&crate::history::HistoryEntry],
-) -> Option<String> {
-  match details_subject(app, history)? {
-    DetailsSubject::FeedItem(item) => Some(item.url.clone()),
-    DetailsSubject::HistoryPaper { entry, .. } => Some(entry.key.clone()),
-    DetailsSubject::HistoryQuery(entry) => Some(format!("query:{}", entry.key)),
-  }
 }
 
 fn render_details_subject<'a>(

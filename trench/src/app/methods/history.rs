@@ -40,6 +40,37 @@ impl App {
   /// Mutator chokepoint for `history`. Invokes `f`, then invalidates the
   /// filtered_history_cache so subsequent reads see the updated data.
 
+  /// Pre-draw update: hoists state mutations that were previously
+  /// performed inline during render (Phase 4 — render purification).
+  /// Currently scoped to details_scroll reset on selection change;
+  /// expand as additional draw-time mutations are migrated.
+  pub fn pre_draw_update(&mut self) {
+    let current_key = self.details_subject_key();
+    if current_key != self.details_last_item_url {
+      self.details_scroll = 0;
+      self.details_last_item_url = current_key;
+    }
+  }
+
+  /// URL-shaped key identifying the currently-shown details subject.
+  /// `Some(url)` for feed items, `Some("query:{q}")` for history query
+  /// entries, `None` when nothing is selected.
+  fn details_subject_key(&self) -> Option<String> {
+    use crate::app::FeedTab;
+    use crate::history::HistoryKind;
+    match self.feed_tab {
+      FeedTab::History => {
+        let history = self.filtered_history();
+        let entry = history.get(self.history_selected_index)?;
+        Some(match entry.kind {
+          HistoryKind::Paper => entry.key.clone(),
+          HistoryKind::Query => format!("query:{}", entry.key),
+        })
+      }
+      _ => self.selected_item().map(|i| i.url.clone()),
+    }
+  }
+
   pub fn filtered_history(&self) -> Vec<&crate::history::HistoryEntry> {
     if self.filtered_history_cache.borrow().is_none() {
       let indices = self.compute_filtered_history_indices();
