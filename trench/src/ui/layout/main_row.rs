@@ -2,7 +2,7 @@ use ratatui::{
   Frame,
   layout::{Alignment, Constraint, Layout, Rect},
   style::Style,
-  widgets::{Clear, Paragraph},
+  widgets::Paragraph,
 };
 
 use super::details::draw_details_panel;
@@ -92,7 +92,6 @@ pub fn draw_main_row(frame: &mut Frame, app: &mut App, area: Rect) -> MainRowRec
           tab.reader.resize(new_size.0, new_size.1);
           tab.last_resize = Some(new_size);
         }
-        frame.render_widget(Clear, rows[1]);
         tread::draw(frame, rows[1], &tab.reader, &tread_theme);
         tread::after_draw(&tab.reader, &mut tab.image_state, rows[1], kitty);
       }
@@ -116,7 +115,6 @@ pub fn draw_main_row(frame: &mut Frame, app: &mut App, area: Rect) -> MainRowRec
           tab.reader.resize(new_size.0, new_size.1);
           tab.last_resize = Some(new_size);
         }
-        frame.render_widget(Clear, rows[1]);
         tread::draw(frame, rows[1], &tab.reader, &tread_theme);
         tread::after_draw(&tab.reader, &mut tab.image_state, rows[1], kitty);
       } else {
@@ -177,7 +175,6 @@ pub fn draw_main_row(frame: &mut Frame, app: &mut App, area: Rect) -> MainRowRec
           tab.reader.resize(new_size.0, new_size.1);
           tab.last_resize = Some(new_size);
         }
-        frame.render_widget(Clear, rows[1]);
         tread::draw(frame, rows[1], &tab.reader, &tread_theme);
         tread::after_draw(&tab.reader, &mut tab.image_state, rows[1], kitty);
       }
@@ -217,7 +214,6 @@ pub fn draw_main_row(frame: &mut Frame, app: &mut App, area: Rect) -> MainRowRec
         tab.reader.resize(new_size.0, new_size.1);
         tab.last_resize = Some(new_size);
       }
-      frame.render_widget(Clear, rows[1]);
       tread::draw(frame, rows[1], &tab.reader, &tread_theme);
       tread::after_draw(&tab.reader, &mut tab.image_state, rows[1], kitty);
       log::debug!(
@@ -258,7 +254,6 @@ pub fn draw_main_row(frame: &mut Frame, app: &mut App, area: Rect) -> MainRowRec
           tab.reader.resize(new_size.0, new_size.1);
           tab.last_resize = Some(new_size);
         }
-        frame.render_widget(Clear, rows[1]);
         tread::draw(frame, rows[1], &tab.reader, &tread_theme);
         tread::after_draw(&tab.reader, &mut tab.image_state, rows[1], kitty);
         log::debug!("draw_editor (split): {}ms", elapsed.elapsed().as_millis());
