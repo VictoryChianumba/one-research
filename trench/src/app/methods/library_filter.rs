@@ -113,7 +113,7 @@ impl App {
         count += 1;
       }
     }
-    crate::store::save(&self.persisted_states);
+    crate::store::save(&self.workspace.persisted_states);
     count
   }
 
@@ -149,16 +149,16 @@ impl App {
     }
     let urls = self.tag_picker.target_urls.clone();
     let any_missing = urls.iter().any(|url| {
-      !crate::tags::for_url(&self.item_tags, url).iter().any(|t| t == &tag)
+      !crate::tags::for_url(&self.workspace.item_tags, url).iter().any(|t| t == &tag)
     });
     for url in &urls {
       if any_missing {
-        crate::tags::add(&mut self.item_tags, url, tag.clone());
+        crate::tags::add(&mut self.workspace.item_tags, url, tag.clone());
       } else {
-        crate::tags::remove(&mut self.item_tags, url, &tag);
+        crate::tags::remove(&mut self.workspace.item_tags, url, &tag);
       }
     }
-    crate::store::tags::save(&self.item_tags);
+    crate::store::tags::save(&self.workspace.item_tags);
     self.invalidate_visible_cache();
   }
 
@@ -179,7 +179,7 @@ impl App {
     self.filter_source_names().len()
       + 3
       + 3
-      + crate::tags::all_tags(&self.item_tags).len()
+      + crate::tags::all_tags(&self.workspace.item_tags).len()
       + 1
   }
 
@@ -192,6 +192,7 @@ impl App {
       return c.clone();
     }
     let mut names: std::collections::BTreeSet<String> = self
+      .workspace
       .items
       .iter()
       .map(|item| {
@@ -220,7 +221,7 @@ impl App {
   pub fn toggle_filter_at_cursor(&mut self) {
     let source_names = self.filter_source_names();
     let src_count = source_names.len();
-    let tag_names = crate::tags::all_tags(&self.item_tags);
+    let tag_names = crate::tags::all_tags(&self.workspace.item_tags);
     let tag_count = tag_names.len();
     let c = self.filter_cursor;
 
@@ -271,7 +272,7 @@ impl App {
       .map(|item| item.url.clone());
     if let Some(url) = url {
       self.set_workflow_state_for_url(&url, state);
-      crate::store::save(&self.persisted_states);
+      crate::store::save(&self.workspace.persisted_states);
     }
   }
 }

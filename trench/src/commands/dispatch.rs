@@ -19,7 +19,7 @@ pub fn dispatch_slash_command(app: &mut App, cmd: SlashCommandInvocation) {
       app.mutate_history(|h| h.clear());
       app.history_selected_index = 0;
       app.history_list_offset = 0;
-      crate::store::history::save(&app.history);
+      crate::store::history::save(&app.workspace.history);
       app.push_chat_assistant_message("Cleared activity history.".to_string());
       app.status_message = Some("Cleared history".to_string());
     }

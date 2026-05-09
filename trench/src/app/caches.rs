@@ -42,7 +42,7 @@ impl App {
     *self.filtered_history_cache.borrow_mut() = None;
   }
 
-  /// Aggregate invalidator for every cache that derives from `app.items`.
+  /// Aggregate invalidator for every cache that derives from `app.workspace.items`.
   pub(crate) fn invalidate_items_derived_caches(&self) {
     self.invalidate_counts_cache();
     self.invalidate_filter_source_names_cache();
@@ -151,7 +151,7 @@ impl App {
     state: WorkflowState,
   ) -> bool {
     let mut found = false;
-    for item in self.items.iter_mut() {
+    for item in self.workspace.items.iter_mut() {
       if item.url == url {
         item.workflow_state = state;
         found = true;
@@ -168,7 +168,7 @@ impl App {
       }
     }
     if found {
-      self.persisted_states.insert(url.to_string(), state);
+      self.workspace.persisted_states.insert(url.to_string(), state);
       self.route_effects(&[Effect::WorkflowStateChanged {
         url: url.to_string(),
         state,
@@ -181,7 +181,7 @@ impl App {
     &mut self,
     f: impl FnOnce(&mut Vec<crate::history::HistoryEntry>) -> R,
   ) -> R {
-    let r = f(&mut self.history);
+    let r = f(&mut self.workspace.history);
     self.route_effects(&[Effect::HistoryMutated]);
     r
   }

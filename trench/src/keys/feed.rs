@@ -527,7 +527,7 @@ fn handle_history_tab(key: KeyEvent, app: &mut App) -> bool {
       app.mutate_history(|h| {
         h.retain(|e| (e.kind, e.key.clone()) != key_to_delete)
       });
-      crate::store::history::save(&app.history);
+      crate::store::history::save(&app.workspace.history);
       let len = app.filtered_history().len();
       if len > 0 && app.history_selected_index >= len {
         app.history_selected_index = len - 1;

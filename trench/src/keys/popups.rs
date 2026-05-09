@@ -3,7 +3,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 use crate::app::App;
 
 pub(super) fn handle_tag_picker(key: KeyEvent, app: &mut App) {
-  let all = crate::tags::all_tags(&app.item_tags);
+  let all = crate::tags::all_tags(&app.workspace.item_tags);
   match key.code {
     KeyCode::Esc => {
       app.close_tag_picker();

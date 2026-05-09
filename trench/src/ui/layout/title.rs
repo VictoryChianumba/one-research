@@ -78,7 +78,7 @@ fn draw_compact_title_bar(frame: &mut Frame, app: &App, area: Rect) {
     "Inbox {inbox_count}  Library {library_count}  Discoveries {}{}  History {}  Total {total}",
     app.discovery.items.len(),
     discovery_spin,
-    app.history.len(),
+    app.workspace.history.len(),
   );
   let logo_style = Style::default().fg(t.accent).add_modifier(Modifier::BOLD);
   let logo_width =
@@ -105,7 +105,7 @@ fn draw_compact_title_bar(frame: &mut Frame, app: &App, area: Rect) {
       discoveries_style,
     ),
     Span::styled("  History ", history_style),
-    Span::styled(app.history.len().to_string(), history_style),
+    Span::styled(app.workspace.history.len().to_string(), history_style),
     Span::styled("  Total ", inactive_style),
     Span::styled(total.to_string(), inactive_style),
     Span::raw(" ".repeat(version_gap)),

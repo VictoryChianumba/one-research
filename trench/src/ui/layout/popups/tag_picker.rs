@@ -12,7 +12,7 @@ pub fn draw_tag_picker(frame: &mut Frame, app: &App) {
   let t = app.theme();
   let area = frame.area();
 
-  let all = crate::tags::all_tags(&app.item_tags);
+  let all = crate::tags::all_tags(&app.workspace.item_tags);
   let target_count = app.tag_picker.target_urls.len();
   let target_label = if target_count == 1 {
     "1 item".to_string()
@@ -25,7 +25,7 @@ pub fn draw_tag_picker(frame: &mut Frame, app: &App) {
     .iter()
     .filter(|tag| {
       app.tag_picker.target_urls.iter().all(|url| {
-        crate::tags::for_url(&app.item_tags, url).iter().any(|t| t == *tag)
+        crate::tags::for_url(&app.workspace.item_tags, url).iter().any(|t| t == *tag)
       })
     })
     .cloned()
@@ -69,7 +69,7 @@ pub fn draw_tag_picker(frame: &mut Frame, app: &App) {
     for (i, tag) in all.iter().enumerate() {
       let is_selected = i == app.tag_picker.selected;
       let active = common_on_all.contains(tag);
-      let count = crate::tags::count_for(&app.item_tags, tag);
+      let count = crate::tags::count_for(&app.workspace.item_tags, tag);
       let arrow = if is_selected {
         Span::styled("→ ", Style::default().fg(t.accent))
       } else {

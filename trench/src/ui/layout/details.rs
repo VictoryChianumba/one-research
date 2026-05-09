@@ -263,9 +263,10 @@ fn details_subject<'a>(
         // O(1) hashmap lookup vs the prior O(N) chain+find scan that
         // ran per row × per frame on the History tab.
         let item = app
+          .workspace
           .url_index
           .get(&entry.key)
-          .map(|&i| &app.items[i])
+          .map(|&i| &app.workspace.items[i])
           .or_else(|| {
             app
               .discovery.url_index
@@ -421,7 +422,7 @@ fn render_feed_item_details<'a>(
       2,
     );
   }
-  let user_tags = crate::tags::for_url(&app.item_tags, &item.url);
+  let user_tags = crate::tags::for_url(&app.workspace.item_tags, &item.url);
   if !user_tags.is_empty() {
     let formatted =
       user_tags.iter().map(|t| format!("[{t}]")).collect::<Vec<_>>().join("  ");

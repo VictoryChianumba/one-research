@@ -22,18 +22,14 @@ pub struct App {
   /// `check_needs_redraw()`. Defaults to `true` so the first frame always draws.
   pub needs_redraw: bool,
 
-  /// `url → index in self.items`. Maintained by the `process_incoming` dedup
-  /// loop and rebuilt by `rebuild_indices` after sort. Replaces the previous
-  /// `iter_mut().find(...)` linear scan, which was O(N×M) on every refresh.
-  pub url_index: HashMap<String, usize>,
-  /// `arxiv_id → index in self.items`. Same role as `url_index` for the
-  /// HF/arXiv-collapse path.
-  pub arxiv_id_index: HashMap<String, usize>,
+  /// Authoritative in-memory data corpus (items + dedup indices +
+  /// history + tags + persisted workflow states). Phase 3 extracted
+  /// these from scattered App fields into one struct.
+  pub workspace: crate::data::Workspace,
 
   pub should_quit: bool,
   pub quit_popup: QuitPopupState,
 
-  pub items: Vec<FeedItem>,
   pub selected_index: usize,
   pub list_offset: usize,
 
@@ -41,8 +37,6 @@ pub struct App {
   pub discovery: DiscoveryState,
 
   pub feed_tab: FeedTab,
-  /// Activity log — paper opens and discovery queries.
-  pub history: Vec<crate::history::HistoryEntry>,
   pub history_filter: crate::history::HistoryFilter,
   pub history_selected_index: usize,
   pub history_list_offset: usize,
@@ -58,8 +52,6 @@ pub struct App {
   pub library_visual_mode: bool,
   pub library_visual_anchor: usize,
   pub library_selected_urls: HashSet<String>,
-  /// Tag store: URL → list of tag names. Persisted to ~/.config/trench/tags.json.
-  pub item_tags: crate::tags::ItemTags,
   /// Tag picker popup state.
   pub tag_picker: TagPickerState,
   pub search_query: String,
@@ -70,7 +62,6 @@ pub struct App {
   pub search_query_lower: String,
   pub search_active: bool,
   pub status_message: Option<String>,
-  pub persisted_states: HashMap<String, WorkflowState>,
 
   // Pane focus
 
@@ -232,7 +223,7 @@ pub struct App {
   /// Memoized filter-summary string. Invalidated only by `active_filters`
   /// mutation — does NOT depend on items or search query.
   pub filter_summary_cache: RefCell<Option<String>>,
-  /// Memoized `filtered_history` indices into `self.history`. Invalidated
+  /// Memoized `filtered_history` indices into `self.workspace.history`. Invalidated
   /// by history mutation, search_query mutation, history_filter mutation,
   /// and active_filters mutation.
   pub filtered_history_cache: RefCell<Option<Vec<usize>>>,
@@ -246,11 +237,16 @@ impl App {
   pub fn new() -> Self {
     Self {
       needs_redraw: true,
-      url_index: HashMap::new(),
-      arxiv_id_index: HashMap::new(),
+      workspace: crate::data::Workspace {
+        items: Vec::new(),
+        url_index: HashMap::new(),
+        arxiv_id_index: HashMap::new(),
+        history: crate::store::history::load(),
+        item_tags: crate::store::tags::load(),
+        persisted_states: HashMap::new(),
+      },
       should_quit: false,
       quit_popup: QuitPopupState::default(),
-      items: Vec::new(),
       selected_index: 0,
       list_offset: 0,
       discovery: DiscoveryState {
@@ -259,7 +255,6 @@ impl App {
         ..DiscoveryState::default()
       },
       feed_tab: FeedTab::Inbox,
-      history: crate::store::history::load(),
       history_filter: crate::history::HistoryFilter::default(),
       history_selected_index: 0,
       history_list_offset: 0,
@@ -268,13 +263,11 @@ impl App {
       library_visual_mode: false,
       library_visual_anchor: 0,
       library_selected_urls: HashSet::new(),
-      item_tags: crate::store::tags::load(),
       tag_picker: TagPickerState::default(),
       search_query: String::new(),
       search_query_lower: String::new(),
       search_active: false,
       status_message: None,
-      persisted_states: HashMap::new(),
       fetch_rx: None,
       loading_sources: Vec::new(),
       loaded_sources: Vec::new(),
@@ -449,18 +442,18 @@ impl App {
     self.needs_redraw = true;
   }
 
-  /// Rebuild the `url_index` and `arxiv_id_index` HashMaps from `self.items`.
+  /// Rebuild the `url_index` and `arxiv_id_index` HashMaps from `self.workspace.items`.
   /// Call after any bulk mutation that invalidates positions: cache load,
   /// `items.sort_by`, deletions. The intra-batch dedup in `process_incoming`
   /// maintains the indices incrementally so this rebuild is rare.
   pub fn rebuild_indices(&mut self) {
-    self.url_index.clear();
-    self.arxiv_id_index.clear();
-    self.url_index.reserve(self.items.len());
-    for (idx, item) in self.items.iter().enumerate() {
-      self.url_index.insert(item.url.clone(), idx);
+    self.workspace.url_index.clear();
+    self.workspace.arxiv_id_index.clear();
+    self.workspace.url_index.reserve(self.workspace.items.len());
+    for (idx, item) in self.workspace.items.iter().enumerate() {
+      self.workspace.url_index.insert(item.url.clone(), idx);
       if let Some(aid) = arxiv_id_from_url(&item.url) {
-        self.arxiv_id_index.insert(aid.to_string(), idx);
+        self.workspace.arxiv_id_index.insert(aid.to_string(), idx);
       }
     }
   }
@@ -605,7 +598,7 @@ impl App {
           return false;
         }
         if !self.active_filters.tags.is_empty() {
-          let item_tags = crate::tags::for_url(&self.item_tags, &item.url);
+          let item_tags = crate::tags::for_url(&self.workspace.item_tags, &item.url);
           if !item_tags.iter().any(|t| self.active_filters.tags.contains(t)) {
             return false;
           }
@@ -643,13 +636,13 @@ impl App {
   /// escape hatches for the rare external mutation sites that don't fit a
   /// mutator (e.g. config.sources toggling in keys.rs).
   /// Reset the primary items vec and every parallel index/cache that mirrors
-  /// it. Direct `app.items.clear()` would leave `url_index` /
+  /// it. Direct `app.workspace.items.clear()` would leave `url_index` /
   /// `arxiv_id_index` populated with stale offsets and panic on the next
   /// `process_incoming` batch.
   pub fn reset_items(&mut self) {
-    self.items.clear();
-    self.url_index.clear();
-    self.arxiv_id_index.clear();
+    self.workspace.items.clear();
+    self.workspace.url_index.clear();
+    self.workspace.arxiv_id_index.clear();
     self.invalidate_visible_cache();
     self.invalidate_items_derived_caches();
   }
@@ -664,7 +657,7 @@ impl App {
   }
 
   /// Cheap O(1) read from the memoized count cache. On miss, runs a single
-  /// Fused pass over `self.items` that produces every counter the dashboard
+  /// Fused pass over `self.workspace.items` that produces every counter the dashboard
   /// and chip bar need. Returns a `Ref` so cache hits don't pay a clone.
   pub fn item_counts(&self) -> std::cell::Ref<'_, ItemCounts> {
     if self.counts_cache.borrow().is_none() {
@@ -682,7 +675,7 @@ impl App {
       .format("%Y-%m-%d")
       .to_string();
     let mut counts = ItemCounts::default();
-    for item in &self.items {
+    for item in &self.workspace.items {
       counts.total += 1;
       match item.workflow_state {
         WorkflowState::Inbox => counts.inbox += 1,
@@ -712,8 +705,8 @@ impl App {
 
   pub fn items_for_tab(&self) -> &[FeedItem] {
     match self.feed_tab {
-      FeedTab::Inbox => &self.items,
-      FeedTab::Library => &self.items,
+      FeedTab::Inbox => &self.workspace.items,
+      FeedTab::Library => &self.workspace.items,
       FeedTab::Discoveries => &self.discovery.items,
       FeedTab::History => &[],
     }
@@ -721,11 +714,11 @@ impl App {
 
   fn items_for_tab_mut(&mut self) -> &mut Vec<FeedItem> {
     match self.feed_tab {
-      FeedTab::Inbox => &mut self.items,
-      FeedTab::Library => &mut self.items,
+      FeedTab::Inbox => &mut self.workspace.items,
+      FeedTab::Library => &mut self.workspace.items,
       FeedTab::Discoveries => &mut self.discovery.items,
       // History doesn't use FeedItem; callers should not dispatch here for this tab.
-      FeedTab::History => &mut self.items,
+      FeedTab::History => &mut self.workspace.items,
     }
   }
 
@@ -1019,18 +1012,18 @@ mod tests {
   #[test]
   fn rebuild_indices_maps_every_item() {
     let mut app = App::new();
-    app.items = mock_items();
-    let item_count = app.items.len();
+    app.workspace.items = mock_items();
+    let item_count = app.workspace.items.len();
     app.rebuild_indices();
-    assert_eq!(app.url_index.len(), item_count);
+    assert_eq!(app.workspace.url_index.len(), item_count);
     // Every item's URL should resolve back to its position.
-    for (idx, item) in app.items.iter().enumerate() {
-      assert_eq!(app.url_index.get(&item.url).copied(), Some(idx));
+    for (idx, item) in app.workspace.items.iter().enumerate() {
+      assert_eq!(app.workspace.url_index.get(&item.url).copied(), Some(idx));
     }
     // arxiv_id_index covers only items whose URL has an arxiv ID.
-    for (idx, item) in app.items.iter().enumerate() {
+    for (idx, item) in app.workspace.items.iter().enumerate() {
       if let Some(aid) = arxiv_id_from_url(&item.url) {
-        assert_eq!(app.arxiv_id_index.get(aid).copied(), Some(idx));
+        assert_eq!(app.workspace.arxiv_id_index.get(aid).copied(), Some(idx));
       }
     }
   }
@@ -1072,21 +1065,21 @@ mod tests {
   #[test]
   fn rebuild_indices_clears_stale_entries() {
     let mut app = App::new();
-    app.items = mock_items();
+    app.workspace.items = mock_items();
     app.rebuild_indices();
-    let prior = app.url_index.len();
+    let prior = app.workspace.url_index.len();
     // Drop half the items, rebuild — the index should shrink to match.
-    app.items.truncate(prior / 2);
+    app.workspace.items.truncate(prior / 2);
     app.rebuild_indices();
-    assert_eq!(app.url_index.len(), prior / 2);
+    assert_eq!(app.workspace.url_index.len(), prior / 2);
   }
 
   #[test]
   fn item_counts_breaks_down_workflow_states() {
     let mut app = App::new();
-    app.items = mock_items();
+    app.workspace.items = mock_items();
     let counts = app.item_counts();
-    assert_eq!(counts.total, app.items.len());
+    assert_eq!(counts.total, app.workspace.items.len());
     // Sum invariant: every item lives in exactly one workflow bucket.
     assert_eq!(
       counts.inbox + counts.queued + counts.deep_read + counts.archived,
@@ -1102,7 +1095,7 @@ mod tests {
   #[test]
   fn item_counts_queue_preview_caps_at_two() {
     let mut app = App::new();
-    app.items = mock_items();
+    app.workspace.items = mock_items();
     let counts = app.item_counts();
     assert!(counts.queued >= 2, "fixture must have at least 2 queued items");
     assert_eq!(
@@ -1115,14 +1108,14 @@ mod tests {
   #[test]
   fn invalidate_counts_cache_forces_recompute() {
     let mut app = App::new();
-    app.items = mock_items();
+    app.workspace.items = mock_items();
     // Snapshot the cached total in a scoped block so the Ref drops before
-    // we mutate `app.items` below.
+    // we mutate `app.workspace.items` below.
     let before_total = app.item_counts().total;
     // Mutate items directly, bypassing the public mutators that would
     // normally call invalidate_counts_cache. The cache should still hold
     // the stale value until we invalidate by hand.
-    app.items.clear();
+    app.workspace.items.clear();
     let stale_total = app.item_counts().total;
     assert_eq!(stale_total, before_total, "cache survives raw mutation");
     app.invalidate_counts_cache();
@@ -1133,14 +1126,14 @@ mod tests {
   #[test]
   fn filter_source_names_caches_until_invalidated() {
     let mut app = App::new();
-    app.items = mock_items();
+    app.workspace.items = mock_items();
 
     // First call computes and caches.
     let before = app.filter_source_names();
     assert!(!before.is_empty());
 
     // Mutate items directly without invalidation — cache holds stale value.
-    app.items.clear();
+    app.workspace.items.clear();
     let stale = app.filter_source_names();
     assert_eq!(stale, before, "cache survives raw mutation");
 
@@ -1156,16 +1149,16 @@ mod tests {
   #[test]
   fn reset_items_clears_indices() {
     let mut app = App::new();
-    app.items = mock_items();
+    app.workspace.items = mock_items();
     app.rebuild_indices();
-    assert!(!app.url_index.is_empty(), "fixture must populate url_index");
+    assert!(!app.workspace.url_index.is_empty(), "fixture must populate url_index");
 
     app.reset_items();
 
-    assert!(app.items.is_empty());
-    assert!(app.url_index.is_empty(), "url_index must be cleared in lockstep");
+    assert!(app.workspace.items.is_empty());
+    assert!(app.workspace.url_index.is_empty(), "url_index must be cleared in lockstep");
     assert!(
-      app.arxiv_id_index.is_empty(),
+      app.workspace.arxiv_id_index.is_empty(),
       "arxiv_id_index must be cleared in lockstep"
     );
   }

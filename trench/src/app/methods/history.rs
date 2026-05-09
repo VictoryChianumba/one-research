@@ -23,7 +23,7 @@ impl App {
         meta,
       );
     });
-    crate::store::history::save(&self.history);
+    crate::store::history::save(&self.workspace.history);
   }
 
   pub fn record_discovery_query(
@@ -34,7 +34,7 @@ impl App {
     self.mutate_history(|h| {
       crate::history::record_query(h, topic.to_string(), intent.label());
     });
-    crate::store::history::save(&self.history);
+    crate::store::history::save(&self.workspace.history);
   }
 
   /// Mutator chokepoint for `history`. Invokes `f`, then invalidates the
@@ -47,7 +47,7 @@ impl App {
     }
     let cache = self.filtered_history_cache.borrow();
     let indices = cache.as_ref().expect("populated above");
-    indices.iter().map(|&i| &self.history[i]).collect()
+    indices.iter().map(|&i| &self.workspace.history[i]).collect()
   }
 
   fn compute_filtered_history_indices(&self) -> Vec<usize> {
@@ -55,6 +55,7 @@ impl App {
     let q = self.search_query_lower.as_str();
     let src_filter = &self.active_filters.sources;
     self
+      .workspace
       .history
       .iter()
       .enumerate()

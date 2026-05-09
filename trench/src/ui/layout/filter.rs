@@ -127,7 +127,7 @@ pub fn draw_filter_panel(frame: &mut Frame, app: &App, area: Rect) {
   // Workflow state filtering moved to the Library tab chips — the panel only
   // covers source / signal / content_type / tags now.
 
-  let tag_names = crate::tags::all_tags(&app.item_tags);
+  let tag_names = crate::tags::all_tags(&app.workspace.item_tags);
   if !tag_names.is_empty() {
     lines.push(filter_header("Tags", &t));
     for name in tag_names {

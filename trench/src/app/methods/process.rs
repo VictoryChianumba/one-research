@@ -54,7 +54,7 @@ impl App {
       self.fetch_rx = None;
     }
 
-    let was_empty = self.items.is_empty();
+    let was_empty = self.workspace.items.is_empty();
     let mut had_structural_item_changes = false;
     let mut had_source_updates = false;
     let mut had_enriched_updates = false;
@@ -64,14 +64,14 @@ impl App {
         FetchMessage::Items(new_items) => {
           for mut item in new_items {
             // Apply any persisted workflow state.
-            if let Some(state) = self.persisted_states.get(&item.url) {
+            if let Some(state) = self.workspace.persisted_states.get(&item.url) {
               item.workflow_state = *state;
             }
 
             // URL dedup via index — O(1) replaces the prior O(N) linear
             // scan that fired ~50× per refresh × ~2,600 items.
-            if let Some(&pos) = self.url_index.get(&item.url) {
-              self.items[pos] = item;
+            if let Some(&pos) = self.workspace.url_index.get(&item.url) {
+              self.workspace.items[pos] = item;
               had_source_updates = true;
               continue;
             }
@@ -79,13 +79,13 @@ impl App {
             // ArXiv ID dedup: collapse HF and arXiv entries for the same
             // paper. Keep the arXiv entry as primary. Same O(1) lookup.
             if let Some(aid) = arxiv_id_from_url(&item.url) {
-              if let Some(&pos) = self.arxiv_id_index.get(aid) {
+              if let Some(&pos) = self.workspace.arxiv_id_index.get(aid) {
                 if item.source_platform == SourcePlatform::ArXiv {
                   // Incoming is the canonical arXiv entry — replace HF stub.
                   // Position doesn't change, indices stay valid.
-                  let ws = self.items[pos].workflow_state;
-                  self.items[pos] = item;
-                  self.items[pos].workflow_state = ws;
+                  let ws = self.workspace.items[pos].workflow_state;
+                  self.workspace.items[pos] = item;
+                  self.workspace.items[pos].workflow_state = ws;
                   had_source_updates = true;
                 }
                 // else: existing is already arXiv, drop the HF duplicate.
@@ -95,61 +95,61 @@ impl App {
 
             // New item: push and update indices incrementally so the next
             // iteration of this same loop sees it for intra-batch dedup.
-            let new_idx = self.items.len();
-            self.url_index.insert(item.url.clone(), new_idx);
+            let new_idx = self.workspace.items.len();
+            self.workspace.url_index.insert(item.url.clone(), new_idx);
             if let Some(aid) = arxiv_id_from_url(&item.url) {
-              self.arxiv_id_index.insert(aid.to_string(), new_idx);
+              self.workspace.arxiv_id_index.insert(aid.to_string(), new_idx);
             }
-            self.items.push(item);
+            self.workspace.items.push(item);
             had_structural_item_changes = true;
             had_source_updates = true;
           }
         }
         FetchMessage::EnrichedItems(new_items) => {
           for mut item in new_items {
-            if let Some(state) = self.persisted_states.get(&item.url) {
+            if let Some(state) = self.workspace.persisted_states.get(&item.url) {
               item.workflow_state = *state;
             }
 
-            if let Some(&pos) = self.url_index.get(&item.url) {
-              let workflow_state = self.items[pos].workflow_state;
-              self.items[pos] = item;
-              self.items[pos].workflow_state = workflow_state;
+            if let Some(&pos) = self.workspace.url_index.get(&item.url) {
+              let workflow_state = self.workspace.items[pos].workflow_state;
+              self.workspace.items[pos] = item;
+              self.workspace.items[pos].workflow_state = workflow_state;
               had_enriched_updates = true;
               continue;
             }
 
             if let Some(aid) = arxiv_id_from_url(&item.url) {
-              if let Some(&pos) = self.arxiv_id_index.get(aid) {
-                let workflow_state = self.items[pos].workflow_state;
-                if self.items[pos].source_platform == SourcePlatform::ArXiv
+              if let Some(&pos) = self.workspace.arxiv_id_index.get(aid) {
+                let workflow_state = self.workspace.items[pos].workflow_state;
+                if self.workspace.items[pos].source_platform == SourcePlatform::ArXiv
                   && item.source_platform != SourcePlatform::ArXiv
                 {
-                  if self.items[pos].github_repo.is_none() {
-                    self.items[pos].github_repo = item.github_repo.take();
-                    self.items[pos].github_owner = item.github_owner.take();
-                    self.items[pos].github_repo_name =
+                  if self.workspace.items[pos].github_repo.is_none() {
+                    self.workspace.items[pos].github_repo = item.github_repo.take();
+                    self.workspace.items[pos].github_owner = item.github_owner.take();
+                    self.workspace.items[pos].github_repo_name =
                       item.github_repo_name.take();
                   }
-                  if self.items[pos].full_content.is_none() {
-                    self.items[pos].full_content = item.full_content.take();
+                  if self.workspace.items[pos].full_content.is_none() {
+                    self.workspace.items[pos].full_content = item.full_content.take();
                   }
                   had_enriched_updates = true;
                   continue;
                 }
-                self.items[pos] = item;
-                self.items[pos].workflow_state = workflow_state;
+                self.workspace.items[pos] = item;
+                self.workspace.items[pos].workflow_state = workflow_state;
                 had_enriched_updates = true;
                 continue;
               }
             }
 
-            let new_idx = self.items.len();
-            self.url_index.insert(item.url.clone(), new_idx);
+            let new_idx = self.workspace.items.len();
+            self.workspace.url_index.insert(item.url.clone(), new_idx);
             if let Some(aid) = arxiv_id_from_url(&item.url) {
-              self.arxiv_id_index.insert(aid.to_string(), new_idx);
+              self.workspace.arxiv_id_index.insert(aid.to_string(), new_idx);
             }
-            self.items.push(item);
+            self.workspace.items.push(item);
             had_structural_item_changes = true;
           }
         }
@@ -175,14 +175,14 @@ impl App {
     }
 
     if had_structural_item_changes {
-      self.items.sort_by(|a, b| b.published_at.cmp(&a.published_at));
+      self.workspace.items.sort_by(|a, b| b.published_at.cmp(&a.published_at));
       // Sort invalidated every position; indices must reflect the new order.
       self.rebuild_indices();
       self.invalidate_visible_cache();
       self.invalidate_counts_cache();
       // Hand off to the background writer — UI thread used to hitch for
       // 100-300 ms here while the 3.8 MB cache.json was serialized + fsynced.
-      crate::store::cache::queue_save(self.items.clone());
+      crate::store::cache::queue_save(self.workspace.items.clone());
       if was_empty {
         self.list_offset = 0;
       }
@@ -190,7 +190,7 @@ impl App {
     } else if had_source_updates || had_enriched_updates {
       self.invalidate_visible_cache();
       self.invalidate_items_derived_caches();
-      crate::store::cache::queue_save(self.items.clone());
+      crate::store::cache::queue_save(self.workspace.items.clone());
       self.mark_dirty();
     }
     if disconnected {
@@ -288,7 +288,7 @@ impl App {
       // ingestion-time sanitize would silently ship terminal-control
       // bytes to the renderer.
       item.sanitize_in_place();
-      if let Some(state) = self.persisted_states.get(&item.url) {
+      if let Some(state) = self.workspace.persisted_states.get(&item.url) {
         item.workflow_state = *state;
       }
 

@@ -321,7 +321,7 @@ pub fn draw_library_tab(frame: &mut Frame, app: &mut App, area: Rect) {
   }
 
   if app.visible_count() == 0 {
-    let msg = if app.items.is_empty() {
+    let msg = if app.workspace.items.is_empty() {
       "No items yet — fetch a feed first."
     } else {
       "No items match this filter."
@@ -396,7 +396,7 @@ fn draw_history_tab(frame: &mut Frame, app: &App, area: Rect) {
 
   let entries = app.filtered_history();
   if entries.is_empty() {
-    let msg = if app.history.is_empty() {
+    let msg = if app.workspace.history.is_empty() {
       "No history yet — open a paper or run a search."
     } else {
       "No entries in this time window."
@@ -493,9 +493,10 @@ fn draw_history_tab(frame: &mut Frame, app: &App, area: Rect) {
       // O(1) hashmap lookup. Was a per-row O(items + discovery_items)
       // chain+find scan against ~3K items.
       let cached_item = app
+        .workspace
         .url_index
         .get(&entry.key)
-        .map(|&idx| &app.items[idx])
+        .map(|&idx| &app.workspace.items[idx])
         .or_else(|| {
           app
             .discovery.url_index
@@ -854,7 +855,7 @@ pub fn draw_item_table(frame: &mut Frame, app: &mut App, area: Rect) {
 
   // ── Auto scroll tracking — item-count-based ───────────────────────────────
   // Count and visible_count computed in a scoped borrow so list_offset can be
-  // mutated afterwards without a live reference into app.items.
+  // mutated afterwards without a live reference into app.workspace.items.
   let total_items_pre = app.visible_count();
   let visible_count = count_visible_items_from_app(
     app,

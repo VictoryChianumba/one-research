@@ -12,6 +12,7 @@ mod history;
 // `crates/http/`; chat providers + discovery + main feed-discovery now
 // share the same hardened client (timeout, redirect cap, UA).
 use trench_http as http;
+mod data;
 mod ingestion;
 mod keys;
 mod library;
@@ -673,7 +674,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
   // Load persisted workflow states and UI state.
   let t = std::time::Instant::now();
-  app.persisted_states = store::load();
+  app.workspace.persisted_states = store::load();
   let ui = store::load_ui();
   app.last_read = ui.last_read;
   app.last_read_source = ui.last_read_source;
@@ -687,11 +688,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     .min(app.secondary_notes_tabs.len().saturating_sub(1));
   log::debug!("startup: state/ui load {}ms", t.elapsed().as_millis());
 
-  // 1. Load cache immediately → populate app.items.
+  // 1. Load cache immediately → populate app.workspace.items.
   let t = std::time::Instant::now();
   let cached = store::cache::load();
   if !cached.is_empty() {
-    app.items = cached;
+    app.workspace.items = cached;
   }
   // Build url_index + arxiv_id_index over the loaded items so the dedup
   // hot path in process_incoming gets O(1) lookups from the very first
@@ -701,18 +702,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   log::debug!(
     "startup: cache load + index rebuild {}ms ({} cached items)",
     t.elapsed().as_millis(),
-    app.items.len()
+    app.workspace.items.len()
   );
 
   // 2. Apply persisted states to cached items.
   let t = std::time::Instant::now();
-  for item in &mut app.items {
-    if let Some(state) = app.persisted_states.get(&item.url) {
+  for item in &mut app.workspace.items {
+    if let Some(state) = app.workspace.persisted_states.get(&item.url) {
       item.workflow_state = *state;
     }
   }
   for item in &mut app.discovery.items {
-    if let Some(state) = app.persisted_states.get(&item.url) {
+    if let Some(state) = app.workspace.persisted_states.get(&item.url) {
       item.workflow_state = *state;
     }
   }

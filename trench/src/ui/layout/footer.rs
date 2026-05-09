@@ -31,7 +31,7 @@ pub fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
     let sources = app.loading_sources.join(", ");
     let prefix = if app.is_refreshing { "↻ refreshing" } else { "fetching" };
     Some(Line::from(Span::styled(
-      format!("{spin} {prefix}: {}  │  {} items", sources, app.items.len()),
+      format!("{spin} {prefix}: {}  │  {} items", sources, app.workspace.items.len()),
       Style::default().fg(t.warning),
     )))
   } else {

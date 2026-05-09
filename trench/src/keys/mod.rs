@@ -751,7 +751,7 @@ fn find_item_by_url<'a>(
   app: &'a App,
   url: &str,
 ) -> Option<&'a crate::models::FeedItem> {
-  app.url_index.get(url).and_then(|&idx| app.items.get(idx)).or_else(|| {
+  app.workspace.url_index.get(url).and_then(|&idx| app.workspace.items.get(idx)).or_else(|| {
     app
       .discovery.url_index
       .get(url)
@@ -763,7 +763,7 @@ fn find_item_by_arxiv_id<'a>(
   app: &'a App,
   arxiv_id: &str,
 ) -> Option<&'a crate::models::FeedItem> {
-  app.arxiv_id_index.get(arxiv_id).and_then(|&idx| app.items.get(idx)).or_else(
+  app.workspace.arxiv_id_index.get(arxiv_id).and_then(|&idx| app.workspace.items.get(idx)).or_else(
     || {
       app
         .discovery.arxiv_id_index
