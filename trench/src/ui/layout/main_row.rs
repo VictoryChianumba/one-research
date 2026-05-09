@@ -2,7 +2,7 @@ use ratatui::{
   Frame,
   layout::{Alignment, Constraint, Layout, Rect},
   style::Style,
-  widgets::Paragraph,
+  widgets::{Clear, Paragraph},
 };
 
 use super::details::draw_details_panel;
@@ -77,6 +77,7 @@ pub fn draw_main_row(frame: &mut Frame, app: &mut App, area: Rect) -> MainRowRec
       let rows = Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
         .split(left_reader_rect);
       let focused = app.focused_reader == FocusedReader::Primary;
+      frame.render_widget(Clear, rows[0]);
       draw_reader_tab_bar(
         frame,
         rows[0],
@@ -100,6 +101,7 @@ pub fn draw_main_row(frame: &mut Frame, app: &mut App, area: Rect) -> MainRowRec
       let rows = Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
         .split(right_reader_rect);
       let focused = app.focused_reader == FocusedReader::Secondary;
+      frame.render_widget(Clear, rows[0]);
       draw_reader_tab_bar(
         frame,
         rows[0],
@@ -160,6 +162,7 @@ pub fn draw_main_row(frame: &mut Frame, app: &mut App, area: Rect) -> MainRowRec
     {
       let rows = Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
         .split(reader_rect);
+      frame.render_widget(Clear, rows[0]);
       draw_reader_tab_bar(
         frame,
         rows[0],
@@ -198,6 +201,7 @@ pub fn draw_main_row(frame: &mut Frame, app: &mut App, area: Rect) -> MainRowRec
     draw_reader_workspace_header(frame, app, workspace_area, "Reader");
     let rows = Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
       .split(body_area);
+    frame.render_widget(Clear, rows[0]);
     draw_reader_tab_bar(
       frame,
       rows[0],
@@ -238,6 +242,7 @@ pub fn draw_main_row(frame: &mut Frame, app: &mut App, area: Rect) -> MainRowRec
     {
       let rows = Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
         .split(reader_rect);
+      frame.render_widget(Clear, rows[0]);
       draw_reader_tab_bar(
         frame,
         rows[0],
