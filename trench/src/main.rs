@@ -1,7 +1,9 @@
+mod action;
 mod app;
 mod commands;
 mod config;
 mod discovery;
+mod effect;
 mod export;
 mod github;
 mod history;
@@ -18,6 +20,7 @@ mod models;
 mod primitives;
 mod sanitize;
 mod store;
+mod surfaces;
 mod syntax;
 mod tags;
 pub mod theme;
