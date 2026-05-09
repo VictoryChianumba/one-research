@@ -451,10 +451,9 @@ fn render_feed_item_details<'a>(
       )));
     }
   }
-  let notif = app
-    .notification
-    .as_deref()
-    .filter(|_| app.notification_item_id.as_deref() == Some(item.url.as_str()));
+  let notif = app.notification.message.as_deref().filter(|_| {
+    app.notification.item_id.as_deref() == Some(item.url.as_str())
+  });
   let footer_lines =
     3 + usize::from(
       item.github_owner.is_some() && item.github_repo_name.is_some(),
@@ -518,8 +517,8 @@ fn render_history_paper_details<'a>(
     Span::styled(truncate(&entry.source, 16), s.accent_style),
   ]));
   let summary = meta.map(|m| m.summary_short.as_str()).unwrap_or("");
-  let notif = app.notification.as_deref().filter(|_| {
-    app.notification_item_id.as_deref() == Some(entry.key.as_str())
+  let notif = app.notification.message.as_deref().filter(|_| {
+    app.notification.item_id.as_deref() == Some(entry.key.as_str())
   });
   let footer_lines = 3 + notif.map_or(0, |_| 2);
   let summary_lines = visible_height

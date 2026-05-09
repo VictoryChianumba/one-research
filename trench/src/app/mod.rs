@@ -9,7 +9,9 @@ use std::sync::mpsc::Receiver;
 use std::time::Instant;
 
 mod methods;
+pub mod notifications;
 mod state;
+pub use notifications::NotificationState;
 pub use state::*;
 
 pub struct App {
@@ -92,8 +94,9 @@ pub struct App {
   pub is_refreshing: bool,
 
   // Details panel
-  pub notification: Option<String>,
-  pub notification_item_id: Option<String>,
+  /// Banner notification state — relocated into a struct in Phase 2.
+  /// Was two paired fields (`notification`, `notification_item_id`).
+  pub notification: NotificationState,
   pub details_scroll: usize,
   pub details_max_scroll: usize,
   /// URL of the item that was selected when details_scroll was last set.
@@ -279,8 +282,7 @@ impl App {
       repo_context: None,
       github_token: None,
       is_refreshing: false,
-      notification: None,
-      notification_item_id: None,
+      notification: NotificationState::new(),
       details_scroll: 0,
       details_max_scroll: usize::MAX,
       details_last_item_url: None,
@@ -780,13 +782,13 @@ impl App {
     // Sanitize at the chokepoint — set_notification is called from many
     // sites including ones that interpolate reqwest errors / GitHub
     // tree paths / API messages.
-    self.notification = Some(crate::sanitize::sanitize_terminal_text(&msg));
-    self.notification_item_id = url;
+    self.notification.message =
+      Some(crate::sanitize::sanitize_terminal_text(&msg));
+    self.notification.item_id = url;
   }
 
   pub fn clear_notification(&mut self) {
-    self.notification = None;
-    self.notification_item_id = None;
+    self.notification.clear();
   }
 
   pub fn move_down(&mut self) {

@@ -543,11 +543,11 @@ fn handle_history_tab(key: KeyEvent, app: &mut App) -> bool {
       };
       if entry.kind == HistoryKind::Paper {
         open_url(&entry.key);
-        app.notification = Some(format!(
+        app.notification.message = Some(format!(
           "Opened in browser: {}",
           truncate_for_notif(&entry.title, 40)
         ));
-        app.notification_item_id = Some(entry.key.clone());
+        app.notification.item_id = Some(entry.key.clone());
       }
       true
     }
