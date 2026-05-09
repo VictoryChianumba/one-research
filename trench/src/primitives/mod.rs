@@ -7,5 +7,7 @@
 //! cursor-in-string) live with the state they belong to.
 
 pub mod list_state;
+pub mod scroll_state;
 
 pub use list_state::ListState;
+pub use scroll_state::ScrollState;

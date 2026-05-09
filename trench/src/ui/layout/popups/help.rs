@@ -354,10 +354,11 @@ pub fn draw_help_overlay(frame: &mut Frame, app: &mut App) {
     ]));
   }
 
-  let total_lines = body_lines.len() as u16;
-  let max_scroll = total_lines.saturating_sub(body_area.height);
-  app.help.scroll = app.help.scroll.min(max_scroll);
-  let scroll = app.help.scroll;
+  let total_lines = body_lines.len();
+  let max_scroll = total_lines.saturating_sub(body_area.height as usize);
+  app.help.scroll.set_viewport(body_area.height as usize);
+  app.help.scroll.set_max(max_scroll);
+  let scroll = app.help.scroll.offset() as u16;
 
   frame.render_widget(
     Paragraph::new(body_lines)

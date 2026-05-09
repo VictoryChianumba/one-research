@@ -143,7 +143,7 @@ pub fn dispatch(key: KeyEvent, app: &mut App) {
     app.leader_active = false;
     app.help.active = true;
     app.help.section = 0;
-    app.help.scroll = 0;
+    app.help.scroll.reset();
     return;
   }
   if handle_leader_or_ctrl_t(key, app) {
@@ -959,7 +959,7 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
     KeyCode::Char('?') => {
       app.help.active = true;
       app.help.section = 0;
-      app.help.scroll = 0;
+      app.help.scroll.reset();
     }
     KeyCode::Char('q') => {
       app.show_quit_popup();
