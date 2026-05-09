@@ -643,8 +643,7 @@ impl App {
     self.workspace.items.clear();
     self.workspace.url_index.clear();
     self.workspace.arxiv_id_index.clear();
-    self.invalidate_visible_cache();
-    self.invalidate_items_derived_caches();
+    self.route_effects(&[crate::effect::Effect::ItemsChanged]);
   }
 
   /// Same shape as `reset_items` but for the discovery-side mirrors —
@@ -653,7 +652,7 @@ impl App {
     self.discovery.items.clear();
     self.discovery.url_index.clear();
     self.discovery.arxiv_id_index.clear();
-    self.invalidate_visible_cache();
+    self.route_effects(&[crate::effect::Effect::ItemsChanged]);
   }
 
   /// Cheap O(1) read from the memoized count cache. On miss, runs a single

@@ -202,7 +202,7 @@ impl SourcesSurface {
             .unwrap_or(true);
           app.config.sources.enabled_sources.insert(src.to_string(), !cur);
           app.config.save();
-          app.invalidate_visible_cache();
+          app.route_effects(&[Effect::SourcesEnabledChanged]);
           crate::force_refresh(app);
         }
         // custom feeds: no toggle (present = enabled, use d to delete)

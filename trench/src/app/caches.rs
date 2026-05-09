@@ -78,7 +78,9 @@ impl App {
       Effect::HistoryMutated | Effect::HistoryFilterChanged => {
         self.invalidate_filtered_history_cache();
       }
-      Effect::LibraryFilterChanged | Effect::SourcesEnabledChanged => {
+      Effect::LibraryFilterChanged
+      | Effect::SourcesEnabledChanged
+      | Effect::TagsChanged => {
         self.invalidate_visible_cache();
       }
       Effect::FiltersChanged => {

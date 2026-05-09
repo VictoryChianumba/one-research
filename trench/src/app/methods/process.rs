@@ -178,8 +178,7 @@ impl App {
       self.workspace.items.sort_by(|a, b| b.published_at.cmp(&a.published_at));
       // Sort invalidated every position; indices must reflect the new order.
       self.rebuild_indices();
-      self.invalidate_visible_cache();
-      self.invalidate_counts_cache();
+      self.route_effects(&[crate::effect::Effect::ItemsChanged]);
       // Hand off to the background writer — UI thread used to hitch for
       // 100-300 ms here while the 3.8 MB cache.json was serialized + fsynced.
       crate::store::cache::queue_save(self.workspace.items.clone());
@@ -188,8 +187,7 @@ impl App {
       }
       self.mark_dirty();
     } else if had_source_updates || had_enriched_updates {
-      self.invalidate_visible_cache();
-      self.invalidate_items_derived_caches();
+      self.route_effects(&[crate::effect::Effect::ItemsChanged]);
       crate::store::cache::queue_save(self.workspace.items.clone());
       self.mark_dirty();
     }
@@ -321,6 +319,6 @@ impl App {
     self.discovery.items.sort_by(|a, b| b.published_at.cmp(&a.published_at));
     // Sort invalidated positions; rebuild for correctness.
     self.rebuild_discovery_indices();
-    self.invalidate_visible_cache();
+    self.route_effects(&[crate::effect::Effect::ItemsChanged]);
   }
 }

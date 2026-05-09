@@ -51,4 +51,8 @@ pub enum Effect {
   /// Sources configuration toggled (arxiv categories, RSS feeds,
   /// predefined sources). Observer invalidates: visible_cache.
   SourcesEnabledChanged,
+
+  /// Tags applied to or removed from items.
+  /// Observer invalidates: visible_cache.
+  TagsChanged,
 }

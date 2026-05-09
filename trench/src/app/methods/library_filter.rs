@@ -159,7 +159,7 @@ impl App {
       }
     }
     crate::store::tags::save(&self.workspace.item_tags);
-    self.invalidate_visible_cache();
+    self.route_effects(&[crate::effect::Effect::TagsChanged]);
   }
 
   pub fn filter_cursor_down(&mut self) {
