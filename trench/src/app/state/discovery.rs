@@ -31,8 +31,7 @@ pub struct DiscoveryState {
   pub intent: crate::discovery::intent::QueryIntent,
   /// When set by a slash command, overrides heuristic classification once.
   pub forced_intent: Option<crate::discovery::intent::QueryIntent>,
-  /// Selected row index in the slash-command palette.
-  pub palette_selected: usize,
-  /// Scroll offset for the palette (when suggestions exceed visible rows).
-  pub palette_scroll: usize,
+  /// Slash-command palette selection + scroll. Count is set each frame
+  /// from `discovery_palette_count(query)`.
+  pub palette: crate::primitives::ListState,
 }

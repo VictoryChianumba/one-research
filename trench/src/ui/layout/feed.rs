@@ -171,8 +171,8 @@ fn draw_discovery_palette(frame: &mut Frame, app: &App, list_area: Rect) {
   let t = app.theme();
   let w = list_area.width as usize;
   let visible = suggestions.len().min(8);
-  let selected = app.discovery.palette_selected.min(suggestions.len() - 1);
-  let scroll = app.discovery.palette_scroll;
+  let selected = app.discovery.palette.selected().min(suggestions.len() - 1);
+  let scroll = app.discovery.palette.offset();
   let start = scroll;
   let end = (start + visible).min(suggestions.len());
 
