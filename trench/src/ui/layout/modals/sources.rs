@@ -9,7 +9,8 @@ use ratatui::{
 use super::super::widgets::{
   draw_card_footer, settings_card_block, settings_modal_rect, truncate,
 };
-use crate::app::{App, DiscoverResult, SourcesDetectState};
+use crate::app::{App, DiscoverResult};
+use crate::primitives::AsyncLoadState;
 
 pub fn draw_sources_popup(frame: &mut Frame, app: &App) {
   let t = app.theme();
@@ -146,18 +147,22 @@ pub fn draw_sources_popup(frame: &mut Frame, app: &App) {
     ),
   ]));
 
-  let detect_line = match &app.sources_popup.detect_state {
-    SourcesDetectState::Idle => {
+  let detect_line = match &app.sources_popup.detect {
+    AsyncLoadState::Idle => {
       if input_focused && !app.sources_popup.input.is_empty() && !input_active {
         Line::from(Span::styled("  Press Enter to detect feed type", dim_style))
       } else {
         Line::from("")
       }
     }
-    SourcesDetectState::Detecting => {
+    AsyncLoadState::Loading(_) => {
       Line::from(Span::styled("  Detecting...", Style::default().fg(t.warning)))
     }
-    SourcesDetectState::Result(r) => match r {
+    AsyncLoadState::Disconnected => Line::from(Span::styled(
+      "  Detection thread disconnected",
+      Style::default().fg(t.error),
+    )),
+    AsyncLoadState::Ready(r) => match r {
       DiscoverResult::ArxivCategory(code) => Line::from(Span::styled(
         format!("  Detected: arXiv category {code} — press Enter to confirm"),
         Style::default().fg(t.success),

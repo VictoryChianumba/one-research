@@ -1,4 +1,4 @@
-use crate::app::{App, DiscoverResult, SourcesDetectState};
+use crate::app::App;
 
 impl App {
   pub fn sources_popup_arxiv_cats(&self) -> Vec<(String, String)> {
@@ -25,26 +25,11 @@ impl App {
       + self.config.sources.custom_feeds.len()
   }
 
-  /// Poll the discovery background thread and update detect state.
+  /// Advance the discovery background thread's load state. Called once
+  /// per frame from the event loop. AsyncLoadState handles the actual
+  /// state machine internally — Loading → Ready when a value arrives,
+  /// Loading → Disconnected if the sender drops without producing one.
   pub fn poll_detect_result(&mut self) {
-    use std::sync::mpsc::TryRecvError;
-    let result = if let Some(rx) = &self.sources_popup.detect_rx {
-      Some(rx.try_recv())
-    } else {
-      None
-    };
-    match result {
-      Some(Ok(r)) => {
-        self.sources_popup.detect_state = SourcesDetectState::Result(r);
-        self.sources_popup.detect_rx = None;
-      }
-      Some(Err(TryRecvError::Disconnected)) => {
-        self.sources_popup.detect_state = SourcesDetectState::Result(
-          DiscoverResult::Failed("Detection thread disconnected".to_string()),
-        );
-        self.sources_popup.detect_rx = None;
-      }
-      _ => {}
-    }
+    self.sources_popup.detect.poll();
   }
 }

@@ -1,7 +1,8 @@
 use crossterm::event::{KeyCode, KeyEvent};
 use std::sync::mpsc;
 
-use crate::app::{App, AppView, DiscoverResult, SourcesDetectState};
+use crate::app::{App, AppView, DiscoverResult};
+use crate::primitives::AsyncLoadState;
 use crate::config;
 use super::super::{force_refresh, spawn_discovery};
 
@@ -13,69 +14,71 @@ pub(super) fn handle_sources_popup(key: KeyEvent, app: &mut App) -> bool {
     match key.code {
       KeyCode::Esc => {
         app.sources_popup.input.blur();
-        app.sources_popup.detect_state = SourcesDetectState::Idle;
+        app.sources_popup.detect.reset();
         app.sources_popup.input.clear();
       }
       KeyCode::Enter => {
-        match &app.sources_popup.detect_state {
-          SourcesDetectState::Idle => {
-            if !app.sources_popup.input.is_empty() {
-              app.sources_popup.detect_state = SourcesDetectState::Detecting;
-              let url = app.sources_popup.input.buffer().to_string();
-              let (dtx, drx) = mpsc::channel();
-              app.sources_popup.detect_rx = Some(drx);
-              spawn_discovery(url, dtx);
-            }
-          }
-          SourcesDetectState::Detecting => {
-            // waiting — do nothing
-          }
-          SourcesDetectState::Result(result) => {
-            let result = result.clone();
-            match &result {
-              DiscoverResult::ArxivCategory(code) => {
-                if !app.config.sources.arxiv_categories.contains(code) {
-                  log::debug!(
-                    "sources_popup: adding arxiv category via detection: {code}"
-                  );
-                  app.config.sources.arxiv_categories.push(code.clone());
-                  app.config.save();
-                  log::debug!(
-                    "sources_popup: saved — arxiv categories now: [{}]",
-                    app.config.sources.arxiv_categories.join(", ")
-                  );
-                  force_refresh(app);
-                }
+        // Snapshot of current state — match arms must be exhaustive over
+        // AsyncLoadState even when only Ready needs the extracted value.
+        let ready = matches!(app.sources_popup.detect, AsyncLoadState::Ready(_));
+        let loading = app.sources_popup.detect.is_loading();
+
+        if ready {
+          // Drain the result, apply it, return to Idle for the next URL.
+          let Some(result) = app.sources_popup.detect.take() else {
+            return true;
+          };
+          match &result {
+            DiscoverResult::ArxivCategory(code) => {
+              if !app.config.sources.arxiv_categories.contains(code) {
+                log::debug!(
+                  "sources_popup: adding arxiv category via detection: {code}"
+                );
+                app.config.sources.arxiv_categories.push(code.clone());
+                app.config.save();
+                log::debug!(
+                  "sources_popup: saved — arxiv categories now: [{}]",
+                  app.config.sources.arxiv_categories.join(", ")
+                );
+                force_refresh(app);
               }
-              DiscoverResult::RssFeed { url, name } => {
-                let exists =
-                  app.config.sources.custom_feeds.iter().any(|f| &f.url == url);
-                if !exists {
-                  app.config.sources.custom_feeds.push(config::CustomFeed {
-                    url: url.clone(),
-                    name: name.clone(),
-                    feed_type: "rss".to_string(),
-                  });
-                  app.config.save();
-                  force_refresh(app);
-                }
-              }
-              DiscoverResult::HuggingFaceAlreadyEnabled
-              | DiscoverResult::Failed(_) => {}
             }
-            app.sources_popup.input.clear();
-            app.sources_popup.detect_state = SourcesDetectState::Idle;
-            app.sources_popup.input.blur();
+            DiscoverResult::RssFeed { url, name } => {
+              let exists =
+                app.config.sources.custom_feeds.iter().any(|f| &f.url == url);
+              if !exists {
+                app.config.sources.custom_feeds.push(config::CustomFeed {
+                  url: url.clone(),
+                  name: name.clone(),
+                  feed_type: "rss".to_string(),
+                });
+                app.config.save();
+                force_refresh(app);
+              }
+            }
+            DiscoverResult::HuggingFaceAlreadyEnabled
+            | DiscoverResult::Failed(_) => {}
           }
+          app.sources_popup.input.clear();
+          app.sources_popup.input.blur();
+        } else if loading {
+          // waiting — do nothing
+        } else if !app.sources_popup.input.is_empty() {
+          // Idle (or Disconnected, treated as a fresh start) — kick off
+          // a new detection.
+          let url = app.sources_popup.input.buffer().to_string();
+          let (dtx, drx) = mpsc::channel();
+          app.sources_popup.detect.start(drx);
+          spawn_discovery(url, dtx);
         }
       }
       KeyCode::Backspace => {
         app.sources_popup.input.pop_char();
-        app.sources_popup.detect_state = SourcesDetectState::Idle;
+        app.sources_popup.detect.reset();
       }
       KeyCode::Char(c) => {
         app.sources_popup.input.push_char(c);
-        app.sources_popup.detect_state = SourcesDetectState::Idle;
+        app.sources_popup.detect.reset();
       }
       _ => {}
     }
@@ -91,7 +94,7 @@ pub(super) fn handle_sources_popup(key: KeyEvent, app: &mut App) -> bool {
         app.view = AppView::Settings;
         app.sources_popup.cursor = 0;
         app.sources_popup.input.clear();
-        app.sources_popup.detect_state = SourcesDetectState::Idle;
+        app.sources_popup.detect.reset();
       }
       KeyCode::Char('j') | KeyCode::Down => {
         app.sources_popup.cursor =

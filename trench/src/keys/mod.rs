@@ -3,7 +3,7 @@ use std::sync::mpsc;
 
 use crate::app::{
   App, AppView, CustomThemeEditorMode, FeedTab, FocusedReader, NavDirection,
-  NotesMode, NotesTab, PaneId, QuitPopupKind, SourcesDetectState,
+  NotesMode, NotesTab, PaneId, QuitPopupKind,
 };
 
 use super::{get_pane_by_number, spawn_fulltext_fetch, truncate_for_notif};
@@ -889,7 +889,7 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
       app.sources_popup.cursor = 0;
       app.sources_popup.input.clear();
       app.sources_popup.input.blur();
-      app.sources_popup.detect_state = SourcesDetectState::Idle;
+      app.sources_popup.detect.reset();
       app.view = AppView::Settings;
     }
     KeyCode::Char('z') => {

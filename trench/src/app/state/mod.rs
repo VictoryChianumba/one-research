@@ -20,8 +20,8 @@ pub use help::HelpState;
 pub use notes::{NotesContext, NotesMode, NotesTab};
 pub use panes::{FocusedReader, PaneId, PaneInfo, PANE_COUNT};
 pub use popups::{
-  DiscoverResult, QuitPopupKind, QuitPopupState, SourcesDetectState,
-  SourcesPopupState, TagPickerState,
+  DiscoverResult, QuitPopupKind, QuitPopupState, SourcesPopupState,
+  TagPickerState,
 };
 pub use reader::ReaderTab;
 pub use repo::{

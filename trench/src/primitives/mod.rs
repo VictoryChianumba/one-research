@@ -6,10 +6,12 @@
 //! buffers, so the invariants (selection-stays-visible, scroll-in-bounds,
 //! cursor-in-string) live with the state they belong to.
 
+pub mod async_load;
 pub mod list_state;
 pub mod scroll_state;
 pub mod text_input;
 
+pub use async_load::AsyncLoadState;
 pub use list_state::ListState;
 pub use scroll_state::ScrollState;
 pub use text_input::TextInputState;

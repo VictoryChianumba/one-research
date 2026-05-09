@@ -36,15 +36,6 @@ pub enum DiscoverResult {
   Failed(String),
 }
 
-/// State machine for the "Add source" input in the sources popup.
-#[derive(Default)]
-pub enum SourcesDetectState {
-  #[default]
-  Idle,
-  Detecting,
-  Result(DiscoverResult),
-}
-
 /// Sources popup state.
 #[derive(Default)]
 pub struct SourcesPopupState {
@@ -52,6 +43,8 @@ pub struct SourcesPopupState {
   /// URL detection input. `input.is_focused()` replaces the prior
   /// `input_active: bool` companion field.
   pub input: crate::primitives::TextInputState,
-  pub detect_state: SourcesDetectState,
-  pub detect_rx: Option<std::sync::mpsc::Receiver<DiscoverResult>>,
+  /// URL detection async state machine. Idle / Loading(rx) / Ready(result)
+  /// / Disconnected, replacing the prior `SourcesDetectState` enum +
+  /// `detect_rx: Option<Receiver<...>>` pair.
+  pub detect: crate::primitives::AsyncLoadState<DiscoverResult>,
 }

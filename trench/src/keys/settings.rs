@@ -2,7 +2,6 @@ use crossterm::event::{KeyCode, KeyEvent};
 
 use crate::app::{
   App, AppView, CustomThemeEditorMode, CustomThemeEditorState,
-  SourcesDetectState,
 };
 use crate::config::{self, CUSTOM_THEME_ROLES, CustomThemeConfig};
 use ui_theme::ThemeId;
@@ -107,7 +106,7 @@ pub(super) fn handle_settings_view(key: KeyEvent, app: &mut App) -> bool {
         app.sources_popup.cursor = 0;
         app.sources_popup.input.clear();
         app.sources_popup.input.blur();
-        app.sources_popup.detect_state = SourcesDetectState::Idle;
+        app.sources_popup.detect.reset();
         app.view = AppView::Sources;
         log::debug!(
           "sources_popup: opened — current arxiv categories: [{}]",
