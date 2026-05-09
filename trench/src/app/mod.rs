@@ -111,8 +111,10 @@ pub struct App {
   pub settings: SettingsEditState,
   pub theme_picker: ThemePickerState,
 
-  // Sources popup
-  pub sources_popup: SourcesPopupState,
+  // Sources popup — first surface conversion (Phase 2). Field name
+  // `sources_popup` retained to keep the diff narrow; type is now the
+  // surface struct from surfaces/overlays/sources.rs.
+  pub sources_popup: crate::surfaces::overlays::SourcesSurface,
 
   // Embedded notes pane
   pub notes_app: Option<notes::app::App>,
@@ -282,7 +284,7 @@ impl App {
       active_custom_theme_id: None,
       settings: SettingsEditState::default(),
       theme_picker: ThemePickerState::default(),
-      sources_popup: SourcesPopupState::default(),
+      sources_popup: crate::surfaces::overlays::SourcesSurface::new(),
       notes_app: None,
       notes_active: false,
       notes_tabs: Vec::new(),

@@ -28,23 +28,12 @@ pub struct TagPickerState {
 }
 
 /// Result from the URL discovery pipeline (used by the sources popup).
+/// Defined here because it predates the surfaces/ layout — moving it now
+/// would touch every call site that imports `crate::app::DiscoverResult`.
 #[derive(Clone)]
 pub enum DiscoverResult {
   ArxivCategory(String),
   HuggingFaceAlreadyEnabled,
   RssFeed { url: String, name: String },
   Failed(String),
-}
-
-/// Sources popup state.
-#[derive(Default)]
-pub struct SourcesPopupState {
-  pub cursor: usize,
-  /// URL detection input. `input.is_focused()` replaces the prior
-  /// `input_active: bool` companion field.
-  pub input: crate::primitives::TextInputState,
-  /// URL detection async state machine. Idle / Loading(rx) / Ready(result)
-  /// / Disconnected, replacing the prior `SourcesDetectState` enum +
-  /// `detect_rx: Option<Receiver<...>>` pair.
-  pub detect: crate::primitives::AsyncLoadState<DiscoverResult>,
 }
