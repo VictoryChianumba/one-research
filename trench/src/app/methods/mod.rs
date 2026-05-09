@@ -6,7 +6,6 @@
 mod history;
 mod library_filter;
 mod notes;
-mod panes;
 mod process;
 mod reader;
 mod repo;

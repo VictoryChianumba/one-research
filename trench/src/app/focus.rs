@@ -1,8 +1,48 @@
+//! Focus + pane registry. Single source of truth for which pane has
+//! keyboard focus and where each pane was last drawn.
+//!
+//! Holds:
+//! - `focused_pane`: the pane currently receiving keyboard input
+//! - `panes`: per-pane geometry + open-state cache, updated each frame
+//!   from layout
+//!
+//! Spatial nav (`find_pane_in_direction`) and hit-testing
+//! (`pane_at`, `focusable_pane_at`) live here because both inherently
+//! cross surface boundaries — they look at every pane's rect to pick
+//! one. Phase 4 may emit `Effect::RequestFocus` from surfaces and route
+//! through this; for now mutation goes via `&mut FocusManager` directly.
+
 use ratatui::layout::Rect;
 
-use crate::app::{App, NavDirection, PaneId, PaneInfo, PANE_COUNT};
+use crate::app::{NavDirection, PANE_COUNT, PaneId, PaneInfo};
 
-impl App {
+pub struct FocusManager {
+  pub focused_pane: PaneId,
+  pub panes: [PaneInfo; PANE_COUNT],
+}
+
+impl Default for FocusManager {
+  fn default() -> Self {
+    Self {
+      focused_pane: PaneId::Feed,
+      panes: [
+        PaneInfo::new(PaneId::Feed),
+        PaneInfo::new(PaneId::Reader),
+        PaneInfo::new(PaneId::Notes),
+        PaneInfo::new(PaneId::Details),
+        PaneInfo::new(PaneId::Chat),
+        PaneInfo::new(PaneId::SecondaryReader),
+        PaneInfo::new(PaneId::SecondaryNotes),
+      ],
+    }
+  }
+}
+
+impl FocusManager {
+  pub fn new() -> Self {
+    Self::default()
+  }
+
   pub fn pane(&self, id: PaneId) -> &PaneInfo {
     &self.panes[id as usize]
   }
@@ -117,9 +157,8 @@ impl App {
   }
 
   /// Returns secondary open panes sorted top-to-bottom then left-to-right.
-  pub fn secondary_panes_sorted(&self) -> Vec<PaneId> {
-    let primary =
-      if self.reader_active { PaneId::Reader } else { PaneId::Feed };
+  pub fn secondary_panes_sorted(&self, reader_active: bool) -> Vec<PaneId> {
+    let primary = if reader_active { PaneId::Reader } else { PaneId::Feed };
     let mut secondaries: Vec<&PaneInfo> = self
       .panes
       .iter()

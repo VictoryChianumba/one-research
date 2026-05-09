@@ -133,7 +133,7 @@ fn draw_feed(frame: &mut Frame, app: &mut App) {
     let mr = draw_main_row(frame, app, h_margin(rows[3], margin));
     log::debug!("draw_main_row: {}ms", t.elapsed().as_millis());
 
-    app.update_pane_rects(
+    app.focus.update_pane_rects(
       mr.feed,
       mr.reader,
       mr.notes,
@@ -184,7 +184,7 @@ fn draw_feed(frame: &mut Frame, app: &mut App) {
         log::debug!("chat_ui.draw (bottom): {}ms", t.elapsed().as_millis());
       }
     }
-    app.update_pane_rects(
+    app.focus.update_pane_rects(
       mr.feed,
       mr.reader,
       mr.notes,

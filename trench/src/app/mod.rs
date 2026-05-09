@@ -9,9 +9,11 @@ use std::sync::mpsc::Receiver;
 use std::time::Instant;
 
 mod caches;
+pub mod focus;
 mod methods;
 pub mod notifications;
 mod state;
+pub use focus::FocusManager;
 pub use notifications::NotificationState;
 pub use state::*;
 
@@ -206,12 +208,14 @@ pub struct App {
   pub last_mouse_scroll_time: Option<Instant>,
   pub mouse_scroll_debounce_ms: u64,
 
-  // Leader key + pane registry
+  // Leader key
   pub leader_active: bool,
   pub leader_activated_at: Option<Instant>,
   pub leader_timeout_ms: u64,
-  pub focused_pane: PaneId,
-  pub panes: [PaneInfo; PANE_COUNT],
+
+  /// Focus + pane registry. Holds `focused_pane` and the per-pane
+  /// rect cache populated by layout each frame.
+  pub focus: FocusManager,
 
   // Help overlay
   pub help: HelpState,
@@ -343,22 +347,13 @@ impl App {
       leader_active: false,
       leader_activated_at: None,
       leader_timeout_ms: 1000,
-      focused_pane: PaneId::Feed,
+      focus: FocusManager::new(),
       help: HelpState::default(),
       visible_cache: RefCell::new(None),
       counts_cache: RefCell::new(None),
       filter_source_names_cache: RefCell::new(None),
       filter_summary_cache: RefCell::new(None),
       filtered_history_cache: RefCell::new(None),
-      panes: [
-        PaneInfo::new(PaneId::Feed),
-        PaneInfo::new(PaneId::Reader),
-        PaneInfo::new(PaneId::Notes),
-        PaneInfo::new(PaneId::Details),
-        PaneInfo::new(PaneId::Chat),
-        PaneInfo::new(PaneId::SecondaryReader),
-        PaneInfo::new(PaneId::SecondaryNotes),
-      ],
     }
   }
 
@@ -852,7 +847,7 @@ impl App {
   /// `library_extend_selection` for incremental update.
 
   pub fn show_quit_popup(&mut self) {
-    let kind = if self.focused_pane == PaneId::Reader && self.reader_active {
+    let kind = if self.focus.focused_pane == PaneId::Reader && self.reader_active {
       QuitPopupKind::LeaveReader
     } else if self.discovery.loading || self.is_loading {
       QuitPopupKind::QuitWithProgress

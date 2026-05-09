@@ -306,7 +306,7 @@ fn handle_mouse(
   let track_bottom = size.height.saturating_sub(6);
 
   // Which pane is the cursor in right now?
-  let hovered = app.pane_at(mouse.column, mouse.row);
+  let hovered = app.focus.pane_at(mouse.column, mouse.row);
 
   match mouse.kind {
     // ── Scroll wheel / trackpad ────────────────────────────────────────────
@@ -424,8 +424,8 @@ fn handle_mouse(
       }
 
       // Click any focusable open pane → focus it.
-      if let Some(pane) = app.focusable_pane_at(mouse.column, mouse.row) {
-        app.focused_pane = pane;
+      if let Some(pane) = app.focus.focusable_pane_at(mouse.column, mouse.row) {
+        app.focus.focused_pane = pane;
         match pane {
           PaneId::Reader | PaneId::Notes => {
             app.focused_reader = FocusedReader::Primary;
@@ -474,7 +474,11 @@ fn handle_mouse(
 pub(crate) fn get_pane_by_number(n: u8, app: &App) -> Option<PaneId> {
   match n {
     0 => Some(if app.reader_active { PaneId::Reader } else { PaneId::Feed }),
-    1..=3 => app.secondary_panes_sorted().into_iter().nth((n - 1) as usize),
+    1..=3 => app
+      .focus
+      .secondary_panes_sorted(app.reader_active)
+      .into_iter()
+      .nth((n - 1) as usize),
     _ => None,
   }
 }
@@ -859,7 +863,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                   );
                 }
                 app.focused_reader = FocusedReader::Secondary;
-                app.focused_pane = PaneId::SecondaryReader;
+                app.focus.focused_pane = PaneId::SecondaryReader;
                 app.fulltext_for_secondary = false;
               } else {
                 if app.fulltext_new_tab {
@@ -872,7 +876,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     reader,
                   );
                 }
-                app.focused_pane = PaneId::Reader;
+                app.focus.focused_pane = PaneId::Reader;
               }
               app.fulltext_new_tab = false;
               app.clear_notification();
@@ -1019,7 +1023,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "key event: {:?} leader_active={} focused_pane={:?}",
             key.code,
             app.leader_active,
-            app.focused_pane
+            app.focus.focused_pane
           );
           keys::dispatch(key, &mut app);
           app.mark_dirty();

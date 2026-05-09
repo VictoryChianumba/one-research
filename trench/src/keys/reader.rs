@@ -9,7 +9,7 @@ pub(super) fn reader_pane_focused(app: &App) -> bool {
   if app.reader_popup_active {
     return true;
   }
-  matches!(app.focused_pane, PaneId::Reader | PaneId::SecondaryReader)
+  matches!(app.focus.focused_pane, PaneId::Reader | PaneId::SecondaryReader)
     && app.reader_active
 }
 
@@ -101,7 +101,7 @@ pub(super) fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
           ));
           spawn_fulltext_fetch(item, tx);
           app.reader_bottom_focused = false;
-          app.focused_pane = PaneId::Reader;
+          app.focus.focused_pane = PaneId::Reader;
         }
       }
     }
@@ -112,13 +112,13 @@ pub(super) fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
       } else {
         app.reader_bottom_open = false;
         app.reader_bottom_focused = false;
-        app.focused_pane = PaneId::Reader;
+        app.focus.focused_pane = PaneId::Reader;
       }
     }
     KeyCode::Char('q') => {
       app.reader_bottom_open = false;
       app.reader_bottom_focused = false;
-      app.focused_pane = PaneId::Reader;
+      app.focus.focused_pane = PaneId::Reader;
     }
     _ => {}
   }
@@ -136,7 +136,7 @@ fn clamp_reader_feed_selection(app: &mut App) {
 
 pub(super) fn handle_reader_pane(key: KeyEvent, app: &mut App) -> bool {
   // Secondary reader (State 3, right pane).
-  if app.reader_dual_active && app.focused_pane == PaneId::SecondaryReader {
+  if app.reader_dual_active && app.focus.focused_pane == PaneId::SecondaryReader {
     log::debug!("routing to secondary reader pane");
     if key.code == KeyCode::Tab {
       if app.reader_bottom_open {
@@ -166,14 +166,14 @@ pub(super) fn handle_reader_pane(key: KeyEvent, app: &mut App) -> bool {
           app.reader_bottom_focused = false;
           app.secondary_notes_active = false;
           app.focused_reader = FocusedReader::Primary;
-          app.focused_pane = PaneId::Reader;
+          app.focus.focused_pane = PaneId::Reader;
         }
       }
     }
     return true;
   }
 
-  if !(app.reader_active && app.focused_pane == PaneId::Reader) {
+  if !(app.reader_active && app.focus.focused_pane == PaneId::Reader) {
     return false;
   }
   log::debug!("routing to reader pane");
@@ -181,7 +181,7 @@ pub(super) fn handle_reader_pane(key: KeyEvent, app: &mut App) -> bool {
   // Tab in primary reader during State 3 → focus secondary reader.
   if app.reader_dual_active && key.code == KeyCode::Tab {
     if !app.reader_secondary_tabs.is_empty() {
-      app.focused_pane = PaneId::SecondaryReader;
+      app.focus.focused_pane = PaneId::SecondaryReader;
       app.focused_reader = FocusedReader::Secondary;
     }
     return true;
@@ -220,13 +220,13 @@ pub(super) fn handle_reader_pane(key: KeyEvent, app: &mut App) -> bool {
           app.secondary_notes_active = false;
           app.secondary_notes_active_tab = 0;
           app.focused_reader = FocusedReader::Primary;
-          app.focused_pane =
+          app.focus.focused_pane =
             if app.reader_active { PaneId::Reader } else { PaneId::Feed };
         } else if app.reader_split_active {
           app.reader_split_active = false;
-          app.focused_pane = PaneId::Feed;
+          app.focus.focused_pane = PaneId::Feed;
         } else {
-          app.focused_pane = PaneId::Feed;
+          app.focus.focused_pane = PaneId::Feed;
         }
       }
     }
@@ -240,7 +240,7 @@ pub(super) fn reader_back(app: &mut App, side: FocusedReader) -> bool {
     app.reader_bottom_open = false;
     app.reader_bottom_focused = false;
     app.reader_bottom_details = false;
-    app.focused_pane = match side {
+    app.focus.focused_pane = match side {
       FocusedReader::Primary => PaneId::Reader,
       FocusedReader::Secondary if app.reader_dual_active => {
         PaneId::SecondaryReader
@@ -258,7 +258,7 @@ pub(super) fn reader_back(app: &mut App, side: FocusedReader) -> bool {
 
   if app.reader_split_active {
     app.reader_split_active = false;
-    app.focused_pane = PaneId::Reader;
+    app.focus.focused_pane = PaneId::Reader;
     app.focused_reader = FocusedReader::Primary;
     return true;
   }
@@ -273,7 +273,7 @@ pub(super) fn reader_back(app: &mut App, side: FocusedReader) -> bool {
         app.reader_bottom_open = false;
         app.reader_bottom_focused = false;
         app.focused_reader = FocusedReader::Primary;
-        app.focused_pane = PaneId::Reader;
+        app.focus.focused_pane = PaneId::Reader;
       }
       FocusedReader::Primary => {
         app.reader_tabs = std::mem::take(&mut app.reader_secondary_tabs);
@@ -289,7 +289,7 @@ pub(super) fn reader_back(app: &mut App, side: FocusedReader) -> bool {
         app.secondary_notes_active = false;
         app.secondary_notes_active_tab = 0;
         app.focused_reader = FocusedReader::Primary;
-        app.focused_pane =
+        app.focus.focused_pane =
           if app.reader_active { PaneId::Reader } else { PaneId::Feed };
       }
     }
@@ -319,5 +319,5 @@ pub(super) fn close_all_readers(app: &mut App) {
   app.notes_active = false;
   app.secondary_notes_active = false;
   app.focused_reader = FocusedReader::Primary;
-  app.focused_pane = PaneId::Feed;
+  app.focus.focused_pane = PaneId::Feed;
 }

@@ -377,7 +377,7 @@ pub fn draw_notes_surface(
   if area.height == 0 || area.width == 0 {
     return;
   }
-  let is_focused = app.focused_pane == note_pane_for_side(side);
+  let is_focused = app.focus.focused_pane == note_pane_for_side(side);
   // Inline the field access so Rust's split-borrow rules can keep the
   // `tabs` borrow disjoint from the later `app.notes_app.as_mut()` —
   // saves a per-draw `Vec<NotesTab>` clone.

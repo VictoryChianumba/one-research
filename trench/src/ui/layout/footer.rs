@@ -58,7 +58,7 @@ fn footer_command_line(app: &App) -> Line<'static> {
   let filtered = !app.search_query.is_empty() || !app.active_filters.is_empty();
   let repo_available = !app.reader_active
     && !app.chat.fullscreen
-    && app.focused_pane == PaneId::Feed
+    && app.focus.focused_pane == PaneId::Feed
     && app.selected_item().is_some_and(|item| {
       item.github_owner.is_some() && item.github_repo_name.is_some()
     });
@@ -113,8 +113,8 @@ fn footer_command_line(app: &App) -> Line<'static> {
     return Line::from(spans);
   }
 
-  if app.focused_pane == PaneId::Reader
-    || app.focused_pane == PaneId::SecondaryReader
+  if app.focus.focused_pane == PaneId::Reader
+    || app.focus.focused_pane == PaneId::SecondaryReader
   {
     spans.push(Span::styled("reader", accent));
     spans.push(Span::styled(
@@ -124,11 +124,11 @@ fn footer_command_line(app: &App) -> Line<'static> {
     return Line::from(spans);
   }
 
-  if (app.focused_pane == PaneId::Notes && app.notes_active)
-    || (app.focused_pane == PaneId::SecondaryNotes
+  if (app.focus.focused_pane == PaneId::Notes && app.notes_active)
+    || (app.focus.focused_pane == PaneId::SecondaryNotes
       && app.secondary_notes_active)
   {
-    let side = if app.focused_pane == PaneId::SecondaryNotes {
+    let side = if app.focus.focused_pane == PaneId::SecondaryNotes {
       FocusedReader::Secondary
     } else {
       FocusedReader::Primary
@@ -150,7 +150,7 @@ fn footer_command_line(app: &App) -> Line<'static> {
     return Line::from(spans);
   }
 
-  if app.focused_pane == PaneId::Chat && app.chat.active {
+  if app.focus.focused_pane == PaneId::Chat && app.chat.active {
     spans.push(Span::styled("chat", accent));
     spans.push(Span::styled(
       ": Enter send | / commands | Esc sessions | Ldr+c hide | ? help",
