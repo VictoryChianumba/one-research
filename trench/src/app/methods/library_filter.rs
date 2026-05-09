@@ -9,7 +9,7 @@ impl App {
       self.library_selected_urls.clear();
       return;
     }
-    let cursor = self.library_selected_index;
+    let cursor = self.library_list.selected();
     let anchor = self.library_visual_anchor;
     let (lo, hi) =
       if cursor <= anchor { (cursor, anchor) } else { (anchor, cursor) };
@@ -25,11 +25,11 @@ impl App {
   /// URL in [lo..=hi]. Falls back to a no-op when not in visual mode.
   pub fn library_extend_selection(&mut self, new_cursor: usize) {
     if !self.library_visual_mode {
-      self.library_selected_index = new_cursor;
+      self.library_list.set_selected(new_cursor);
       return;
     }
     let anchor = self.library_visual_anchor;
-    let old_cursor = self.library_selected_index;
+    let old_cursor = self.library_list.selected();
     let old_lo = old_cursor.min(anchor);
     let old_hi = old_cursor.max(anchor);
     let new_lo = new_cursor.min(anchor);
@@ -87,7 +87,7 @@ impl App {
       self.library_selected_urls.insert(url);
     }
 
-    self.library_selected_index = new_cursor;
+    self.library_list.set_selected(new_cursor);
   }
 
   pub fn library_exit_visual(&mut self) {

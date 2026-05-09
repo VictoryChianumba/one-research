@@ -409,13 +409,13 @@ fn handle_library_tab(key: KeyEvent, app: &mut App) -> bool {
       KeyCode::Char('j') | KeyCode::Down => {
         let len = app.visible_count();
         if len > 0 {
-          let next = (app.library_selected_index + 1).min(len - 1);
+          let next = (app.library_list.selected() + 1).min(len - 1);
           app.library_extend_selection(next);
         }
         return true;
       }
       KeyCode::Char('k') | KeyCode::Up => {
-        let next = app.library_selected_index.saturating_sub(1);
+        let next = app.library_list.selected().saturating_sub(1);
         app.library_extend_selection(next);
         return true;
       }
@@ -459,19 +459,17 @@ fn handle_library_tab(key: KeyEvent, app: &mut App) -> bool {
   match key.code {
     KeyCode::Char(']') => {
       app.mutate_library_filter(|f| *f = f.next());
-      app.library_selected_index = 0;
-      app.library_list_offset = 0;
+      app.library_list.reset();
       true
     }
     KeyCode::Char('[') => {
       app.mutate_library_filter(|f| *f = f.prev());
-      app.library_selected_index = 0;
-      app.library_list_offset = 0;
+      app.library_list.reset();
       true
     }
     KeyCode::Char('v') => {
       app.library_visual_mode = true;
-      app.library_visual_anchor = app.library_selected_index;
+      app.library_visual_anchor = app.library_list.selected();
       app.library_recompute_selection();
       true
     }

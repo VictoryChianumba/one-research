@@ -43,11 +43,13 @@ pub struct App {
   pub history_list_offset: usize,
   /// Library tab: workflow-state filter chip + per-tab navigation.
   pub library_filter: crate::library::LibraryFilter,
-  pub library_selected_index: usize,
-  pub library_list_offset: usize,
+  /// Cursor + offset + viewport for the Library list. Owns the
+  /// "selection-stays-visible" invariant.
+  pub library_list: crate::primitives::ListState,
   /// Library bulk-select state. `library_visual_mode` enables visual selection;
   /// the anchor row is captured at activation; selection always covers the
-  /// contiguous range from anchor to current cursor.
+  /// contiguous range from anchor to current cursor. Anchor stays out of
+  /// `ListState` because it's a feature-specific selection mode.
   pub library_visual_mode: bool,
   pub library_visual_anchor: usize,
   pub library_selected_urls: HashSet<String>,
@@ -247,8 +249,7 @@ impl App {
       history_selected_index: 0,
       history_list_offset: 0,
       library_filter: crate::library::LibraryFilter::default(),
-      library_selected_index: 0,
-      library_list_offset: 0,
+      library_list: crate::primitives::ListState::new(),
       library_visual_mode: false,
       library_visual_anchor: 0,
       library_selected_urls: HashSet::new(),
@@ -725,7 +726,7 @@ impl App {
   pub fn active_selected_index(&self) -> usize {
     match self.feed_tab {
       FeedTab::Inbox => self.selected_index,
-      FeedTab::Library => self.library_selected_index,
+      FeedTab::Library => self.library_list.selected(),
       FeedTab::Discoveries => self.discovery.selected_index,
       FeedTab::History => self.history_selected_index,
     }
@@ -734,7 +735,7 @@ impl App {
   pub fn active_list_offset(&self) -> usize {
     match self.feed_tab {
       FeedTab::Inbox => self.list_offset,
-      FeedTab::Library => self.library_list_offset,
+      FeedTab::Library => self.library_list.offset(),
       FeedTab::Discoveries => self.discovery.list_offset,
       FeedTab::History => self.history_list_offset,
     }
@@ -743,7 +744,7 @@ impl App {
   pub fn set_active_selected_index(&mut self, value: usize) {
     match self.feed_tab {
       FeedTab::Inbox => self.selected_index = value,
-      FeedTab::Library => self.library_selected_index = value,
+      FeedTab::Library => self.library_list.set_selected(value),
       FeedTab::Discoveries => self.discovery.selected_index = value,
       FeedTab::History => self.history_selected_index = value,
     }
@@ -752,7 +753,7 @@ impl App {
   pub fn set_active_list_offset(&mut self, value: usize) {
     match self.feed_tab {
       FeedTab::Inbox => self.list_offset = value,
-      FeedTab::Library => self.library_list_offset = value,
+      FeedTab::Library => self.library_list.set_offset(value),
       FeedTab::Discoveries => self.discovery.list_offset = value,
       FeedTab::History => self.history_list_offset = value,
     }

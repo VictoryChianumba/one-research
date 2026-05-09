@@ -15,6 +15,7 @@ mod keys;
 mod fetch;
 mod library;
 mod models;
+mod primitives;
 mod sanitize;
 mod store;
 mod syntax;
