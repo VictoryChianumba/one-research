@@ -778,7 +778,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   }
   log::debug!("startup: persisted state apply {}ms", t.elapsed().as_millis());
 
-  app.list_offset = 0;
+  app.inbox_list.set_offset(0);
 
   // 4. Spawn background thread to fetch all sources then enrich.
   {

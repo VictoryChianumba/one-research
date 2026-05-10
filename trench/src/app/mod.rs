@@ -30,8 +30,10 @@ pub struct App {
   pub should_quit: bool,
   pub quit_popup: QuitPopupState,
 
-  pub selected_index: usize,
-  pub list_offset: usize,
+  /// Cursor + offset + viewport for the Inbox list. Owns the
+  /// "selection-stays-visible" invariant. Replaced raw
+  /// `selected_index` + `list_offset` scalars in Migration #1.
+  pub inbox_list: crate::primitives::ListState,
 
   /// All discovery-related state grouped into one sub-state.
   pub discovery: DiscoveryState,
@@ -247,8 +249,7 @@ impl App {
       },
       should_quit: false,
       quit_popup: QuitPopupState::default(),
-      selected_index: 0,
-      list_offset: 0,
+      inbox_list: crate::primitives::ListState::new(),
       discovery: DiscoveryState {
         items: crate::store::discovery_cache::load(),
         session: crate::store::session::load(),
@@ -723,7 +724,7 @@ impl App {
 
   pub fn active_selected_index(&self) -> usize {
     match self.feed_tab {
-      FeedTab::Inbox => self.selected_index,
+      FeedTab::Inbox => self.inbox_list.selected(),
       FeedTab::Library => self.library_list.selected(),
       FeedTab::Discoveries => self.discovery.selected_index,
       FeedTab::History => self.history_selected_index,
@@ -732,7 +733,7 @@ impl App {
 
   pub fn active_list_offset(&self) -> usize {
     match self.feed_tab {
-      FeedTab::Inbox => self.list_offset,
+      FeedTab::Inbox => self.inbox_list.offset(),
       FeedTab::Library => self.library_list.offset(),
       FeedTab::Discoveries => self.discovery.list_offset,
       FeedTab::History => self.history_list_offset,
@@ -740,16 +741,19 @@ impl App {
   }
 
   pub fn set_active_selected_index(&mut self, value: usize) {
+    // Sync count before set_selected so the clamp uses the current
+    // visible_count() rather than ListState's stale (initially zero)
+    // count. Without this, set_selected hits its `count == 0` guard
+    // and forces selected to 0. Required for both Inbox and Library
+    // until the render-path mutation hoist (refactor B) wires count
+    // through pre_draw_update.
+    let count = self.visible_count();
     match self.feed_tab {
-      FeedTab::Inbox => self.selected_index = value,
+      FeedTab::Inbox => {
+        self.inbox_list.set_count(count);
+        self.inbox_list.set_selected(value);
+      }
       FeedTab::Library => {
-        // Sync count before set_selected so the clamp uses the
-        // current visible_count() rather than ListState's stale
-        // (initially zero) count. Without this, set_selected hits
-        // its `count == 0` guard and forces selected to 0 — which
-        // silently broke Library j/k/G/gg navigation since the
-        // ListState migration landed.
-        let count = self.visible_count();
         self.library_list.set_count(count);
         self.library_list.set_selected(value);
       }
@@ -760,7 +764,7 @@ impl App {
 
   pub fn set_active_list_offset(&mut self, value: usize) {
     match self.feed_tab {
-      FeedTab::Inbox => self.list_offset = value,
+      FeedTab::Inbox => self.inbox_list.set_offset(value),
       FeedTab::Library => self.library_list.set_offset(value),
       FeedTab::Discoveries => self.discovery.list_offset = value,
       FeedTab::History => self.history_list_offset = value,

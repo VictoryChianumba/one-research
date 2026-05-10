@@ -183,7 +183,7 @@ impl App {
       // 100-300 ms here while the 3.8 MB cache.json was serialized + fsynced.
       crate::store::cache::queue_save(self.workspace.items.clone());
       if was_empty {
-        self.list_offset = 0;
+        self.inbox_list.set_offset(0);
       }
       self.mark_dirty();
     } else if had_source_updates || had_enriched_updates {
