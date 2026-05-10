@@ -40,7 +40,7 @@ pub(super) fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
   match key.code {
     KeyCode::Char('j') | KeyCode::Down => {
       if app.reader_bottom_details {
-        app.reader_bottom_scroll = app.reader_bottom_scroll.saturating_add(1);
+        app.reader_bottom_scroll.scroll_down(1);
       } else {
         let count = app.visible_count();
         if count > 0 {
@@ -51,7 +51,7 @@ pub(super) fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
     }
     KeyCode::Char('k') | KeyCode::Up => {
       if app.reader_bottom_details {
-        app.reader_bottom_scroll = app.reader_bottom_scroll.saturating_sub(1);
+        app.reader_bottom_scroll.scroll_up(1);
       } else {
         app.reader_feed_popup_selected =
           app.reader_feed_popup_selected.saturating_sub(1);
@@ -59,7 +59,7 @@ pub(super) fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
     }
     KeyCode::Char('d') => {
       app.reader_bottom_details = !app.reader_bottom_details;
-      app.reader_bottom_scroll = 0;
+      app.reader_bottom_scroll.reset();
     }
     KeyCode::Char('/') => {
       app.search_active = true;
@@ -108,7 +108,7 @@ pub(super) fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
     KeyCode::Esc => {
       if app.reader_bottom_details {
         app.reader_bottom_details = false;
-        app.reader_bottom_scroll = 0;
+        app.reader_bottom_scroll.reset();
       } else {
         app.reader_bottom_open = false;
         app.reader_bottom_focused = false;

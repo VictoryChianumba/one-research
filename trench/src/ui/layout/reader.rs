@@ -301,7 +301,14 @@ pub(super) fn draw_reader_bottom_pane(
   }
 }
 
-fn draw_bottom_pane_details(frame: &mut Frame, app: &App, area: Rect) {
+fn draw_bottom_pane_details(frame: &mut Frame, app: &mut App, area: Rect) {
+  // Set max before the immutable borrow of `item` below — set_max
+  // needs &mut app and `item` holds &app for the rest of the function.
+  // Details-mode scroll is unbounded — the paragraph clips past its
+  // content into empty rows, matching the pre-migration behavior.
+  app.reader_bottom_scroll.set_max(usize::MAX);
+  let scroll = app.reader_bottom_scroll.offset();
+
   let t = app.theme();
   let sel = app.reader_feed_popup_selected;
   let Some(item) = app.visible_get(sel) else { return };
@@ -331,7 +338,6 @@ fn draw_bottom_pane_details(frame: &mut Frame, app: &App, area: Rect) {
     rows[0],
   );
 
-  let scroll = app.reader_bottom_scroll;
   let para = Paragraph::new(item.summary_short.clone())
     .wrap(ratatui::widgets::Wrap { trim: false })
     .scroll((scroll as u16, 0))
@@ -352,15 +358,15 @@ fn draw_bottom_pane_feed(frame: &mut Frame, app: &mut App, area: Rect) {
   }
 
   // Auto-scroll offset to keep selection visible.
-  let mut offset = app.reader_bottom_scroll;
   let total = app.visible_count();
+  app.reader_bottom_scroll.set_max(total.saturating_sub(1));
+  let mut offset = app.reader_bottom_scroll.offset();
   if sel < offset {
     offset = sel;
   } else if sel >= offset.saturating_add(viewport_rows) {
     offset = sel + 1 - viewport_rows;
   }
-  offset = offset.min(total.saturating_sub(1));
-  app.reader_bottom_scroll = offset;
+  app.reader_bottom_scroll.set_offset(offset);
 
   frame.render_widget(
     Paragraph::new(drawer_feed_header_line(list_area.width as usize, &t)),

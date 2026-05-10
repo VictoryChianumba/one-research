@@ -181,7 +181,10 @@ pub struct App {
   pub reader_bottom_open: bool,    // pane is visible
   pub reader_bottom_focused: bool, // pane has keyboard focus
   pub reader_bottom_details: bool, // showing details (true) or feed list (false)
-  pub reader_bottom_scroll: usize, // scroll offset for both feed and details
+  /// Scroll offset for the reader bottom drawer — used in both modes
+  /// (`draw_bottom_pane_feed` and `draw_bottom_pane_details`). Each
+  /// render path sets max appropriately for its mode.
+  pub reader_bottom_scroll: crate::primitives::ScrollState,
   pub narrow_feed_details_open: bool, // State 2: description popup over reader
   pub abstract_popup_active: bool, // Space: quick abstract view
   pub reader_feed_popup_selected: usize, // selected item in bottom feed list
@@ -328,7 +331,7 @@ impl App {
       reader_bottom_details: false,
       narrow_feed_details_open: false,
       abstract_popup_active: false,
-      reader_bottom_scroll: 0,
+      reader_bottom_scroll: crate::primitives::ScrollState::new(),
       reader_feed_popup_selected: 0,
       last_read: None,
       last_read_source: None,

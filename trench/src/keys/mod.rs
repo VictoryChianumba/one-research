@@ -935,7 +935,7 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
         app.reader_dual_active = true;
         app.reader_bottom_focused = false;
         app.reader_bottom_details = false;
-        app.reader_bottom_scroll = 0;
+        app.reader_bottom_scroll.reset();
         app.fulltext_for_secondary = true;
         if !app.fulltext_loading {
           if let Some(item) = app.selected_item().cloned() {
