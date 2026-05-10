@@ -242,7 +242,7 @@ fn details_subject<'a>(
   history: &[&'a crate::history::HistoryEntry],
 ) -> Option<DetailsSubject<'a>> {
   if app.feed_tab == FeedTab::History {
-    let entry = *history.get(app.history_selected_index)?;
+    let entry = *history.get(app.history_list.selected())?;
     return match entry.kind {
       crate::history::HistoryKind::Paper => {
         // O(1) hashmap lookup vs the prior O(N) chain+find scan that

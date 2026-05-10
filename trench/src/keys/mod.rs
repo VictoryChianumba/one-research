@@ -808,7 +808,7 @@ fn notes_context_from_history_entry(
 
 fn history_selected_paper_ref(app: &App) -> Option<crate::app::NotesContext> {
   let visible = app.filtered_history();
-  let entry = visible.get(app.history_selected_index)?;
+  let entry = visible.get(app.history_list.selected())?;
   notes_context_from_history_entry(app, entry)
 }
 

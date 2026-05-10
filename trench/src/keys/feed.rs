@@ -484,42 +484,41 @@ fn handle_history_tab(key: KeyEvent, app: &mut App) -> bool {
   match key.code {
     KeyCode::Char(']') => {
       app.mutate_history_filter(|f| *f = f.next());
-      app.history_selected_index = 0;
-      app.history_list_offset = 0;
+      app.history_list.reset();
       true
     }
     KeyCode::Char('[') => {
       app.mutate_history_filter(|f| *f = f.prev());
-      app.history_selected_index = 0;
-      app.history_list_offset = 0;
+      app.history_list.reset();
       true
     }
     KeyCode::Char('j') | KeyCode::Down => {
       let len = app.filtered_history().len();
       if len > 0 {
-        let next = (app.history_selected_index + 1).min(len - 1);
-        app.history_selected_index = next;
+        let next = (app.history_list.selected() + 1).min(len - 1);
+        app.set_active_selected_index(next);
       }
       true
     }
     KeyCode::Char('k') | KeyCode::Up => {
-      app.history_selected_index = app.history_selected_index.saturating_sub(1);
+      let next = app.history_list.selected().saturating_sub(1);
+      app.set_active_selected_index(next);
       true
     }
     KeyCode::Char('g') => {
-      app.history_selected_index = 0;
+      app.set_active_selected_index(0);
       true
     }
     KeyCode::Char('G') => {
       let len = app.filtered_history().len();
       if len > 0 {
-        app.history_selected_index = len - 1;
+        app.set_active_selected_index(len - 1);
       }
       true
     }
     KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
       let visible = app.filtered_history();
-      let Some(target) = visible.get(app.history_selected_index).cloned()
+      let Some(target) = visible.get(app.history_list.selected()).cloned()
       else {
         return true;
       };
@@ -529,15 +528,15 @@ fn handle_history_tab(key: KeyEvent, app: &mut App) -> bool {
       });
       crate::store::history::save(&app.workspace.history);
       let len = app.filtered_history().len();
-      if len > 0 && app.history_selected_index >= len {
-        app.history_selected_index = len - 1;
+      if len > 0 && app.history_list.selected() >= len {
+        app.set_active_selected_index(len - 1);
       }
       true
     }
     KeyCode::Char('o') => {
       let visible = app.filtered_history();
       let Some(entry) =
-        visible.get(app.history_selected_index).map(|e| (*e).clone())
+        visible.get(app.history_list.selected()).map(|e| (*e).clone())
       else {
         return true;
       };
@@ -553,7 +552,7 @@ fn handle_history_tab(key: KeyEvent, app: &mut App) -> bool {
     }
     KeyCode::Enter => {
       let visible = app.filtered_history();
-      let Some(entry) = visible.get(app.history_selected_index).cloned() else {
+      let Some(entry) = visible.get(app.history_list.selected()).cloned() else {
         return true;
       };
       match entry.kind {

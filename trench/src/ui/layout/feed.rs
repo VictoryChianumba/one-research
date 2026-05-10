@@ -451,9 +451,9 @@ fn draw_history_tab(frame: &mut Frame, app: &App, area: Rect) {
     return;
   }
   let total = entries.len();
-  let selected = app.history_selected_index.min(total.saturating_sub(1));
+  let selected = app.history_list.selected().min(total.saturating_sub(1));
   let mut offset =
-    app.history_list_offset.min(total.saturating_sub(viewport_rows.min(total)));
+    app.history_list.offset().min(total.saturating_sub(viewport_rows.min(total)));
   if selected < offset {
     offset = selected;
   } else if selected >= offset + viewport_rows {

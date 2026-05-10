@@ -61,7 +61,7 @@ impl App {
     match self.feed_tab {
       FeedTab::History => {
         let history = self.filtered_history();
-        let entry = history.get(self.history_selected_index)?;
+        let entry = history.get(self.history_list.selected())?;
         Some(match entry.kind {
           HistoryKind::Paper => entry.key.clone(),
           HistoryKind::Query => format!("query:{}", entry.key),

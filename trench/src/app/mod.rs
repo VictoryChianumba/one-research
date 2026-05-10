@@ -40,8 +40,11 @@ pub struct App {
 
   pub feed_tab: FeedTab,
   pub history_filter: crate::history::HistoryFilter,
-  pub history_selected_index: usize,
-  pub history_list_offset: usize,
+  /// Cursor + offset for the History list. Migrated from raw scalars
+  /// in Migration #2. Backed by `filtered_history()` rather than
+  /// `items_for_tab()` since History reads from `workspace.history`
+  /// (a separate data path from feed items).
+  pub history_list: crate::primitives::ListState,
   /// Library tab: workflow-state filter chip + per-tab navigation.
   pub library_filter: crate::library::LibraryFilter,
   /// Cursor + offset + viewport for the Library list. Owns the
@@ -257,8 +260,7 @@ impl App {
       },
       feed_tab: FeedTab::Inbox,
       history_filter: crate::history::HistoryFilter::default(),
-      history_selected_index: 0,
-      history_list_offset: 0,
+      history_list: crate::primitives::ListState::new(),
       library_filter: crate::library::LibraryFilter::default(),
       library_list: crate::primitives::ListState::new(),
       library_visual_mode: false,
@@ -727,7 +729,7 @@ impl App {
       FeedTab::Inbox => self.inbox_list.selected(),
       FeedTab::Library => self.library_list.selected(),
       FeedTab::Discoveries => self.discovery.selected_index,
-      FeedTab::History => self.history_selected_index,
+      FeedTab::History => self.history_list.selected(),
     }
   }
 
@@ -736,18 +738,20 @@ impl App {
       FeedTab::Inbox => self.inbox_list.offset(),
       FeedTab::Library => self.library_list.offset(),
       FeedTab::Discoveries => self.discovery.list_offset,
-      FeedTab::History => self.history_list_offset,
+      FeedTab::History => self.history_list.offset(),
     }
   }
 
   pub fn set_active_selected_index(&mut self, value: usize) {
     // Sync count before set_selected so the clamp uses the current
-    // visible_count() rather than ListState's stale (initially zero)
-    // count. Without this, set_selected hits its `count == 0` guard
-    // and forces selected to 0. Required for both Inbox and Library
-    // until the render-path mutation hoist (refactor B) wires count
-    // through pre_draw_update.
-    let count = self.visible_count();
+    // length rather than ListState's stale (initially zero) count.
+    // History reads from `workspace.history` via filtered_history()
+    // — `visible_count()` returns 0 for History because items_for_tab
+    // returns an empty slice. Other tabs use the items path.
+    let count = match self.feed_tab {
+      FeedTab::History => self.filtered_history().len(),
+      _ => self.visible_count(),
+    };
     match self.feed_tab {
       FeedTab::Inbox => {
         self.inbox_list.set_count(count);
@@ -758,7 +762,10 @@ impl App {
         self.library_list.set_selected(value);
       }
       FeedTab::Discoveries => self.discovery.selected_index = value,
-      FeedTab::History => self.history_selected_index = value,
+      FeedTab::History => {
+        self.history_list.set_count(count);
+        self.history_list.set_selected(value);
+      }
     }
   }
 
@@ -767,7 +774,7 @@ impl App {
       FeedTab::Inbox => self.inbox_list.set_offset(value),
       FeedTab::Library => self.library_list.set_offset(value),
       FeedTab::Discoveries => self.discovery.list_offset = value,
-      FeedTab::History => self.history_list_offset = value,
+      FeedTab::History => self.history_list.set_offset(value),
     }
   }
 
