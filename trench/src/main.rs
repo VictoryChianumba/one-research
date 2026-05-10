@@ -52,6 +52,53 @@ use ratatui::{Terminal, backend::CrosstermBackend};
 use std::io;
 use std::sync::mpsc;
 
+// Defensive: stderr is redirected to /dev/null at startup so stray
+// eprintln calls from libraries (e.g. arxiv-render's placement diags)
+// don't land on the alt-screen and bypass ratatui's diff-paint. The
+// saved fd is held here so the panic hook can restore stderr before
+// printing the cleanup escapes + panic message.
+//
+// Why a static AtomicI32: the panic hook is a `'static` Fn closure,
+// so it can only see static state, and saving a raw fd as i32 avoids
+// the orphan-rule and OwnedFd-thread-safety dance for what's just an
+// integer the kernel knows the meaning of.
+#[cfg(unix)]
+static SAVED_STDERR_FD: std::sync::atomic::AtomicI32 =
+  std::sync::atomic::AtomicI32::new(-1);
+
+#[cfg(unix)]
+fn redirect_stderr_to_devnull() {
+  use std::os::fd::AsRawFd;
+  let Ok(null) = std::fs::OpenOptions::new().write(true).open("/dev/null") else {
+    return;
+  };
+  let saved = unsafe { libc::dup(libc::STDERR_FILENO) };
+  if saved < 0 {
+    return;
+  }
+  if unsafe { libc::dup2(null.as_raw_fd(), libc::STDERR_FILENO) } < 0 {
+    unsafe { libc::close(saved) };
+    return;
+  }
+  SAVED_STDERR_FD.store(saved, std::sync::atomic::Ordering::Relaxed);
+}
+
+#[cfg(unix)]
+fn restore_stderr_from_redirect() {
+  let saved = SAVED_STDERR_FD.swap(-1, std::sync::atomic::Ordering::Relaxed);
+  if saved >= 0 {
+    unsafe {
+      libc::dup2(saved, libc::STDERR_FILENO);
+      libc::close(saved);
+    }
+  }
+}
+
+#[cfg(not(unix))]
+fn redirect_stderr_to_devnull() {}
+#[cfg(not(unix))]
+fn restore_stderr_from_redirect() {}
+
 /// Allowlist for URL schemes handed to the OS opener — `xdg-open` / `open`
 /// will dispatch any registered scheme (including `javascript:`,
 /// `vscode://`, `mailto:`). Restricting to http(s) blocks the local-handler
@@ -614,6 +661,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
       // screen, otherwise the responses to those sequences leak into the
       // user's shell after the panic and corrupt input until manual `reset`
       // (audit Rel CRIT C3).
+      // Restore stderr first so the cleanup escapes + panic message
+      // reach the user's terminal — stderr was redirected to /dev/null
+      // at startup to absorb stray eprintlns from libraries.
+      restore_stderr_from_redirect();
       let _ = crossterm::execute!(
         std::io::stderr(),
         crossterm::event::PopKeyboardEnhancementFlags,
@@ -659,6 +710,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   );
   let backend = CrosstermBackend::new(stdout);
   let mut terminal = Terminal::new(backend)?;
+
+  // Once we're inside the alt screen, eprintln from any library would
+  // land on the screen and bypass ratatui's diff-paint, leaving stray
+  // text the next frame can't overwrite. Redirect stderr to /dev/null
+  // so unanticipated leaks are absorbed; the panic hook restores
+  // stderr before exit so the panic message still surfaces.
+  redirect_stderr_to_devnull();
 
   let mut app = App::new();
   log::debug!("startup: App::new {}ms", startup_t0.elapsed().as_millis());
