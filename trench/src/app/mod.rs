@@ -742,7 +742,17 @@ impl App {
   pub fn set_active_selected_index(&mut self, value: usize) {
     match self.feed_tab {
       FeedTab::Inbox => self.selected_index = value,
-      FeedTab::Library => self.library_list.set_selected(value),
+      FeedTab::Library => {
+        // Sync count before set_selected so the clamp uses the
+        // current visible_count() rather than ListState's stale
+        // (initially zero) count. Without this, set_selected hits
+        // its `count == 0` guard and forces selected to 0 — which
+        // silently broke Library j/k/G/gg navigation since the
+        // ListState migration landed.
+        let count = self.visible_count();
+        self.library_list.set_count(count);
+        self.library_list.set_selected(value);
+      }
       FeedTab::Discoveries => self.discovery.selected_index = value,
       FeedTab::History => self.history_selected_index = value,
     }

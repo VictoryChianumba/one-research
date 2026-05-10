@@ -24,6 +24,11 @@ impl App {
   /// is one HashSet insert or remove per keystroke, instead of cloning every
   /// URL in [lo..=hi]. Falls back to a no-op when not in visual mode.
   pub fn library_extend_selection(&mut self, new_cursor: usize) {
+    // Sync count for the same reason set_active_selected_index does:
+    // ListState::set_selected clamps to count-1, and count starts at
+    // 0 so without this the new_cursor gets forced to 0.
+    let count = self.visible_count();
+    self.library_list.set_count(count);
     if !self.library_visual_mode {
       self.library_list.set_selected(new_cursor);
       return;
