@@ -11,8 +11,9 @@ pub struct DiscoveryState {
   pub items: Vec<FeedItem>,
   pub url_index: HashMap<String, usize>,
   pub arxiv_id_index: HashMap<String, usize>,
-  pub selected_index: usize,
-  pub list_offset: usize,
+  /// Cursor + offset for the Discoveries items list. Migrated from
+  /// raw scalars in Migration #3. Counterpart to `palette` below.
+  pub list: crate::primitives::ListState,
   pub rx: Option<Receiver<DiscoveryMessage>>,
   /// Last status line from the agent ("Searching…", "Found N papers", etc.).
   pub status: String,

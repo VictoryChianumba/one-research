@@ -728,7 +728,7 @@ impl App {
     match self.feed_tab {
       FeedTab::Inbox => self.inbox_list.selected(),
       FeedTab::Library => self.library_list.selected(),
-      FeedTab::Discoveries => self.discovery.selected_index,
+      FeedTab::Discoveries => self.discovery.list.selected(),
       FeedTab::History => self.history_list.selected(),
     }
   }
@@ -737,7 +737,7 @@ impl App {
     match self.feed_tab {
       FeedTab::Inbox => self.inbox_list.offset(),
       FeedTab::Library => self.library_list.offset(),
-      FeedTab::Discoveries => self.discovery.list_offset,
+      FeedTab::Discoveries => self.discovery.list.offset(),
       FeedTab::History => self.history_list.offset(),
     }
   }
@@ -761,7 +761,10 @@ impl App {
         self.library_list.set_count(count);
         self.library_list.set_selected(value);
       }
-      FeedTab::Discoveries => self.discovery.selected_index = value,
+      FeedTab::Discoveries => {
+        self.discovery.list.set_count(count);
+        self.discovery.list.set_selected(value);
+      }
       FeedTab::History => {
         self.history_list.set_count(count);
         self.history_list.set_selected(value);
@@ -773,7 +776,7 @@ impl App {
     match self.feed_tab {
       FeedTab::Inbox => self.inbox_list.set_offset(value),
       FeedTab::Library => self.library_list.set_offset(value),
-      FeedTab::Discoveries => self.discovery.list_offset = value,
+      FeedTab::Discoveries => self.discovery.list.set_offset(value),
       FeedTab::History => self.history_list.set_offset(value),
     }
   }

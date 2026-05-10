@@ -24,8 +24,7 @@ pub fn dispatch_slash_command(app: &mut App, cmd: SlashCommandInvocation) {
     }
     SlashCommandInvocation::ClearDiscoveries => {
       app.reset_discovery_items();
-      app.discovery.selected_index = 0;
-      app.discovery.list_offset = 0;
+      app.discovery.list.reset();
       app.discovery.status = String::new();
       app.discovery.loading = false;
       app.discovery.session = crate::discovery::SessionHistory::default();
