@@ -872,8 +872,15 @@ pub fn draw_item_table(frame: &mut Frame, app: &mut App, area: Rect) {
     list_offset = selected_index;
   } else if visible_count >= 2
     && selected_index >= list_offset + visible_count.saturating_sub(2)
+    && list_offset + visible_count < total_items_pre
   {
-    // Selection is within 2 items of the bottom edge — scroll down.
+    // Selection is within 2 items of the bottom edge AND there are
+    // unrevealed items below — scroll down. The total-items guard
+    // prevents a runaway feedback loop on short lists: each forward
+    // scroll shrinks visible_count (fewer items fit at a later offset),
+    // which pulls the scroll trigger again, until offset = total - 1
+    // and only one item is visible. Without this guard, j-spam on a
+    // 5-item Library scrolls until 4 items disappear off the top.
     list_offset = (selected_index + 2).saturating_sub(visible_count);
   }
   list_offset = list_offset.min(total_items_pre.saturating_sub(1));
