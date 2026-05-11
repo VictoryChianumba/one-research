@@ -413,7 +413,11 @@ fn draw_bottom_pane_feed(frame: &mut Frame, app: &mut App, area: Rect) {
     return;
   }
 
-  // Auto-scroll offset to keep selection visible.
+  // Intentional render-time mutation. Same pattern as draw_item_table /
+  // draw_history_tab: this auto-scroll needs viewport_rows, which is
+  // layout-derived. The B2b hoist (reader-bottom variant) wasn't
+  // attempted after B2a's regressions; stays here until refactor B's
+  // deferred layout-metrics extraction lands.
   let total = if app.feed_tab == FeedTab::History {
     app.history_count()
   } else {

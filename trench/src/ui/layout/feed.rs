@@ -450,6 +450,11 @@ fn draw_history_tab(frame: &mut Frame, app: &mut App, area: Rect) {
     frame.render_widget(table, inner);
     return;
   }
+  // Intentional render-time mutation. Refactor B (render purification)
+  // hoisted the no-layout mutations into pre_draw_update; this auto-scroll
+  // needs viewport_rows, which is layout-derived. A B2a attempt to hoist
+  // via the focus pane-rect cache produced subtle regressions and was
+  // reverted. Stays here until a proper layout-metrics extraction lands.
   let selected = app.history_list.selected().min(total.saturating_sub(1));
   let mut offset =
     app.history_list.offset().min(total.saturating_sub(viewport_rows.min(total)));
@@ -615,6 +620,11 @@ pub fn draw_narrow_feed(frame: &mut Frame, app: &mut App, area: Rect) {
   let selected = app.active_selected_index();
   let title_w = reader_feed_title_width(list_area.width as usize);
 
+  // Intentional render-time mutation. Same rationale as draw_history_tab's
+  // auto-scroll comment: this is item-height-aware (uses the reverse-walk
+  // over the visible window) and depends on viewport_rows + per-item
+  // wrapped heights — values only known after the layout pass. Stays
+  // here until refactor B's deferred layout-metrics extraction lands.
   let mut offset = app.active_list_offset();
   {
     let total = app.visible_count();
@@ -855,6 +865,12 @@ pub fn draw_item_table(frame: &mut Frame, app: &mut App, area: Rect) {
   let viewport_rows = inner.height.saturating_sub(2) as usize;
 
   // ── Auto scroll tracking — item-count-based ───────────────────────────────
+  // Intentional render-time mutation. Refactor B (render purification)
+  // hoisted the no-layout mutations into pre_draw_update; this auto-scroll
+  // needs viewport_rows + the item-height-aware visible_count, both layout-
+  // derived. A B2a attempt to hoist via the focus pane-rect cache produced
+  // subtle regressions and was reverted. Stays here until a proper layout-
+  // metrics extraction lands.
   // Count and visible_count computed in a scoped borrow so list_offset can be
   // mutated afterwards without a live reference into app.workspace.items.
   let total_items_pre = app.visible_count();
