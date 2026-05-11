@@ -61,7 +61,7 @@ const HELP_SECTIONS: &[(&str, &[(&str, &str)])] = &[
     &[
       ("Scope", "Items where state ≠ Inbox"),
       ("[ / ]", "Cycle workflow chip (All/Queue/Read/Archived)"),
-      ("v", "Enter visual selection mode"),
+      ("V", "Enter visual selection mode (Shift+v)"),
       ("t", "Open tag picker"),
       ("Workflow keys", "i / r / w / x apply to current row"),
       ("Visual mode", "j/k extend · r/w/x/i bulk apply · t bulk tag · Esc"),

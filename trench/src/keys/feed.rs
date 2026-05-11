@@ -464,7 +464,10 @@ fn handle_library_tab(key: KeyEvent, app: &mut App) -> bool {
       app.library_list.reset();
       true
     }
-    KeyCode::Char('v') => {
+    KeyCode::Char('V') => {
+      // Capital V = visual-line mode (Vim convention). Lowercase v
+      // remains globally bound to "open repo viewer for selected item"
+      // in the generic feed handler at handle_feed_view.
       app.library_visual_mode = true;
       app.library_visual_anchor = app.library_list.selected();
       app.library_recompute_selection();
