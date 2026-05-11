@@ -52,13 +52,14 @@ impl App {
       self.details_last_item_url = current_key;
     }
 
-    // details_scroll.max: the main details panel always truncates to
-    // viewport (no scroll). When the narrow feed details popup is
-    // open, the popup itself sets max in render — it needs the
-    // popup width to compute wrapped line count, which only the
-    // render path knows. Pre_draw_update sets the no-popup default
-    // here; the popup's render-time set_max overrides when open.
-    if !self.narrow_feed_details_open {
+    // details_scroll.max: the narrow feed details popup uses unbounded
+    // scroll (its paragraph clips into empty rows); the main details
+    // panel always truncates to viewport (no scroll). Narrow popup
+    // wins when open. Encodes the "popup-overwrites-panel" semantic
+    // from the prior render-order interaction.
+    if self.narrow_feed_details_open {
+      self.details_scroll.set_max(usize::MAX);
+    } else {
       self.details_scroll.set_max(0);
     }
 

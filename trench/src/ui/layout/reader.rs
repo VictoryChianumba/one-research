@@ -218,7 +218,7 @@ pub fn draw_reader_popup(frame: &mut Frame, app: &mut App, area: Rect) {
 
 pub(super) fn draw_narrow_feed_details_popup(
   frame: &mut Frame,
-  app: &mut App,
+  app: &App,
   area: Rect,
 ) {
   let t = app.theme();
@@ -245,36 +245,14 @@ pub(super) fn draw_narrow_feed_details_popup(
     return;
   }
 
-  // Clone the strings we need so the immutable app borrow drops
-  // before the set_max mutable borrow below.
-  let (title, summary) = {
-    let items = app.items_for_tab();
-    let sel = app.active_selected_index();
-    let Some(item) = items.get(sel) else { return };
-    (item.title.clone(), item.summary_short.clone())
-  };
-
-  let text = format!("{}\n\n{}", title, summary);
-
-  // Bounded scroll: compute wrapped line count at popup width so the
-  // user can't scroll past the content. The wrap width is layout-
-  // dependent so this can't be hoisted to pre_draw_update until B2
-  // makes the popup's width visible there.
-  let wrap_w = (inner.width as usize).max(1);
-  let total_lines: usize = text
-    .split('\n')
-    .map(|line| {
-      if line.is_empty() {
-        1
-      } else {
-        textwrap::wrap(line, wrap_w).len().max(1)
-      }
-    })
-    .sum();
-  let max_scroll = total_lines.saturating_sub(inner.height as usize);
-  app.details_scroll.set_max(max_scroll);
+  // details_scroll.max is set in App::pre_draw_update to MAX when
+  // the narrow popup is open. We just read offset() here.
   let scroll = app.details_scroll.offset();
+  let items = app.items_for_tab();
+  let sel = app.active_selected_index();
+  let Some(item) = items.get(sel) else { return };
 
+  let text = format!("{}\n\n{}", item.title, item.summary_short);
   let para = Paragraph::new(text)
     .wrap(ratatui::widgets::Wrap { trim: false })
     .scroll((scroll as u16, 0))
