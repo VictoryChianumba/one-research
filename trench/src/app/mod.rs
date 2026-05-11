@@ -72,6 +72,11 @@ pub struct App {
 
   // Filter panel
   pub filter_focus: bool,
+  /// Cursor position in the filter panel. Stays a raw usize rather
+  /// than migrating to ListState because the panel's scroll offset is
+  /// derived per-frame from `cursor_line` (visual line index, distinct
+  /// from this logical cursor since headers + blanks expand the layout).
+  /// Considered for the ListState retrofit in Migration #6, kept as-is.
   pub filter_cursor: usize,
   pub active_filters: FilterState,
 
