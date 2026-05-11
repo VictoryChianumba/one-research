@@ -1534,6 +1534,8 @@ dependencies = [
  "num-traits",
  "png",
  "tiff",
+ "zune-core",
+ "zune-jpeg",
 ]
 
 [[package]]
@@ -3731,6 +3733,7 @@ dependencies = [
  "doc-model",
  "ego-tree",
  "epub",
+ "image",
  "kitty-graphics",
  "pdf-extract",
  "pulldown-cmark",

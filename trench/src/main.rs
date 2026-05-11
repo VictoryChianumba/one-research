@@ -870,14 +870,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
               // structured math, tables, figures.  ~2s blocking; v2
               // can background on a worker.  Non-arxiv keeps the
               // PaperData the fetcher already produced (HTML walked
-              // by from_html, or summary plain-text).  Image
-              // rendering wiring is task #39, hardcode false here.
+              // by from_html, or summary plain-text).  Inline figure
+              // support follows the host terminal capability.
               let notes_context = app.pending_fulltext_context.take();
               let title = app.last_read.clone().unwrap_or_default();
               let detected_arxiv_id = notes_context
                 .as_ref()
                 .and_then(|ctx| tread::extract_arxiv_id(&ctx.paper.url));
-              let kitty_supported = false;
+              let kitty_supported = app.kitty_supported;
               let (arxiv_id, paper) = if let Some(id) = detected_arxiv_id {
                 match tread::fetch_paper(&id, kitty_supported) {
                   Ok(p) => (Some(id), p),
