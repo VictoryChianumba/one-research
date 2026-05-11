@@ -929,6 +929,7 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
           app.reader_bottom_open = true;
           app.reader_bottom_focused = true;
           app.reader_bottom_details = false;
+          app.reader_feed_popup_selected = app.active_selected_index();
         }
       } else if app.reader_split_active {
         // State 2 → State 3: auto-fetch selected item into right pane
@@ -1433,5 +1434,4 @@ fn handle_notes_pane(key: KeyEvent, app: &mut App) -> bool {
 
 
 // ── View handlers ─────────────────────────────────────────────────────────────
-
 

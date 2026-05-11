@@ -3,7 +3,7 @@ use std::sync::mpsc;
 
 use crate::app::{App, FeedTab, FocusedReader, PaneId};
 use super::remember_fulltext_paper_context;
-use super::super::{spawn_fulltext_fetch, truncate_for_notif};
+use super::super::{spawn_ai_discovery, spawn_fulltext_fetch, truncate_for_notif};
 
 pub(super) fn reader_pane_focused(app: &App) -> bool {
   if app.reader_popup_active {
@@ -42,7 +42,7 @@ pub(super) fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
       if app.reader_bottom_details {
         app.reader_bottom_scroll.scroll_down(1);
       } else {
-        let count = app.visible_count();
+        let count = reader_feed_count(app);
         if count > 0 {
           app.reader_feed_popup_selected =
             (app.reader_feed_popup_selected + 1).min(count - 1);
@@ -87,13 +87,46 @@ pub(super) fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
     KeyCode::Enter => {
       if !app.reader_bottom_details && !app.fulltext_loading {
         let idx = app.reader_feed_popup_selected;
-        let item = app.visible_get(idx).cloned();
-        if let Some(item) = item {
+        if app.feed_tab == FeedTab::History {
+          let entry = app.history_get(idx).cloned();
+          if let Some(entry) = entry {
+            match entry.kind {
+              crate::history::HistoryKind::Paper => {
+                if let Some(item) = app.history_item(&entry) {
+                  let _ = app.activate_history_item_target(&entry);
+                  let (tx, rx) = mpsc::channel();
+                  app.fulltext_rx = Some(rx);
+                  app.fulltext_loading = true;
+                  app.fulltext_for_secondary =
+                    app.focused_reader == FocusedReader::Secondary;
+                  app.fulltext_new_tab = false;
+                  remember_fulltext_paper_context(app, &item);
+                  app.set_notification(format!(
+                    "Fetching: {}…",
+                    truncate_for_notif(&item.title, 40)
+                  ));
+                  spawn_fulltext_fetch(item, tx);
+                  app.reader_bottom_focused = false;
+                  app.focus.focused_pane = PaneId::Reader;
+                }
+              }
+              crate::history::HistoryKind::Query => {
+                let topic = entry.key.clone();
+                let config = app.config.clone();
+                app.discovery.force_new = true;
+                app.feed_tab = FeedTab::Discoveries;
+                app.reset_active_feed_position();
+                spawn_ai_discovery(topic, config, app);
+              }
+            }
+          }
+        } else if let Some(item) = app.visible_get(idx).cloned() {
           let (tx, rx) = mpsc::channel();
           app.fulltext_rx = Some(rx);
           app.fulltext_loading = true;
           app.fulltext_for_secondary =
             app.focused_reader == FocusedReader::Secondary;
+          app.fulltext_new_tab = false;
           remember_fulltext_paper_context(app, &item);
           app.set_notification(format!(
             "Fetching: {}…",
@@ -125,12 +158,27 @@ pub(super) fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
 }
 
 fn clamp_reader_feed_selection(app: &mut App) {
-  let count = app.visible_count();
+  let count = reader_feed_count(app);
   if count == 0 {
     app.reader_feed_popup_selected = 0;
   } else {
     app.reader_feed_popup_selected =
       app.reader_feed_popup_selected.min(count - 1);
+  }
+}
+
+// TODO(reader-drawer-tabs): the reader-feed drawer should let users
+// browse across feed tabs (Inbox, Library, Discoveries, History)
+// with the same UX as the main feed view. Tab/BackTab here already
+// cycles app.feed_tab globally, but full parity is still missing:
+// per-tab filters, workflow-state chips for Library, etc. Revisit
+// when refactor B settles and we can hoist the tab-aware count/
+// selection into the dispatcher cleanly.
+fn reader_feed_count(app: &App) -> usize {
+  if app.feed_tab == FeedTab::History {
+    app.history_count()
+  } else {
+    app.visible_count()
   }
 }
 

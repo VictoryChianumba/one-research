@@ -196,6 +196,7 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
               app.fulltext_rx = Some(rx);
               app.fulltext_loading = true;
               app.fulltext_for_secondary = false;
+              app.fulltext_new_tab = false;
               app.narrow_feed_details_open = false;
               remember_fulltext_paper_context(app, &item);
               app.set_notification(format!(
@@ -275,6 +276,8 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
                 item.url
               );
               let t = std::time::Instant::now();
+              app.fulltext_for_secondary = false;
+              app.fulltext_new_tab = false;
               app.fulltext_loading = true;
               app.set_notification(format!(
                 "Fetching: {}…",
@@ -551,15 +554,16 @@ fn handle_history_tab(key: KeyEvent, app: &mut App) -> bool {
       true
     }
     KeyCode::Enter => {
-      let visible = app.filtered_history();
-      let Some(entry) = visible.get(app.history_list.selected()).cloned() else {
+      let Some(entry) = app.history_get(app.history_list.selected()).cloned() else {
         return true;
       };
       match entry.kind {
         HistoryKind::Paper => {
-          if let Some(meta) = entry.paper_meta.clone() {
-            let item = reconstruct_feed_item(&entry, &meta);
+          if let Some(item) = app.history_item(&entry) {
+            let _ = app.activate_history_item_target(&entry);
             remember_fulltext_paper_context(app, &item);
+            app.fulltext_for_secondary = false;
+            app.fulltext_new_tab = false;
             app.fulltext_loading = true;
             app.set_notification(format!(
               "Fetching: {}…",
@@ -587,35 +591,6 @@ fn handle_history_tab(key: KeyEvent, app: &mut App) -> bool {
   }
 }
 
-fn reconstruct_feed_item(
-  entry: &crate::history::HistoryEntry,
-  meta: &crate::history::HistoryPaperMeta,
-) -> crate::models::FeedItem {
-  use crate::models::{ContentType, FeedItem, SignalLevel, WorkflowState};
-  FeedItem {
-    id: entry.key.clone(),
-    title: entry.title.clone(),
-    source_platform: meta.source_platform.clone(),
-    content_type: ContentType::Paper,
-    domain_tags: Vec::new(),
-    signal: SignalLevel::Tertiary,
-    published_at: meta.published_at.clone(),
-    authors: meta.authors.clone(),
-    summary_short: meta.summary_short.clone(),
-    workflow_state: WorkflowState::Inbox,
-    url: entry.key.clone(),
-    upvote_count: 0,
-    github_repo: None,
-    github_owner: None,
-    github_repo_name: None,
-    benchmark_results: Vec::new(),
-    full_content: None,
-    source_name: entry.source.clone(),
-    title_lower: entry.title.to_lowercase(),
-    authors_lower: meta.authors.iter().map(|a| a.to_lowercase()).collect(),
-  }
-}
-
 fn discovery_palette_filtered(
   query: &str,
 ) -> Vec<&'static chat::ChatSlashCommandSpec> {
@@ -640,4 +615,3 @@ fn discovery_palette_completion(
     .nth(selected)
     .map(|s| s.completion.clone())
 }
-

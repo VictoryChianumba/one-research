@@ -1,5 +1,6 @@
-use crate::app::App;
-use crate::models::FeedItem;
+use crate::app::{App, FeedTab};
+use crate::library::LibraryFilter;
+use crate::models::{FeedItem, WorkflowState};
 
 impl App {
   pub fn record_paper_open(&mut self, item: &FeedItem) {
@@ -110,6 +111,84 @@ impl App {
     indices.iter().map(|&i| &self.workspace.history[i]).collect()
   }
 
+  pub fn history_count(&self) -> usize {
+    self.filtered_history().len()
+  }
+
+  pub fn history_get(
+    &self,
+    idx: usize,
+  ) -> Option<&crate::history::HistoryEntry> {
+    let history = self.filtered_history();
+    history.get(idx).copied()
+  }
+
+  pub fn history_window(
+    &self,
+    start: usize,
+    end: usize,
+  ) -> Vec<&crate::history::HistoryEntry> {
+    let history = self.filtered_history();
+    let start = start.min(history.len());
+    let end = end.min(history.len());
+    history[start..end].to_vec()
+  }
+
+  pub fn history_item(
+    &self,
+    entry: &crate::history::HistoryEntry,
+  ) -> Option<FeedItem> {
+    if entry.kind != crate::history::HistoryKind::Paper {
+      return None;
+    }
+    if let Some(&idx) = self.workspace.url_index.get(&entry.key) {
+      return self.workspace.items.get(idx).cloned();
+    }
+    if let Some(arxiv_id) = crate::models::arxiv_id_from_url(&entry.key) {
+      if let Some(&idx) = self.workspace.arxiv_id_index.get(arxiv_id) {
+        return self.workspace.items.get(idx).cloned();
+      }
+      if let Some(&idx) = self.discovery.arxiv_id_index.get(arxiv_id) {
+        return self.discovery.items.get(idx).cloned();
+      }
+    }
+    self
+      .discovery
+      .url_index
+      .get(&entry.key)
+      .and_then(|&idx| self.discovery.items.get(idx))
+      .cloned()
+      .or_else(|| entry.paper_meta.as_ref().map(|m| reconstruct_history_feed_item(entry, m)))
+  }
+
+  pub fn activate_history_item_target(
+    &mut self,
+    entry: &crate::history::HistoryEntry,
+  ) -> bool {
+    let Some((tab, workflow_state, url)) = self.history_item_target(entry) else {
+      return false;
+    };
+
+    self.feed_tab = tab;
+    if tab == FeedTab::Library {
+      self.library_filter = match workflow_state {
+        WorkflowState::Queued => LibraryFilter::Queue,
+        WorkflowState::DeepRead => LibraryFilter::Read,
+        WorkflowState::Archived => LibraryFilter::Archived,
+        WorkflowState::Inbox => LibraryFilter::All,
+      };
+    }
+    self.invalidate_visible_cache();
+
+    if let Some(pos) = self.visible_items().iter().position(|item| item.url == url)
+    {
+      self.set_active_selected_index(pos);
+    } else {
+      self.set_active_selected_index(0);
+    }
+    true
+  }
+
   fn compute_filtered_history_indices(&self) -> Vec<usize> {
     let now = chrono::Utc::now();
     let q = self.search_query_lower.as_str();
@@ -124,5 +203,82 @@ impl App {
       .filter(|(_, e)| src_filter.is_empty() || src_filter.contains(&e.source))
       .map(|(i, _)| i)
       .collect()
+  }
+}
+
+impl App {
+  fn history_item_target(
+    &self,
+    entry: &crate::history::HistoryEntry,
+  ) -> Option<(FeedTab, WorkflowState, String)> {
+    if entry.kind != crate::history::HistoryKind::Paper {
+      return None;
+    }
+    if let Some(&idx) = self.workspace.url_index.get(&entry.key) {
+      let item = self.workspace.items.get(idx)?;
+      return Some((
+        workspace_feed_tab(item.workflow_state),
+        item.workflow_state,
+        item.url.clone(),
+      ));
+    }
+    if let Some(arxiv_id) = crate::models::arxiv_id_from_url(&entry.key) {
+      if let Some(&idx) = self.workspace.arxiv_id_index.get(arxiv_id) {
+        let item = self.workspace.items.get(idx)?;
+        return Some((
+          workspace_feed_tab(item.workflow_state),
+          item.workflow_state,
+          item.url.clone(),
+        ));
+      }
+      if let Some(&idx) = self.discovery.arxiv_id_index.get(arxiv_id) {
+        let item = self.discovery.items.get(idx)?;
+        return Some((FeedTab::Discoveries, item.workflow_state, item.url.clone()));
+      }
+    }
+    self
+      .discovery
+      .url_index
+      .get(&entry.key)
+      .and_then(|&idx| self.discovery.items.get(idx))
+      .map(|item| (FeedTab::Discoveries, item.workflow_state, item.url.clone()))
+  }
+}
+
+fn workspace_feed_tab(state: WorkflowState) -> FeedTab {
+  match state {
+    WorkflowState::Inbox => FeedTab::Inbox,
+    WorkflowState::Queued | WorkflowState::DeepRead | WorkflowState::Archived => {
+      FeedTab::Library
+    }
+  }
+}
+
+fn reconstruct_history_feed_item(
+  entry: &crate::history::HistoryEntry,
+  meta: &crate::history::HistoryPaperMeta,
+) -> FeedItem {
+  use crate::models::{ContentType, SignalLevel, WorkflowState};
+  FeedItem {
+    id: entry.key.clone(),
+    title: entry.title.clone(),
+    source_platform: meta.source_platform.clone(),
+    content_type: ContentType::Paper,
+    domain_tags: Vec::new(),
+    signal: SignalLevel::Tertiary,
+    published_at: meta.published_at.clone(),
+    authors: meta.authors.clone(),
+    summary_short: meta.summary_short.clone(),
+    workflow_state: WorkflowState::Inbox,
+    url: entry.key.clone(),
+    upvote_count: 0,
+    github_repo: None,
+    github_owner: None,
+    github_repo_name: None,
+    benchmark_results: Vec::new(),
+    full_content: None,
+    source_name: entry.source.clone(),
+    title_lower: entry.title.to_lowercase(),
+    authors_lower: meta.authors.iter().map(|a| a.to_lowercase()).collect(),
   }
 }

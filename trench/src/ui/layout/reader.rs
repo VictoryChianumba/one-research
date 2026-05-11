@@ -9,7 +9,7 @@ use ratatui::{
 use super::widgets::{
   popup_inner, popup_rect, quiet_popup_block, truncate, truncate_str,
 };
-use crate::app::{App, FocusedReader, ReaderTab};
+use crate::app::{App, FeedTab, FocusedReader, ReaderTab};
 
 pub(super) fn chat_context_line(app: &App) -> Option<String> {
   if app.reader_active {
@@ -310,6 +310,63 @@ fn draw_bottom_pane_details(frame: &mut Frame, app: &App, area: Rect) {
 
   let t = app.theme();
   let sel = app.reader_feed_popup_selected;
+  if app.feed_tab == FeedTab::History {
+    let Some(entry) = app.history_get(sel) else { return };
+    let rows =
+      Layout::vertical([Constraint::Length(3), Constraint::Min(0)]).split(area);
+    let title = Line::from(Span::styled(
+      entry.title.clone(),
+      Style::default().fg(t.text).add_modifier(Modifier::BOLD),
+    ));
+    let meta = Line::from(vec![
+      Span::styled(
+        super::feed::history_source_label(entry),
+        Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
+      ),
+      Span::styled("  ", Style::default().fg(t.text_dim)),
+      Span::styled(
+        match entry.kind {
+          crate::history::HistoryKind::Paper => "paper",
+          crate::history::HistoryKind::Query => "query",
+        },
+        Style::default().fg(t.text_dim),
+      ),
+      Span::styled("  ", Style::default().fg(t.text_dim)),
+      Span::styled(
+        crate::history::format_ago(entry.opened_at, chrono::Utc::now()),
+        Style::default().fg(t.text_dim),
+      ),
+    ]);
+    frame.render_widget(
+      Paragraph::new(vec![title, Line::from(""), meta])
+        .wrap(ratatui::widgets::Wrap { trim: false }),
+      rows[0],
+    );
+
+    let body = if let Some(item) = app.history_item(entry) {
+      if item.summary_short.trim().is_empty() {
+        "No summary available.".to_string()
+      } else {
+        item.summary_short
+      }
+    } else {
+      match entry.kind {
+        crate::history::HistoryKind::Paper => {
+          "This history entry is not backed by a cached paper body.".to_string()
+        }
+        crate::history::HistoryKind::Query => {
+          format!("Discovery query:\n\n{}", entry.key)
+        }
+      }
+    };
+    let para = Paragraph::new(body)
+      .wrap(ratatui::widgets::Wrap { trim: false })
+      .scroll((scroll as u16, 0))
+      .style(Style::default().fg(t.text));
+    frame.render_widget(para, rows[1]);
+    return;
+  }
+
   let Some(item) = app.visible_get(sel) else { return };
 
   let rows =
@@ -357,7 +414,11 @@ fn draw_bottom_pane_feed(frame: &mut Frame, app: &mut App, area: Rect) {
   }
 
   // Auto-scroll offset to keep selection visible.
-  let total = app.visible_count();
+  let total = if app.feed_tab == FeedTab::History {
+    app.history_count()
+  } else {
+    app.visible_count()
+  };
   app.reader_bottom_scroll.set_max(total.saturating_sub(1));
   let mut offset = app.reader_bottom_scroll.offset();
   if sel < offset {
@@ -384,6 +445,27 @@ fn draw_bottom_pane_feed(frame: &mut Frame, app: &mut App, area: Rect) {
     return;
   }
 
+  if app.feed_tab == FeedTab::History {
+    let window =
+      app.history_window(offset, offset.saturating_add(viewport_rows));
+    for (rel_i, entry) in window.iter().enumerate() {
+      let i = offset + rel_i;
+      let is_selected = i == sel;
+      let row_y = list_area.y + rel_i as u16;
+      let row_rect = Rect::new(list_area.x, row_y, list_area.width, 1);
+      let row = drawer_history_row_line(entry, list_area.width as usize, is_selected, &t);
+      if is_selected {
+        frame.render_widget(
+          Paragraph::new(row).style(t.style_selection()),
+          row_rect,
+        );
+      } else {
+        frame.render_widget(Paragraph::new(row), row_rect);
+      }
+    }
+    return;
+  }
+
   let window = app.visible_window(offset, offset.saturating_add(viewport_rows));
   for (rel_i, item) in window.iter().enumerate() {
     let i = offset + rel_i;
@@ -400,6 +482,38 @@ fn draw_bottom_pane_feed(frame: &mut Frame, app: &mut App, area: Rect) {
     } else {
       frame.render_widget(Paragraph::new(row), row_rect);
     }
+  }
+}
+
+fn drawer_history_row_line(
+  entry: &crate::history::HistoryEntry,
+  width: usize,
+  selected: bool,
+  t: &crate::theme::Theme,
+) -> Line<'static> {
+  let source_w = 7usize;
+  let kind_w = 6usize;
+  let date_w = 10usize;
+  let title_w = width.saturating_sub(source_w + kind_w + date_w + 3).max(8);
+  let source =
+    truncate_str(&super::feed::history_source_label(entry), source_w);
+  let kind = match entry.kind {
+    crate::history::HistoryKind::Paper => "paper",
+    crate::history::HistoryKind::Query => "query",
+  };
+  let date = entry
+    .paper_meta
+    .as_ref()
+    .map(|m| truncate_str(&m.published_at, date_w))
+    .unwrap_or_default();
+  let title = truncate_str(&entry.title, title_w);
+  let row = format!(
+    "{source:<source_w$} {kind:<kind_w$} {title:<title_w$} {date:<date_w$}"
+  );
+  if selected {
+    Line::from(Span::styled(row, t.style_selection_text()))
+  } else {
+    Line::from(row)
   }
 }
 

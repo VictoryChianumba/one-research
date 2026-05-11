@@ -343,7 +343,7 @@ pub fn draw_library_tab(frame: &mut Frame, app: &mut App, area: Rect) {
   }
 }
 
-fn draw_history_tab(frame: &mut Frame, app: &App, area: Rect) {
+fn draw_history_tab(frame: &mut Frame, app: &mut App, area: Rect) {
   let t = app.theme();
   if area.height == 0 {
     return;
@@ -394,8 +394,8 @@ fn draw_history_tab(frame: &mut Frame, app: &App, area: Rect) {
     return;
   }
 
-  let entries = app.filtered_history();
-  if entries.is_empty() {
+  let total = app.history_count();
+  if total == 0 {
     let msg = if app.workspace.history.is_empty() {
       "No history yet — open a paper or run a search."
     } else {
@@ -450,7 +450,6 @@ fn draw_history_tab(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(table, inner);
     return;
   }
-  let total = entries.len();
   let selected = app.history_list.selected().min(total.saturating_sub(1));
   let mut offset =
     app.history_list.offset().min(total.saturating_sub(viewport_rows.min(total)));
@@ -459,7 +458,9 @@ fn draw_history_tab(frame: &mut Frame, app: &App, area: Rect) {
   } else if selected >= offset + viewport_rows {
     offset = selected + 1 - viewport_rows;
   }
+  app.history_list.set_offset(offset);
 
+  let entries = app.filtered_history();
   let end = (offset + viewport_rows + 2).min(total);
   let window = &entries[offset..end];
   // Store raw title strings (not Vec<Line>) — see draw_item_table's
@@ -589,7 +590,7 @@ fn draw_history_tab(frame: &mut Frame, app: &App, area: Rect) {
   }
 }
 
-fn history_source_label(entry: &crate::history::HistoryEntry) -> String {
+pub(super) fn history_source_label(entry: &crate::history::HistoryEntry) -> String {
   match entry.paper_meta.as_ref().map(|meta| &meta.source_platform) {
     Some(SourcePlatform::HuggingFace) => "hf".to_string(),
     Some(SourcePlatform::ArXiv) => "arxiv".to_string(),
