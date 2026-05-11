@@ -47,7 +47,7 @@ impl App {
   pub fn pre_draw_update(&mut self) {
     let current_key = self.details_subject_key();
     if current_key != self.details_last_item_url {
-      self.details_scroll = 0;
+      self.details_scroll.reset();
       self.details_last_item_url = current_key;
     }
   }

@@ -96,8 +96,10 @@ pub struct App {
   /// Banner notification state — relocated into a struct in Phase 2.
   /// Was two paired fields (`notification`, `notification_item_id`).
   pub notification: NotificationState,
-  pub details_scroll: usize,
-  pub details_max_scroll: usize,
+  /// Scroll offset + max for the details pane. Migrated from raw
+  /// (details_scroll, details_max_scroll) scalar pair in Migration #5.
+  /// Each render path sets max appropriately for its mode.
+  pub details_scroll: crate::primitives::ScrollState,
   /// URL of the item that was selected when details_scroll was last set.
   /// Used to reset scroll when the user moves to a different item.
   pub details_last_item_url: Option<String>,
@@ -287,8 +289,7 @@ impl App {
       github_token: None,
       is_refreshing: false,
       notification: NotificationState::new(),
-      details_scroll: 0,
-      details_max_scroll: usize::MAX,
+      details_scroll: crate::primitives::ScrollState::new(),
       details_last_item_url: None,
       config: Config::default(),
       active_theme: ui_theme::ThemeId::Dark,
@@ -788,7 +789,7 @@ impl App {
     self.invalidate_visible_cache();
     self.set_active_selected_index(0);
     self.set_active_list_offset(0);
-    self.details_scroll = 0;
+    self.details_scroll.reset();
     self.details_last_item_url = None;
   }
 
@@ -813,7 +814,7 @@ impl App {
     }
     let next = (self.active_selected_index() + 1).min(len - 1);
     self.set_active_selected_index(next);
-    self.details_scroll = 0;
+    self.details_scroll.reset();
     self.clear_notification();
   }
 
@@ -821,13 +822,13 @@ impl App {
     self.set_active_selected_index(
       self.active_selected_index().saturating_sub(1),
     );
-    self.details_scroll = 0;
+    self.details_scroll.reset();
     self.clear_notification();
   }
 
   pub fn go_to_top(&mut self) {
     self.set_active_selected_index(0);
-    self.details_scroll = 0;
+    self.details_scroll.reset();
     self.clear_notification();
   }
 
@@ -836,19 +837,10 @@ impl App {
     if len > 0 {
       self.set_active_selected_index(len - 1);
     }
-    self.details_scroll = 0;
+    self.details_scroll.reset();
     self.clear_notification();
   }
 
-  /// Called by the renderer each frame with the computed max scroll for the
-  /// details pane. Keeps `details_scroll` bounded without the renderer needing
-  /// to mutate scroll state itself.
-  pub fn set_details_max_scroll(&mut self, max: usize) {
-    self.details_max_scroll = max;
-    if self.details_scroll > max {
-      self.details_scroll = max;
-    }
-  }
 
   /// Mutator chokepoint for `search_query`. Invokes `f` on the query, then
   /// auto-syncs `search_query_lower` and invalidates every cache that depends

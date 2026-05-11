@@ -153,10 +153,10 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
             app.narrow_feed_details_open = false;
           }
           KeyCode::Char('j') | KeyCode::Down => {
-            app.details_scroll = app.details_scroll.saturating_add(1);
+            app.details_scroll.scroll_down(1);
           }
           KeyCode::Char('k') | KeyCode::Up => {
-            app.details_scroll = app.details_scroll.saturating_sub(1);
+            app.details_scroll.scroll_up(1);
           }
           _ => {}
         }
@@ -170,7 +170,7 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
         }
         KeyCode::Char('d') => {
           app.narrow_feed_details_open = true;
-          app.details_scroll = 0;
+          app.details_scroll.reset();
         }
         KeyCode::Char('/') => {
           app.search_active = true;

@@ -218,7 +218,7 @@ pub fn draw_reader_popup(frame: &mut Frame, app: &mut App, area: Rect) {
 
 pub(super) fn draw_narrow_feed_details_popup(
   frame: &mut Frame,
-  app: &App,
+  app: &mut App,
   area: Rect,
 ) {
   let t = app.theme();
@@ -245,12 +245,16 @@ pub(super) fn draw_narrow_feed_details_popup(
     return;
   }
 
+  // Narrow popup uses an unbounded scroll — the paragraph clips
+  // past its content into empty rows. Set max BEFORE borrowing item,
+  // since item holds an immutable borrow of app for the rest.
+  app.details_scroll.set_max(usize::MAX);
+  let scroll = app.details_scroll.offset();
   let items = app.items_for_tab();
   let sel = app.active_selected_index();
   let Some(item) = items.get(sel) else { return };
 
   let text = format!("{}\n\n{}", item.title, item.summary_short);
-  let scroll = app.details_scroll;
   let para = Paragraph::new(text)
     .wrap(ratatui::widgets::Wrap { trim: false })
     .scroll((scroll as u16, 0))
