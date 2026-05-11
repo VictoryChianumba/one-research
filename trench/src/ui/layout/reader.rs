@@ -218,7 +218,7 @@ pub fn draw_reader_popup(frame: &mut Frame, app: &mut App, area: Rect) {
 
 pub(super) fn draw_narrow_feed_details_popup(
   frame: &mut Frame,
-  app: &mut App,
+  app: &App,
   area: Rect,
 ) {
   let t = app.theme();
@@ -245,10 +245,8 @@ pub(super) fn draw_narrow_feed_details_popup(
     return;
   }
 
-  // Narrow popup uses an unbounded scroll — the paragraph clips
-  // past its content into empty rows. Set max BEFORE borrowing item,
-  // since item holds an immutable borrow of app for the rest.
-  app.details_scroll.set_max(usize::MAX);
+  // details_scroll.max is set in App::pre_draw_update to MAX when
+  // the narrow popup is open. We just read offset() here.
   let scroll = app.details_scroll.offset();
   let items = app.items_for_tab();
   let sel = app.active_selected_index();
@@ -305,12 +303,9 @@ pub(super) fn draw_reader_bottom_pane(
   }
 }
 
-fn draw_bottom_pane_details(frame: &mut Frame, app: &mut App, area: Rect) {
-  // Set max before the immutable borrow of `item` below — set_max
-  // needs &mut app and `item` holds &app for the rest of the function.
-  // Details-mode scroll is unbounded — the paragraph clips past its
-  // content into empty rows, matching the pre-migration behavior.
-  app.reader_bottom_scroll.set_max(usize::MAX);
+fn draw_bottom_pane_details(frame: &mut Frame, app: &App, area: Rect) {
+  // reader_bottom_scroll.max is set in App::pre_draw_update to MAX
+  // when details mode is open. We just read offset() here.
   let scroll = app.reader_bottom_scroll.offset();
 
   let t = app.theme();

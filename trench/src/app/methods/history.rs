@@ -41,14 +41,34 @@ impl App {
   /// filtered_history_cache so subsequent reads see the updated data.
 
   /// Pre-draw update: hoists state mutations that were previously
-  /// performed inline during render (Phase 4 — render purification).
-  /// Currently scoped to details_scroll reset on selection change;
-  /// expand as additional draw-time mutations are migrated.
+  /// performed inline during render (refactor B — render purification).
+  /// Runs once per frame before draw, so render functions only need
+  /// `&App` for the migrated state.
   pub fn pre_draw_update(&mut self) {
+    // Reset details_scroll when selection changes.
     let current_key = self.details_subject_key();
     if current_key != self.details_last_item_url {
       self.details_scroll.reset();
       self.details_last_item_url = current_key;
+    }
+
+    // details_scroll.max: the narrow feed details popup uses unbounded
+    // scroll (its paragraph clips into empty rows); the main details
+    // panel always truncates to viewport (no scroll). Narrow popup
+    // wins when open. Encodes the "popup-overwrites-panel" semantic
+    // from the prior render-order interaction.
+    if self.narrow_feed_details_open {
+      self.details_scroll.set_max(usize::MAX);
+    } else {
+      self.details_scroll.set_max(0);
+    }
+
+    // reader_bottom_scroll.max: details mode allows unbounded scroll
+    // (same paragraph-clipping pattern); feed mode's max is set by
+    // the feed-pane render path because it needs viewport_rows
+    // (handled in B2).
+    if self.reader_bottom_open && self.reader_bottom_details {
+      self.reader_bottom_scroll.set_max(usize::MAX);
     }
   }
 

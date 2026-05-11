@@ -201,7 +201,8 @@ pub fn draw_details_panel(frame: &mut Frame, app: &mut App, area: Rect) {
     let para = Paragraph::new(lines);
     let t_para = std::time::Instant::now();
     frame.render_widget(para, inner);
-    app.details_scroll.set_max(0);
+    // details_scroll.max is set in App::pre_draw_update — render
+    // doesn't mutate it here anymore.
     log::debug!("details Paragraph render: {}ms", t_para.elapsed().as_millis());
   } else {
     let hint = Paragraph::new("Select an item from the feed or history")
