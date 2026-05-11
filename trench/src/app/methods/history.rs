@@ -57,6 +57,15 @@ impl App {
     // panel always truncates to viewport (no scroll). Narrow popup
     // wins when open. Encodes the "popup-overwrites-panel" semantic
     // from the prior render-order interaction.
+    //
+    // TODO(scroll-bound): the popup should ideally stop scrolling at the
+    // end of its content rather than running into empty rows. A first
+    // attempt (commit 9543768) computed a textwrap-based bound in the
+    // popup's render path, but caused a visible regression and was
+    // reverted in d3a700e. Revisit when B2 introduces FeedLayout — the
+    // popup's wrap width becomes available in pre_draw_update there,
+    // and a different bound formula (one that doesn't trigger whatever
+    // regression we saw) can be tried.
     if self.narrow_feed_details_open {
       self.details_scroll.set_max(usize::MAX);
     } else {
