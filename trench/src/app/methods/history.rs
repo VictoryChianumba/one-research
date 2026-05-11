@@ -62,7 +62,10 @@ impl App {
     // end of its content rather than running into empty rows. A first
     // attempt (commit 9543768) computed a textwrap-based bound in the
     // popup's render path, but caused a visible regression and was
-    // reverted in d3a700e. Revisit later with a different bound formula.
+    // reverted in d3a700e. Revisit when B2 introduces FeedLayout — the
+    // popup's wrap width becomes available in pre_draw_update there,
+    // and a different bound formula (one that doesn't trigger whatever
+    // regression we saw) can be tried.
     if self.narrow_feed_details_open {
       self.details_scroll.set_max(usize::MAX);
     } else {
@@ -72,109 +75,10 @@ impl App {
     // reader_bottom_scroll.max: details mode allows unbounded scroll
     // (same paragraph-clipping pattern); feed mode's max is set by
     // the feed-pane render path because it needs viewport_rows
-    // (handled in B2b).
+    // (handled in B2).
     if self.reader_bottom_open && self.reader_bottom_details {
       self.reader_bottom_scroll.set_max(usize::MAX);
     }
-
-    // B2a: hoist the auto-scroll math for the active feed list out of
-    // draw_item_table / draw_history_tab. Uses the focus pane-rect
-    // cache (populated by last frame's draw_main_row), which is one
-    // frame behind on resize but corrects on the next frame. First-
-    // frame default is Rect::default (zero-sized), which becomes a
-    // no-op and lets the offset stay at the default 0.
-    let feed_pane_info = self.focus.pane(crate::app::PaneId::Feed);
-    if feed_pane_info.is_open && feed_pane_info.rect.height > 1 {
-      let rect = feed_pane_info.rect;
-      self.update_active_list_offset_for_viewport(rect);
-    }
-  }
-
-  /// Hoisted from draw_item_table (Inbox/Library/Discoveries) and
-  /// draw_history_tab (History). Scroll list_offset so selected stays
-  /// visible. Two formulas because the tabs use different data paths
-  /// (visible_count vs filtered_history) and slightly different
-  /// scroll-trigger conditions (item-height-aware for the table tabs,
-  /// uniform row-height for history).
-  fn update_active_list_offset_for_viewport(&mut self, feed_pane_rect: ratatui::layout::Rect) {
-    use crate::app::FeedTab;
-    // inner: draw_item_table and draw_history_tab both shift y+1 / height-1
-    // for the pane title row. viewport_rows then subtracts 2 (header rows).
-    let inner_height = feed_pane_rect.height.saturating_sub(1);
-    let inner_width = feed_pane_rect.width;
-    let viewport_rows = (inner_height as usize).saturating_sub(2);
-    if viewport_rows == 0 {
-      return;
-    }
-
-    match self.feed_tab {
-      FeedTab::Inbox | FeedTab::Library | FeedTab::Discoveries => {
-        // Width budget for the title column (used by the item-height heuristic).
-        // Mirrors draw_item_table's formula: 1+7+5+14+10+8+6 fixed cols + spacing.
-        let title_wrap_w = ((inner_width as usize)
-          .saturating_sub(1 + 7 + 5 + 14 + 10 + 8 + 6))
-          .max(10);
-        let total_items_pre = self.visible_count();
-        if total_items_pre == 0 {
-          return;
-        }
-        let cur_offset = self.active_list_offset();
-        let visible_count =
-          self.count_visible_items_at(cur_offset, viewport_rows, title_wrap_w);
-        let selected_index = self.active_selected_index();
-        let mut list_offset = cur_offset;
-        if selected_index < list_offset {
-          list_offset = selected_index;
-        } else if visible_count >= 2
-          && selected_index >= list_offset + visible_count.saturating_sub(2)
-          && list_offset + visible_count < total_items_pre
-        {
-          list_offset = (selected_index + 2).saturating_sub(visible_count);
-        }
-        list_offset = list_offset.min(total_items_pre.saturating_sub(1));
-        self.set_active_list_offset(list_offset);
-      }
-      FeedTab::History => {
-        let total = self.filtered_history().len();
-        if total == 0 {
-          return;
-        }
-        let selected =
-          self.history_list.selected().min(total.saturating_sub(1));
-        let max_offset = total.saturating_sub(viewport_rows.min(total));
-        let mut offset = self.history_list.offset().min(max_offset);
-        if selected < offset {
-          offset = selected;
-        } else if selected >= offset + viewport_rows {
-          offset = selected + 1 - viewport_rows;
-        }
-        self.history_list.set_offset(offset);
-      }
-    }
-  }
-
-  /// Item-height-aware visible-item count for the active feed list.
-  /// Mirrors the heuristic at draw_item_table: each item takes 3 rows
-  /// when its title exceeds the title-column width (wraps to 2 lines),
-  /// 2 rows otherwise. Capped at viewport_rows.
-  fn count_visible_items_at(
-    &self,
-    list_offset: usize,
-    viewport_rows: usize,
-    title_wrap_w: usize,
-  ) -> usize {
-    let mut rows_used = 0usize;
-    let mut count = 0usize;
-    for idx in list_offset..self.visible_count() {
-      let Some(item) = self.visible_get(idx) else { break };
-      let item_height = if item.title.len() > title_wrap_w { 3 } else { 2 };
-      if rows_used + item_height > viewport_rows {
-        break;
-      }
-      rows_used += item_height;
-      count += 1;
-    }
-    count.max(1)
   }
 
   /// URL-shaped key identifying the currently-shown details subject.

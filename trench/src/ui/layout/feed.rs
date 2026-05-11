@@ -450,11 +450,15 @@ fn draw_history_tab(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(table, inner);
     return;
   }
-  // Auto-scroll math moved to App::update_active_list_offset_for_viewport
-  // (refactor B2a). Render reads the already-clamped selected/offset.
   let total = entries.len();
   let selected = app.history_list.selected().min(total.saturating_sub(1));
-  let offset = app.history_list.offset().min(total.saturating_sub(viewport_rows.min(total)));
+  let mut offset =
+    app.history_list.offset().min(total.saturating_sub(viewport_rows.min(total)));
+  if selected < offset {
+    offset = selected;
+  } else if selected >= offset + viewport_rows {
+    offset = selected + 1 - viewport_rows;
+  }
 
   let end = (offset + viewport_rows + 2).min(total);
   let window = &entries[offset..end];
@@ -849,11 +853,41 @@ pub fn draw_item_table(frame: &mut Frame, app: &mut App, area: Rect) {
   // Viewport height in rows (inner height minus 2 header rows).
   let viewport_rows = inner.height.saturating_sub(2) as usize;
 
-  // ── Auto-scroll math moved to App::update_active_list_offset_for_viewport,
-  // called from pre_draw_update (refactor B2a). Render is read-only on
-  // list_offset / selected_index — they were already correctly clamped
-  // by update_for_draw using the focus-cached pane rect.
-  let total_items = app.visible_count();
+  // ── Auto scroll tracking — item-count-based ───────────────────────────────
+  // Count and visible_count computed in a scoped borrow so list_offset can be
+  // mutated afterwards without a live reference into app.workspace.items.
+  let total_items_pre = app.visible_count();
+  let visible_count = count_visible_items_from_app(
+    app,
+    app.active_list_offset(),
+    viewport_rows,
+    title_wrap_w,
+  );
+
+  let mut list_offset = app.active_list_offset();
+  let selected_index = app.active_selected_index();
+
+  if selected_index < list_offset {
+    // Selection moved above the window — scroll up.
+    list_offset = selected_index;
+  } else if visible_count >= 2
+    && selected_index >= list_offset + visible_count.saturating_sub(2)
+    && list_offset + visible_count < total_items_pre
+  {
+    // Selection is within 2 items of the bottom edge AND there are
+    // unrevealed items below — scroll down. The total-items guard
+    // prevents a runaway feedback loop on short lists: each forward
+    // scroll shrinks visible_count (fewer items fit at a later offset),
+    // which pulls the scroll trigger again, until offset = total - 1
+    // and only one item is visible. Without this guard, j-spam on a
+    // 5-item Library scrolls until 4 items disappear off the top.
+    list_offset = (selected_index + 2).saturating_sub(visible_count);
+  }
+  list_offset = list_offset.min(total_items_pre.saturating_sub(1));
+  app.set_active_list_offset(list_offset);
+
+  // Now get the full visible slice for rendering.
+  let total_items = total_items_pre;
 
   // ── Slice to visible window — trust app.list_offset as first visible item ─
   // Take viewport_rows + 2 extra so the last row is never clipped even when
@@ -1068,3 +1102,26 @@ fn feed_spacer_line(selected: bool) -> Line<'static> {
 }
 
 
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+/// Count how many items (starting from `list_offset`) fit in `viewport_rows`
+/// screen rows, including one spacer row between feed items.
+fn count_visible_items_from_app(
+  app: &App,
+  list_offset: usize,
+  viewport_rows: usize,
+  title_wrap_w: usize,
+) -> usize {
+  let mut rows_used = 0usize;
+  let mut count = 0usize;
+  for idx in list_offset..app.visible_count() {
+    let Some(item) = app.visible_get(idx) else { break };
+    let item_height = if item.title.len() > title_wrap_w { 3 } else { 2 };
+    if rows_used + item_height > viewport_rows {
+      break;
+    }
+    rows_used += item_height;
+    count += 1;
+  }
+  count.max(1)
+}
