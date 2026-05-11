@@ -173,6 +173,7 @@ version = "0.1.0"
 dependencies = [
  "doc-model",
  "flate2",
+ "image",
  "kitty-graphics",
  "log",
  "math-render",
