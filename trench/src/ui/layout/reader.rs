@@ -206,13 +206,24 @@ pub fn draw_reader_popup(frame: &mut Frame, app: &mut App, area: Rect) {
 
   let tread_theme = app.theme_for_tread();
   let kitty = app.kitty_supported;
-  // Split-borrow so the reader and its image state can both be borrowed —
-  // they live on different App fields.
-  let App { reader_popup_editor, reader_popup_image_state, .. } = app;
+  // Split-borrow so the reader, its image state, and its burst tracker
+  // can all be borrowed — they live on different App fields.
+  let App {
+    reader_popup_editor,
+    reader_popup_image_state,
+    reader_popup_burst,
+    ..
+  } = app;
   if let Some(editor) = reader_popup_editor.as_mut() {
     editor.resize(inner.width, inner.height);
     tread::draw(frame, inner, editor, &tread_theme);
-    tread::after_draw(editor, reader_popup_image_state, inner, kitty);
+    tread::after_draw_guarded(
+      editor,
+      reader_popup_image_state,
+      inner,
+      kitty,
+      reader_popup_burst.in_burst(),
+    );
   }
 }
 

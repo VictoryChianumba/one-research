@@ -93,7 +93,14 @@ pub fn draw_main_row(frame: &mut Frame, app: &mut App, area: Rect) -> MainRowRec
           tab.last_resize = Some(new_size);
         }
         tread::draw(frame, rows[1], &tab.reader, &tread_theme);
-        tread::after_draw(&tab.reader, &mut tab.image_state, rows[1], kitty);
+        let burst = tab.burst.in_burst();
+        tread::after_draw_guarded(
+          &tab.reader,
+          &mut tab.image_state,
+          rows[1],
+          kitty,
+          burst,
+        );
       }
     }
     {
@@ -116,7 +123,14 @@ pub fn draw_main_row(frame: &mut Frame, app: &mut App, area: Rect) -> MainRowRec
           tab.last_resize = Some(new_size);
         }
         tread::draw(frame, rows[1], &tab.reader, &tread_theme);
-        tread::after_draw(&tab.reader, &mut tab.image_state, rows[1], kitty);
+        let burst = tab.burst.in_burst();
+        tread::after_draw_guarded(
+          &tab.reader,
+          &mut tab.image_state,
+          rows[1],
+          kitty,
+          burst,
+        );
       } else {
         let hint = Paragraph::new(
           "No paper loaded\n\nLdr+f → open feed · Enter to load",
@@ -176,7 +190,14 @@ pub fn draw_main_row(frame: &mut Frame, app: &mut App, area: Rect) -> MainRowRec
           tab.last_resize = Some(new_size);
         }
         tread::draw(frame, rows[1], &tab.reader, &tread_theme);
-        tread::after_draw(&tab.reader, &mut tab.image_state, rows[1], kitty);
+        let burst = tab.burst.in_burst();
+        tread::after_draw_guarded(
+          &tab.reader,
+          &mut tab.image_state,
+          rows[1],
+          kitty,
+          burst,
+        );
       }
     }
     if app.narrow_feed_details_open {
@@ -215,7 +236,14 @@ pub fn draw_main_row(frame: &mut Frame, app: &mut App, area: Rect) -> MainRowRec
         tab.last_resize = Some(new_size);
       }
       tread::draw(frame, rows[1], &tab.reader, &tread_theme);
-      tread::after_draw(&tab.reader, &mut tab.image_state, rows[1], kitty);
+      let burst = tab.burst.in_burst();
+      tread::after_draw_guarded(
+        &tab.reader,
+        &mut tab.image_state,
+        rows[1],
+        kitty,
+        burst,
+      );
       log::debug!(
         "draw_editor (full-width): {}ms",
         elapsed.elapsed().as_millis()
@@ -255,7 +283,14 @@ pub fn draw_main_row(frame: &mut Frame, app: &mut App, area: Rect) -> MainRowRec
           tab.last_resize = Some(new_size);
         }
         tread::draw(frame, rows[1], &tab.reader, &tread_theme);
-        tread::after_draw(&tab.reader, &mut tab.image_state, rows[1], kitty);
+        let burst = tab.burst.in_burst();
+        tread::after_draw_guarded(
+          &tab.reader,
+          &mut tab.image_state,
+          rows[1],
+          kitty,
+          burst,
+        );
         log::debug!("draw_editor (split): {}ms", elapsed.elapsed().as_millis());
       }
     }
@@ -373,5 +408,3 @@ pub fn draw_main_row(frame: &mut Frame, app: &mut App, area: Rect) -> MainRowRec
     details: details_rect,
   }
 }
-
-

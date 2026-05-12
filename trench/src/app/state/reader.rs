@@ -11,6 +11,10 @@ pub struct ReaderTab {
   pub notes_context: Option<NotesContext>,
   pub reader: tread::Reader,
   pub image_state: tread::ImageState,
+  /// Per-tab burst gate for image emission.  Marked by the reader key
+  /// handler on scroll keys; consulted by `after_draw_guarded` so a
+  /// burst in one tab can't suppress images in another tab.
+  pub burst: tread::BurstTracker,
   /// Last (width, height) we passed to `reader.resize`. Used to skip
   /// no-op resize calls every frame in the steady state — `tread::Reader`
   /// doesn't guarantee its own short-circuit.

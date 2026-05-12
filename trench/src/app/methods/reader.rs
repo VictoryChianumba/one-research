@@ -53,6 +53,7 @@ impl App {
       notes_context,
       reader,
       image_state: tread::ImageState::default(),
+      burst: tread::BurstTracker::default(),
       last_resize: None,
     });
     self.reader_active_tab = self.reader_tabs.len() - 1;
@@ -72,6 +73,7 @@ impl App {
       notes_context,
       reader,
       image_state: tread::ImageState::default(),
+      burst: tread::BurstTracker::default(),
       last_resize: None,
     });
     self.reader_secondary_active_tab = self.reader_secondary_tabs.len() - 1;
@@ -93,6 +95,7 @@ impl App {
         notes_context,
         reader,
         image_state: tread::ImageState::default(),
+        burst: tread::BurstTracker::default(),
         last_resize: None,
       };
       self.reader_active = true;
@@ -116,6 +119,7 @@ impl App {
           notes_context,
           reader,
           image_state: tread::ImageState::default(),
+          burst: tread::BurstTracker::default(),
           last_resize: None,
         };
     }

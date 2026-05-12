@@ -159,6 +159,8 @@ pub struct App {
   /// `ReaderTab`; needed because tread's image escapes are emitted
   /// post-draw, outside ratatui's frame buffer, against host-owned state.
   pub reader_popup_image_state: tread::ImageState,
+  /// Burst gate for the popup reader.  Same role as `ReaderTab.burst`.
+  pub reader_popup_burst: tread::BurstTracker,
   /// Shared TTS playback controller.  Cloned into each `ReaderTab`'s
   /// Reader so all open papers use one audio thread / one rodio sink.
   /// Cross-tab preemption (only one paper speaks at a time) is handled
@@ -322,6 +324,7 @@ impl App {
       reader_popup_rx: None,
       reader_popup_editor: None,
       reader_popup_image_state: tread::ImageState::default(),
+      reader_popup_burst: tread::BurstTracker::default(),
       voice_controller: tread::build_voice_controller(),
       kitty_supported: tread::detect_kitty_supported(),
       reader_split_active: false,

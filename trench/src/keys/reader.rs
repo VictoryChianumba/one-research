@@ -1,4 +1,4 @@
-use crossterm::event::{Event, KeyCode, KeyEvent};
+use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use std::sync::mpsc;
 
 use crate::app::{App, FeedTab, FocusedReader, PaneId};
@@ -11,6 +11,25 @@ pub(super) fn reader_pane_focused(app: &App) -> bool {
   }
   matches!(app.focus.focused_pane, PaneId::Reader | PaneId::SecondaryReader)
     && app.reader_active
+}
+
+/// Keys that typically arrive in rapid succession via OS key-repeat
+/// (j/k/h/l, arrows, page-up/down, half-page Ctrl+d/u, word motions).
+/// These are the ones that flood `a=T` re-transmits during scroll on
+/// non-cache hosts — hence the burst-skip gate.  Jumps (`gg`, `G`, `H`/
+/// `M`/`L`, `{`/`}`) fire once per keystroke and don't need marking.
+pub(super) fn is_scroll_key(key: KeyEvent) -> bool {
+  match key.code {
+    KeyCode::Char('j') | KeyCode::Char('k')
+    | KeyCode::Char('h') | KeyCode::Char('l')
+    | KeyCode::Char('w') | KeyCode::Char('b') | KeyCode::Char('e')
+    | KeyCode::Down | KeyCode::Up | KeyCode::Left | KeyCode::Right
+    | KeyCode::PageDown | KeyCode::PageUp => true,
+    KeyCode::Char('d') | KeyCode::Char('u') => {
+      key.modifiers.contains(KeyModifiers::CONTROL)
+    }
+    _ => false,
+  }
 }
 
 pub(super) fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
@@ -203,6 +222,11 @@ pub(super) fn handle_reader_pane(key: KeyEvent, app: &mut App) -> bool {
         return true;
       }
     }
+    if is_scroll_key(key)
+      && let Some(tab) = app.reader_secondary_active_tab_mut()
+    {
+      tab.burst.note_event();
+    }
     if let Some(reader) = app.reader_secondary_editor_mut() {
       let action = reader.handle_event(Event::Key(key));
       // q: close the current secondary tab; collapse to primary when empty.
@@ -247,6 +271,11 @@ pub(super) fn handle_reader_pane(key: KeyEvent, app: &mut App) -> bool {
     }
   }
 
+  if is_scroll_key(key)
+    && let Some(tab) = app.reader_active_tab_mut()
+  {
+    tab.burst.note_event();
+  }
   if let Some(reader) = app.reader_editor_mut() {
     let action = reader.handle_event(Event::Key(key));
     // q: close the current tab; apply state machine only when the pane goes empty.

@@ -981,9 +981,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Some(app.voice_controller.clone()),
               );
               app.reader_popup_editor = Some(reader);
-              // Reset the popup's image cache to a fresh state — the
-              // previous occupant (if any) had different kitty_ids.
+              // Reset the popup's image cache and burst tracker — the
+              // previous occupant (if any) had different kitty_ids, and
+              // a stale burst would suppress the first frame's render.
               app.reader_popup_image_state = tread::ImageState::default();
+              app.reader_popup_burst = tread::BurstTracker::default();
               app.reader_popup_active = true;
               app.clear_notification();
             }

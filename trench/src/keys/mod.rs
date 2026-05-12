@@ -85,11 +85,16 @@ pub fn dispatch(key: KeyEvent, app: &mut App) {
         reader.exit_voice_mode();
       }
       app.reader_popup_active = false;
-    } else if let Some(reader) = app.reader_popup_editor.as_mut() {
-      let action = reader.handle_event(Event::Key(key));
-      if matches!(action, tread::ReaderAction::Quit) {
-        reader.exit_voice_mode();
-        app.reader_popup_active = false;
+    } else {
+      if reader::is_scroll_key(key) {
+        app.reader_popup_burst.note_event();
+      }
+      if let Some(reader) = app.reader_popup_editor.as_mut() {
+        let action = reader.handle_event(Event::Key(key));
+        if matches!(action, tread::ReaderAction::Quit) {
+          reader.exit_voice_mode();
+          app.reader_popup_active = false;
+        }
       }
     }
     return;
