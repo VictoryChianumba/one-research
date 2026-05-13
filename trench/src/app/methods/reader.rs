@@ -36,13 +36,6 @@ impl App {
     self.reader_tabs.get_mut(self.reader_active_tab)
   }
 
-  /// Read-only view of the active primary tab.  Used by layout code
-  /// that needs to peek at reader state (e.g. figure count) before
-  /// taking the mutable borrow for rendering.
-  pub fn reader_active_tab(&self) -> Option<&ReaderTab> {
-    self.reader_tabs.get(self.reader_active_tab)
-  }
-
   pub fn reader_secondary_active_tab_mut(&mut self) -> Option<&mut ReaderTab> {
     self.reader_secondary_tabs.get_mut(self.reader_secondary_active_tab)
   }
@@ -62,7 +55,6 @@ impl App {
       image_state: tread::ImageState::default(),
       burst: tread::BurstTracker::default(),
       last_resize: None,
-      current_figure: None,
     });
     self.reader_active_tab = self.reader_tabs.len() - 1;
     self.reader_active = true;
@@ -83,7 +75,6 @@ impl App {
       image_state: tread::ImageState::default(),
       burst: tread::BurstTracker::default(),
       last_resize: None,
-      current_figure: None,
     });
     self.reader_secondary_active_tab = self.reader_secondary_tabs.len() - 1;
   }
@@ -106,7 +97,6 @@ impl App {
         image_state: tread::ImageState::default(),
         burst: tread::BurstTracker::default(),
         last_resize: None,
-        current_figure: None,
       };
       self.reader_active = true;
     }
@@ -131,7 +121,6 @@ impl App {
           image_state: tread::ImageState::default(),
           burst: tread::BurstTracker::default(),
           last_resize: None,
-          current_figure: None,
         };
     }
   }

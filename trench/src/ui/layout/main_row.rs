@@ -47,28 +47,6 @@ pub fn draw_main_row(frame: &mut Frame, app: &mut App, area: Rect) -> MainRowRec
   // Tread's `Theme` is a sibling type from a separate `ui_theme` crate
   // — we can't pass `&t` directly.  Convert once per draw cycle.
   let tread_theme = app.theme_for_tread();
-
-  // Sync each visible tab's `text_only` mode with whether *this
-  // frame's* layout will actually render a figure-preview pane for
-  // it.  The flag (`app.figure_preview_active`) captures user intent;
-  // the layout state below decides whether we can honour it.  Without
-  // this central sync, a tab whose preview is suppressed by the
-  // current layout would still see `text_only = true` and hide its
-  // inline figures with nowhere to compensate.  Phase D wires only
-  // the single-reader path; other layouts force `text_only = false`.
-  let primary_preview_eligible = app.reader_active
-    && !app.notes_active
-    && !app.reader_dual_active
-    && !app.reader_split_active;
-  let primary_text_only = app.figure_preview_active && primary_preview_eligible;
-  if let Some(tab) = app.reader_active_tab_mut() {
-    tab.reader.set_text_only(primary_text_only);
-  }
-  if let Some(tab) = app.reader_secondary_active_tab_mut() {
-    // Secondary reader pane has no preview-pane wiring yet — keep
-    // its inline figures visible regardless of the flag.
-    tab.reader.set_text_only(false);
-  }
   // ── A2 State 3: dual-reader (left 50% | right 50%) ──────────────────────
   if app.reader_dual_active && app.reader_active {
     let (workspace_area, body_area) = reader_workspace_split(area);
@@ -238,18 +216,7 @@ pub fn draw_main_row(frame: &mut Frame, app: &mut App, area: Rect) -> MainRowRec
   // ── Reader: always full-width or 60/40 split, regardless of terminal width ─
   if app.reader_active && !app.notes_active {
     let (workspace_area, body_area) = reader_workspace_split(area);
-    let kitty = app.kitty_supported;
-    // Preview is intentionally suppressed when the active tab has no
-    // figures — otherwise the user would see an empty 40% column with
-    // no recourse.  The flag stays on; activation just no-ops until
-    // they navigate to a paper with figures.
-    let preview_active = app.figure_preview_active
-      && app
-        .reader_active_tab()
-        .map(|tab| !tab.reader.figure_kitty_ids().is_empty())
-        .unwrap_or(false);
-    let header_title = if preview_active { "Reader + Figure" } else { "Reader" };
-    draw_reader_workspace_header(frame, app, workspace_area, header_title);
+    draw_reader_workspace_header(frame, app, workspace_area, "Reader");
     let rows = Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
       .split(body_area);
     draw_reader_tab_bar(
@@ -260,49 +227,23 @@ pub fn draw_main_row(frame: &mut Frame, app: &mut App, area: Rect) -> MainRowRec
       true,
       &t,
     );
-    // 60% text / 40% figure split when preview is active.  Ratio
-    // matches the user's pick and the notes-dock idiom (primary
-    // content gets the larger share).
-    let (reader_rect, preview_rect) = if preview_active {
-      let cols = Layout::horizontal([
-        Constraint::Percentage(60),
-        Constraint::Percentage(40),
-      ])
-        .split(rows[1]);
-      (cols[0], Some(cols[1]))
-    } else {
-      (rows[1], None)
-    };
+    let kitty = app.kitty_supported;
     if let Some(tab) = app.reader_active_tab_mut() {
       let elapsed = std::time::Instant::now();
-      // text_only is already synced for this frame by the central
-      // pass at the top of `draw_main_row`.
-      let new_size = (reader_rect.width, reader_rect.height);
+      let new_size = (rows[1].width, rows[1].height);
       if tab.last_resize != Some(new_size) {
         tab.reader.resize(new_size.0, new_size.1);
         tab.last_resize = Some(new_size);
       }
-      tread::draw(frame, reader_rect, &tab.reader, &tread_theme);
+      tread::draw(frame, rows[1], &tab.reader, &tread_theme);
       let burst = tab.burst.in_burst();
       tread::after_draw_guarded(
         &tab.reader,
         &mut tab.image_state,
-        reader_rect,
+        rows[1],
         kitty,
         burst,
       );
-      if let Some(rect) = preview_rect {
-        let kid = tab
-          .current_figure
-          .and_then(|i| tab.reader.figure_kitty_ids().get(i).copied());
-        tread::place_one_figure(
-          &tab.reader,
-          &mut tab.image_state,
-          kid,
-          rect,
-          kitty,
-        );
-      }
       log::debug!(
         "draw_editor (full-width): {}ms",
         elapsed.elapsed().as_millis()

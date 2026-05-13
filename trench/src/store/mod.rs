@@ -207,15 +207,6 @@ pub struct UiState {
   pub secondary_notes_tabs: Vec<NotesTab>,
   #[serde(default)]
   pub secondary_notes_active_tab: usize,
-  /// Sticky global default for the reader's figure-preview side
-  /// pane.  Each pane (primary + secondary) carries its own runtime
-  /// `figure_preview_active` flag, but both initialize from this
-  /// value at startup and the toggle binding writes back here on
-  /// every flip — so the user's last choice is what greets them
-  /// next session.  `#[serde(default)]` so older `ui.json` files
-  /// without this field load as false.
-  #[serde(default)]
-  pub figure_preview_default: bool,
 }
 
 fn ui_path() -> Option<PathBuf> {

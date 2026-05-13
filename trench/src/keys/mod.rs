@@ -616,72 +616,6 @@ fn note_side_for_focus(app: &App) -> FocusedReader {
   }
 }
 
-fn figure_preview_active_for_side(app: &App, side: FocusedReader) -> bool {
-  match side {
-    FocusedReader::Primary => app.figure_preview_active,
-    FocusedReader::Secondary => app.secondary_figure_preview_active,
-  }
-}
-
-fn set_figure_preview_active_for_side(
-  app: &mut App,
-  side: FocusedReader,
-  active: bool,
-) {
-  match side {
-    FocusedReader::Primary => app.figure_preview_active = active,
-    FocusedReader::Secondary => app.secondary_figure_preview_active = active,
-  }
-}
-
-fn active_reader_tab_for_side<'a>(
-  app: &'a mut App,
-  side: FocusedReader,
-) -> Option<&'a mut crate::app::ReaderTab> {
-  match side {
-    FocusedReader::Primary => app.reader_active_tab_mut(),
-    FocusedReader::Secondary => app.reader_secondary_active_tab_mut(),
-  }
-}
-
-/// `Ldr+i` — toggle the figure-preview side pane for the focused
-/// reader.  On activation, defaults `current_figure` to `Some(0)`
-/// when the active tab has figures so the first preview shows
-/// something instead of an empty pane.  On deactivation, leaves
-/// `current_figure` alone — re-toggling resumes where the user
-/// left off.
-fn toggle_figure_preview(app: &mut App) {
-  let side = note_side_for_focus(app);
-  let new_state = !figure_preview_active_for_side(app, side);
-  set_figure_preview_active_for_side(app, side, new_state);
-  if new_state
-    && let Some(tab) = active_reader_tab_for_side(app, side)
-    && tab.current_figure.is_none()
-    && !tab.reader.figure_kitty_ids().is_empty()
-  {
-    tab.current_figure = Some(0);
-  }
-}
-
-/// `Ldr+.` / `Ldr+,` — step the current figure index forward (`+1`)
-/// or backward (`-1`).  Wraps at both ends.  Silent no-op when the
-/// preview pane is not active for the focused side or the active
-/// tab has no figures.
-fn step_current_figure(app: &mut App, delta: i32) {
-  let side = note_side_for_focus(app);
-  if !figure_preview_active_for_side(app, side) {
-    return;
-  }
-  let Some(tab) = active_reader_tab_for_side(app, side) else { return; };
-  let count = tab.reader.figure_kitty_ids().len();
-  if count == 0 {
-    return;
-  }
-  let current = tab.current_figure.unwrap_or(0) as i32;
-  let next = ((current + delta).rem_euclid(count as i32)) as usize;
-  tab.current_figure = Some(next);
-}
-
 fn note_pane_for_side(app: &App, side: FocusedReader) -> PaneId {
   match side {
     FocusedReader::Primary => PaneId::Notes,
@@ -968,20 +902,6 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
       if app.chat.active {
         app.chat.at_top = !app.chat.at_top;
       }
-    }
-    // Figure-preview side pane.  `Ldr+i` toggles for the focused
-    // pane; `Ldr+.` / `Ldr+,` step the current_figure cursor.  The
-    // global default in UiState is updated implicitly on shutdown
-    // from `app.figure_preview_active`, so flips here become sticky
-    // across sessions.
-    KeyCode::Char('i') => {
-      toggle_figure_preview(app);
-    }
-    KeyCode::Char('.') => {
-      step_current_figure(app, 1);
-    }
-    KeyCode::Char(',') => {
-      step_current_figure(app, -1);
     }
     // A1 — floating reader popup
     KeyCode::Enter => {
