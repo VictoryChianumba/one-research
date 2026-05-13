@@ -109,8 +109,6 @@ const HELP_SECTIONS: &[(&str, &[(&str, &str)])] = &[
       ("Tab", "Switch primary / secondary pane"),
       ("Ldr+f", "Cycle reader feed / drawer layout"),
       ("Ldr+n", "Open notes for current paper"),
-      ("Ldr+i", "Toggle figure-preview side pane (60/40 split)"),
-      ("Ldr+. / Ldr+,", "Step next / previous figure in preview pane"),
       ("q / Esc", "Close / step back reader state"),
       ("Feed drawer", "j/k move · d details · / search · Enter open"),
       ("", ""),
