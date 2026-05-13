@@ -143,6 +143,20 @@ pub struct App {
   pub secondary_notes_mode: NotesMode,
   pub secondary_notes_context: Option<NotesContext>,
 
+  /// Whether the figure-preview side pane is shown for the primary
+  /// reader.  Hydrated from `UiState.figure_preview_default` at
+  /// startup; toggled by `Ldr+i` on the focused pane.  When true,
+  /// the active tab's reader runs in `text_only` mode so figures
+  /// don't render inline (`tread::Reader::set_text_only(true)`),
+  /// and the layout splits the reader area horizontally so a
+  /// dedicated preview pane can show the current figure via
+  /// `tread::place_one_figure`.
+  pub figure_preview_active: bool,
+  /// Mirror of `figure_preview_active` for the secondary reader
+  /// (dual-reader mode).  Independent per pane; matches the
+  /// `notes_active` / `secondary_notes_active` pattern.
+  pub secondary_figure_preview_active: bool,
+
   // Embedded chat pane
   pub chat: ChatState,
 
@@ -316,6 +330,8 @@ impl App {
       secondary_notes_active_tab: 0,
       secondary_notes_mode: NotesMode::Library,
       secondary_notes_context: None,
+      figure_preview_active: false,
+      secondary_figure_preview_active: false,
       chat: ChatState::default(),
       reader_tabs: Vec::new(),
       reader_active_tab: 0,

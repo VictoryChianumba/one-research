@@ -19,4 +19,9 @@ pub struct ReaderTab {
   /// no-op resize calls every frame in the steady state — `tread::Reader`
   /// doesn't guarantee its own short-circuit.
   pub last_resize: Option<(u16, u16)>,
+  /// Index into `reader.figure_kitty_ids()` for the figure currently
+  /// shown in the side preview pane.  `None` when the preview pane
+  /// is hidden or the paper has no figures.  Stepping bindings
+  /// (`Ldr+.` / `Ldr+,`) move this with wraparound.
+  pub current_figure: Option<usize>,
 }

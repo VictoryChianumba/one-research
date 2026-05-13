@@ -745,6 +745,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   app.secondary_notes_active_tab = ui
     .secondary_notes_active_tab
     .min(app.secondary_notes_tabs.len().saturating_sub(1));
+  app.figure_preview_active = ui.figure_preview_default;
+  app.secondary_figure_preview_active = ui.figure_preview_default;
   log::debug!("startup: state/ui load {}ms", t.elapsed().as_millis());
 
   // 1. Load cache immediately → populate app.workspace.items.
@@ -1155,6 +1157,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     notes_active_tab: app.notes_active_tab,
     secondary_notes_tabs: app.secondary_notes_tabs.clone(),
     secondary_notes_active_tab: app.secondary_notes_active_tab,
+    // Persist the primary pane's flag as the global default — the
+    // toggle binding writes the same value to both panes, so this
+    // matches the user's most recent choice regardless of which
+    // pane they pressed `Ldr+i` in.
+    figure_preview_default: app.figure_preview_active,
   });
 
   // Balance the kitty-keyboard push from setup. Best-effort — if any of
