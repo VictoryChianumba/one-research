@@ -165,6 +165,8 @@ The leader key is `Ctrl+T` (shown as `Ldr` below).
 | `Ldr+Enter` | Open selected item in floating popup reader |
 | `Ldr+c` | Toggle Chat pane |
 | `Ldr+n` | Toggle Notes pane |
+| `Ldr+i` | Toggle figure-preview side pane (60/40 reader+figure split) |
+| `Ldr+.` / `Ldr+,` | Step to next / previous figure in the preview pane |
 | `Ldr+S` | Open Settings screen |
 | `Ldr+?` | Open help screen |
 | `Ldr+q` | Quit |
