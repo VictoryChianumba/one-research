@@ -684,6 +684,64 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }));
   }
 
+  // Surface the Zellij-over-iTerm2 graphics gotcha before alt-screen
+  // entry, so the user sees it both at launch and (via scrollback) on
+  // exit.  Zellij intercepts Kitty graphics APCs and re-renders via
+  // the host terminal; over iTerm2 that path is broken and the figure
+  // pane stays blank — but trench has no other way to tell the user
+  // that's not a trench bug.  Mirrors the standalone tread warning.
+  if tread::in_zellij() && tread::is_iterm2() && tread::detect_kitty_supported() {
+    eprintln!(
+      "trench: zellij over iTerm2 detected. figure-preview panes may\n  \
+       stay empty because Zellij's Kitty-graphics re-render path is\n  \
+       unreliable on iTerm2.  Workarounds:\n    \
+       - run a Zellij fullscreen pane (Alt+f)\n    \
+       - run trench outside Zellij\n    \
+       - switch host terminal to Ghostty"
+    );
+  }
+
+  // Loud tmux/passthrough banner.  `allow-passthrough` is off by default
+  // in tmux, and when it's off every DCS envelope our graphics emitter
+  // produces is silently consumed before reaching the host terminal —
+  // figures don't render and there's no error to investigate.  Active
+  // probe lets us distinguish OFF (loud banner) from "couldn't probe"
+  // (advisory) from ON (nothing to say).  Same printed-before-alt-screen
+  // pattern as the Zellij case so it survives in terminal scrollback.
+  if tread::detect_kitty_supported() {
+    match tread::tmux_passthrough_enabled() {
+      Some(false) => {
+        eprintln!(
+          "\n\
+           ═══════════════════════════════════════════════════════════════════\n\
+           trench: tmux detected with allow-passthrough OFF.\n\
+           Figures will NOT render — every DCS envelope is being dropped\n\
+           by tmux before it reaches the host terminal.\n\
+           \n\
+           Fix:\n  \
+             echo 'set -g allow-passthrough on' >> ~/.tmux.conf\n  \
+             tmux source-file ~/.tmux.conf\n\
+           \n\
+           Verify:\n  \
+             tmux show -gv allow-passthrough   # should print: on\n\
+           ═══════════════════════════════════════════════════════════════════\n"
+        );
+      }
+      None if tread::in_zellij() => {
+        // Already covered by the Zellij banner above.
+      }
+      None if std::env::var_os("TMUX").is_some() => {
+        eprintln!(
+          "trench: tmux detected but `allow-passthrough` could not be probed.\n  \
+           If figures don't render, add to ~/.tmux.conf:\n    \
+             set -g allow-passthrough on\n    \
+             set -g focus-events on"
+        );
+      }
+      _ => {}
+    }
+  }
+
   enable_raw_mode()?;
   let mut stdout = io::stdout();
   // EnableFocusChange so the (eventual) embedded reader can detect tmux
