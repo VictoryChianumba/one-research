@@ -6,7 +6,7 @@ use ratatui::{
   widgets::Paragraph,
 };
 
-use super::widgets::{safe_truncate_chars, truncate};
+use super::widgets::{pane_inset, safe_truncate_chars, truncate};
 use crate::app::{App, FeedTab};
 use crate::models::{FeedItem, SourcePlatform};
 
@@ -31,10 +31,7 @@ pub fn draw_details_panel(frame: &mut Frame, app: &mut App, area: Rect) {
   frame.render_widget(
     Paragraph::new(Line::from(vec![
       Span::styled("─".repeat(left_rule_w), sb),
-      Span::styled(
-        activity_title,
-        Style::default().fg(t.header).add_modifier(Modifier::BOLD),
-      ),
+      Span::styled(activity_title, Style::default().fg(t.header)),
       Span::styled("─".repeat(right_rule_w), sb),
     ])),
     Rect { x: area.x, y: div_y, width: area.width, height: 1 },
@@ -70,8 +67,8 @@ pub fn draw_details_panel(frame: &mut Frame, app: &mut App, area: Rect) {
     let recent_arxiv = counts.recent_arxiv;
     let recent_other = counts.recent_other;
 
-    let activity_label_style =
-      Style::default().fg(t.text_dim).add_modifier(Modifier::BOLD);
+    // Single-channel emphasis: dim color is enough; no bold.
+    let activity_label_style = Style::default().fg(t.text_dim);
     let label_style = Style::default().fg(t.text_dim);
     let val_style = Style::default().fg(t.text);
 
@@ -152,14 +149,8 @@ pub fn draw_details_panel(frame: &mut Frame, app: &mut App, area: Rect) {
     frame.render_widget(Paragraph::new(lines), dash_inner);
   }
 
-  // Add margin so text doesn't abut the divider.
-  let inner = Rect {
-    x: top_area.x + 2,
-    y: top_area.y.saturating_add(1),
-    width: top_area.width.saturating_sub(3),
-    height: top_area.height.saturating_sub(1),
-    ..top_area
-  };
+  // Standard pane padding — same helper as the feed pane uses.
+  let inner = pane_inset(top_area);
 
   // The selection-change reset for details_scroll lives in
   // App::pre_draw_update (Phase 4 hoist). By the time draw runs,
@@ -168,8 +159,8 @@ pub fn draw_details_panel(frame: &mut Frame, app: &mut App, area: Rect) {
   if let Some(subject) = details_subject(app, &history) {
     let title_style = Style::default().fg(t.text).add_modifier(Modifier::BOLD);
     let meta_style = Style::default().fg(t.text_dim);
-    let label_style =
-      Style::default().fg(t.text_dim).add_modifier(Modifier::BOLD);
+    // Single-channel emphasis: dim color carries the "label" signal; no bold.
+    let label_style = Style::default().fg(t.text_dim);
     let dim_style = Style::default().fg(t.text_dim);
     let value_style = Style::default().fg(t.text);
     let accent_style = Style::default().fg(t.accent);

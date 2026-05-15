@@ -312,10 +312,16 @@ pub fn draw_main_row(frame: &mut Frame, app: &mut App, area: Rect) -> MainRowRec
     } else if app.feed.filter_focus {
       "Filters"
     } else {
-      "Details"
+      ""
+    };
+    // Inset by 1 row top + 1 row bottom for breathing room around the frame.
+    let area = Rect {
+      y: area.y.saturating_add(1),
+      height: area.height.saturating_sub(2),
+      ..area
     };
     let (feed_rect, bottom_rect) =
-      draw_vert_split_box(frame, area, "Feed", bottom_title, &t);
+      draw_vert_split_box(frame, area, "", bottom_title, &t);
 
     let t = std::time::Instant::now();
     draw_feed_pane(frame, app, feed_rect);
@@ -355,6 +361,14 @@ pub fn draw_main_row(frame: &mut Frame, app: &mut App, area: Rect) -> MainRowRec
   }
 
   // ── Wide mode (>= 100 cols): single outer border, feed left, right panel ──
+  // Inset by 1 row top + 1 row bottom so the rounded frame has breathing
+  // room from the search bar above and the footer below — the same separation
+  // halloy gets from its OS chrome.
+  let area = Rect {
+    y: area.y.saturating_add(1),
+    height: area.height.saturating_sub(2),
+    ..area
+  };
   let inner_w = area.width.saturating_sub(2);
   let right_w = if app.notes_active {
     (inner_w * 40 / 100).max(1)
@@ -366,11 +380,11 @@ pub fn draw_main_row(frame: &mut Frame, app: &mut App, area: Rect) -> MainRowRec
   } else if app.feed.filter_focus {
     "Filters"
   } else {
-    "Details"
+    ""
   };
 
   let (feed_rect, right_rect) =
-    draw_horiz_split_box(frame, area, right_w, "Feed", right_title, &t);
+    draw_horiz_split_box(frame, area, right_w, "", right_title, &t);
 
   let t = std::time::Instant::now();
   draw_feed_pane(frame, app, feed_rect);

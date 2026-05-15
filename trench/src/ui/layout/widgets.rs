@@ -6,7 +6,7 @@ use ratatui::{
   layout::Rect,
   style::{Color, Modifier, Style},
   text::{Line, Span},
-  widgets::{Block, Borders, Paragraph},
+  widgets::{Block, BorderType, Borders, Paragraph},
 };
 
 use crate::theme::Theme;
@@ -150,6 +150,18 @@ pub(super) fn h_margin(r: Rect, margin: u16) -> Rect {
   Rect { x: r.x + margin, width: r.width.saturating_sub(margin * 2), ..r }
 }
 
+/// Standard inner-content padding for a pane: 2 columns on each side,
+/// 1 row top, 1 row bottom. Use this on the rect returned by the box
+/// helpers so feed and details panes share the same breathing room.
+pub(super) fn pane_inset(r: Rect) -> Rect {
+  Rect {
+    x: r.x.saturating_add(2),
+    y: r.y.saturating_add(1),
+    width: r.width.saturating_sub(4),
+    height: r.height.saturating_sub(2),
+  }
+}
+
 // ── Shared-box layout helpers ───────────────────────────────────────────────
 
 /// Draws one outer DarkGray border enclosing two side-by-side columns.
@@ -167,9 +179,12 @@ pub(super) fn draw_horiz_split_box(
 ) -> (Rect, Rect) {
   let s = Style::default().fg(t.border);
 
-  // Outer border (provides ┌┐└┘ and ─/│ edges)
+  // Outer border (provides ╭╮╰╯ rounded corners and ─/│ edges)
   frame.render_widget(
-    Block::default().borders(Borders::ALL).border_style(s),
+    Block::default()
+      .borders(Borders::ALL)
+      .border_type(BorderType::Rounded)
+      .border_style(s),
     area,
   );
 
@@ -208,15 +223,16 @@ pub(super) fn draw_horiz_split_box(
     );
   }
 
-  // Title overlays on the top border row
-  if left_w > 0 {
+  // Title overlays on the top border row. Empty title leaves the bare ─ border
+  // in place — used when the column header below already names the region.
+  if left_w > 0 && !left_title.is_empty() {
     let t = format!("{:─^w$}", format!(" {left_title} "), w = left_w as usize);
     frame.render_widget(
       Paragraph::new(Span::styled(t, s)),
       Rect { x: area.x + 1, y: area.y, width: left_w, height: 1 },
     );
   }
-  if right_w > 0 {
+  if right_w > 0 && !right_title.is_empty() {
     let t =
       format!("{:─^w$}", format!(" {right_title} "), w = right_w as usize);
     frame.render_widget(
@@ -246,7 +262,10 @@ pub(super) fn draw_vert_split_box(
   let s = Style::default().fg(t.border);
 
   frame.render_widget(
-    Block::default().borders(Borders::ALL).border_style(s),
+    Block::default()
+      .borders(Borders::ALL)
+      .border_type(BorderType::Rounded)
+      .border_style(s),
     area,
   );
 
@@ -262,17 +281,20 @@ pub(super) fn draw_vert_split_box(
   let div_y = inner.y + top_h;
   let bot_h = inner.height.saturating_sub(top_h + 1);
 
-  // ├─ Bottom title ─┤ divider row
-  let div_content =
-    format!("{:─^w$}", format!(" {bottom_title} "), w = inner.width as usize);
+  // ├─ Bottom title ─┤ divider row. Empty bottom_title yields a plain ├──┤ rule.
+  let div_content = if bottom_title.is_empty() {
+    "─".repeat(inner.width as usize)
+  } else {
+    format!("{:─^w$}", format!(" {bottom_title} "), w = inner.width as usize)
+  };
   let div_line = format!("├{div_content}┤");
   frame.render_widget(
     Paragraph::new(Span::styled(div_line, s)),
     Rect { x: area.x, y: div_y, width: area.width, height: 1 },
   );
 
-  // Top title overlay in top border row
-  if inner.width > 0 {
+  // Top title overlay in top border row. Empty title leaves the bare ─ border.
+  if inner.width > 0 && !top_title.is_empty() {
     let t =
       format!("{:─^w$}", format!(" {top_title} "), w = inner.width as usize);
     frame.render_widget(

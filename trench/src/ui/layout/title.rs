@@ -118,9 +118,9 @@ fn draw_compact_title_bar(frame: &mut Frame, app: &App, area: Rect) {
     inner[3],
   );
 
-  let sep_str = "─".repeat(area.width as usize);
-  let sep = Paragraph::new(sep_str).style(Style::default().fg(t.border));
-  frame.render_widget(sep, inner[4]);
+  // Whitespace gap between header and search row (was a `─` rule).
+  // Halloy-style hierarchy: separate sections with space, not horizontal rules.
+  frame.render_widget(Paragraph::new(""), inner[4]);
 }
 
 // ── Search + filter row ────────────────────────────────────────────────────
@@ -158,11 +158,8 @@ pub fn draw_search_row(frame: &mut Frame, app: &App, area: Rect) {
     cols[1],
   );
 
-  let sep = "─".repeat(area.width as usize);
-  frame.render_widget(
-    Paragraph::new(sep).style(Style::default().fg(t.border)),
-    sep_area,
-  );
+  // Whitespace gap between search row and tab bar (was a `─` rule).
+  frame.render_widget(Paragraph::new(""), sep_area);
 }
 
 fn filter_summary(app: &App) -> std::cell::Ref<'_, str> {

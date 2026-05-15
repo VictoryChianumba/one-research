@@ -11,7 +11,7 @@ use ratatui::{
 
 use super::reader::{drawer_feed_header_line, drawer_feed_row_line};
 use super::widgets::{
-  safe_truncate_chars, truncate, truncate_str,
+  pane_inset, safe_truncate_chars, truncate, truncate_str,
 };
 use crate::app::{App, FeedTab};
 use crate::models::SourcePlatform;
@@ -537,31 +537,30 @@ fn draw_history_tab(frame: &mut Frame, app: &mut App, area: Rect) {
       let source_style = if is_selected {
         selected_text_style
       } else if entry.kind == crate::history::HistoryKind::Query {
-        Style::default().fg(t.accent)
+        Style::default().fg(t.text_dim)
       } else {
-        Style::default().fg(t.accent)
+        Style::default().fg(t.text_dim)
       };
       Row::new(vec![
-        feed_cell(&source, source_style, is_selected),
-        feed_cell(&kind, dim_style, is_selected),
+        feed_cell(&source, source_style),
+        feed_cell(&kind, dim_style),
         Cell::from(Text::from({
           let title_style = if is_selected {
             selected_text_style
           } else {
             Style::default()
           };
-          let mut lines: Vec<Line<'static>> = title_lines
+          let lines: Vec<Line<'static>> = title_lines
             .iter()
             .map(|s| Line::from(Span::styled(s.clone(), title_style)))
+            .chain(std::iter::once(Line::from("")))
             .collect();
-          lines.push(feed_spacer_line(is_selected));
           lines
         })),
-        feed_cell(date, dim_style, is_selected),
+        feed_cell(date, dim_style),
         feed_cell(
           &crate::history::format_ago(entry.opened_at, now),
           dim_style,
-          is_selected,
         ),
       ])
       .style(row_style)
@@ -816,7 +815,7 @@ fn reader_feed_row_lines_with_wrapped(
       }
 
       Line::from(vec![
-        Span::styled(source_text, Style::default().fg(t.accent)),
+        Span::styled(source_text, Style::default().fg(t.text_dim)),
         Span::raw(" "),
         Span::styled(kind_text, Style::default().fg(t.text_dim)),
         Span::raw(" "),
@@ -832,33 +831,34 @@ fn reader_feed_row_lines_with_wrapped(
 pub fn draw_item_table(frame: &mut Frame, app: &mut App, area: Rect) {
   let t = app.theme();
   let t_item_table = std::time::Instant::now();
-  let header_style = Style::default().fg(t.header).add_modifier(Modifier::BOLD);
+  // Header: color carries the emphasis; no bold (single-channel emphasis).
+  let header_style = Style::default().fg(t.header);
 
   let header = Row::new(vec![
     feed_header_cell(" ", header_style),
-    feed_header_cell("Src", header_style),
-    feed_header_cell("Kind", header_style),
     feed_header_cell("Title", header_style),
-    feed_header_cell("Author", header_style),
     feed_header_cell("Date", header_style),
-    feed_header_cell("State", header_style),
   ])
   .height(2);
 
-  // Inner area: leave one quiet row below the pane title before table headers.
-  let inner = Rect {
-    y: area.y.saturating_add(1),
-    height: area.height.saturating_sub(1),
-    ..area
-  };
-  if inner.height == 0 {
+  // Standard pane padding: 2 cols left/right, 1 row top/bottom.
+  let pane = pane_inset(area);
+  if pane.height == 0 {
     return;
   }
+  // Reserve a 1-col strip on the right for the scrollbar so the date column
+  // isn't clipped by it (VerticalRight overlays the rightmost col otherwise).
+  let inner = Rect { width: pane.width.saturating_sub(1), ..pane };
+  let scrollbar_rect = Rect {
+    x: inner.x + inner.width,
+    y: inner.y,
+    width: 1,
+    height: inner.height,
+  };
 
   // Available width for title column: total inner width minus fixed cols.
-  // sig(1) + source(7) + kind(5) + author(14) + date(10) + state(8) + spacing(6)
-  let title_col_w =
-    (inner.width.saturating_sub(1 + 7 + 5 + 14 + 10 + 8 + 6)) as usize;
+  // sig(1) + date(10) + 2 column gaps of 2 each = 15
+  let title_col_w = (inner.width.saturating_sub(1 + 10 + 4)) as usize;
   let title_wrap_w = title_col_w.max(10);
 
   // Viewport height in rows (inner height minus 2 header rows).
@@ -975,29 +975,15 @@ pub fn draw_item_table(frame: &mut Frame, app: &mut App, area: Rect) {
 
       let row_height = content_height + 1;
 
+      // Suppress unused-variable warnings for view-model fields no longer
+      // shown in the table (still rendered in the details pane).
+      let _ = (&vm.source_label, vm.content_type_short, &vm.author);
+      let _ = selected_dim_style;
+
       Row::new(vec![
         feed_cell(
           vm.signal_indicator,
           if is_selected { selected_text_style } else { signal_style },
-          is_selected,
-        ),
-        feed_cell(
-          &vm.source_label,
-          if is_selected {
-            selected_text_style
-          } else {
-            Style::default().fg(t.accent)
-          },
-          is_selected,
-        ),
-        feed_cell(
-          vm.content_type_short,
-          if is_selected {
-            selected_dim_style
-          } else {
-            Style::default().fg(t.text_dim)
-          },
-          is_selected,
         ),
         Cell::from(Text::from({
           let title_style = if is_selected {
@@ -1005,39 +991,20 @@ pub fn draw_item_table(frame: &mut Frame, app: &mut App, area: Rect) {
           } else {
             Style::default()
           };
-          let mut lines: Vec<Line<'static>> = title_lines
+          let lines: Vec<Line<'static>> = title_lines
             .iter()
             .map(|s| Line::from(Span::styled(s.clone(), title_style)))
+            .chain(std::iter::once(Line::from("")))
             .collect();
-          lines.push(feed_spacer_line(is_selected));
           lines
         })),
         feed_cell(
-          &vm.author,
-          if is_selected {
-            selected_dim_style
-          } else {
-            Style::default().fg(t.text_dim)
-          },
-          is_selected,
-        ),
-        feed_cell(
           item.published_at.as_str(),
           if is_selected {
-            selected_dim_style
+            selected_text_style
           } else {
             Style::default().fg(t.text_dim)
           },
-          is_selected,
-        ),
-        feed_cell(
-          item.workflow_state.short_label(),
-          if is_selected {
-            selected_dim_style
-          } else {
-            Style::default().fg(t.text_dim)
-          },
-          is_selected,
         ),
       ])
       .style(row_style)
@@ -1054,16 +1021,12 @@ pub fn draw_item_table(frame: &mut Frame, app: &mut App, area: Rect) {
     rows,
     [
       Constraint::Length(1),
-      Constraint::Length(7),
-      Constraint::Length(5),
       Constraint::Min(0),
-      Constraint::Length(14),
       Constraint::Length(10),
-      Constraint::Length(8),
     ],
   )
   .header(header)
-  .column_spacing(1)
+  .column_spacing(2)
   .row_highlight_style(Style::default());
 
   let t_render = std::time::Instant::now();
@@ -1081,7 +1044,7 @@ pub fn draw_item_table(frame: &mut Frame, app: &mut App, area: Rect) {
     let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
       .begin_symbol(None)
       .end_symbol(None);
-    frame.render_stateful_widget(scrollbar, inner, &mut scrollbar_state);
+    frame.render_stateful_widget(scrollbar, scrollbar_rect, &mut scrollbar_state);
   }
   log::debug!(
     "draw_item_table total: {}ms ({} total items, {} in window)",
@@ -1103,19 +1066,11 @@ fn feed_header_cell(label: &'static str, style: Style) -> Cell<'static> {
   ]))
 }
 
-fn feed_cell(value: &str, style: Style, selected: bool) -> Cell<'static> {
-  let mut lines = Vec::new();
-  lines.push(Line::from(Span::styled(value.to_string(), style)));
-  lines.push(feed_spacer_line(selected));
-  Cell::from(Text::from(lines))
-}
-
-fn feed_spacer_line(selected: bool) -> Line<'static> {
-  if selected {
-    Line::from(Span::styled(" ", Style::default()))
-  } else {
-    Line::from("")
-  }
+fn feed_cell(value: &str, style: Style) -> Cell<'static> {
+  Cell::from(Text::from(vec![
+    Line::from(Span::styled(value.to_string(), style)),
+    Line::from(""),
+  ]))
 }
 
 
