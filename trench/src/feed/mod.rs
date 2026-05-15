@@ -14,6 +14,7 @@
 use std::collections::HashSet;
 
 use crate::app::{DiscoveryState, FeedTab, FilterState};
+use crate::ui::Viewport;
 
 /// Owned state for the feed pane. Renders take `&FeedModel`, never `&mut`
 /// (post-PR 4). PR 2 leaves call sites mutating fields directly through
@@ -139,6 +140,55 @@ impl FeedModel {
   pub fn exit_library_visual_mode(&mut self) {
     self.library_visual_mode = false;
     self.library_selected_urls.clear();
+  }
+
+  // ── Pre-draw ──────────────────────────────────────────────────────────
+  // Run once per frame after layout knows the viewport, before render.
+  // Owns layout-derived list-state reconciliation so render stays read-
+  // only. See ADR-001 D3 and Q5 in the slice-1 grilling.
+
+  /// Reconcile the active list's `count` + `viewport` against the current
+  /// layout, then apply a 2-item bottom buffer so the cursor never lands
+  /// at the absolute last visible row when more items lie below.
+  ///
+  /// - `viewport`: the height-and-width context for this frame.
+  /// - `total_items`: total count of items the active tab would render
+  ///   (caller resolves: `visible_count()` for non-history tabs,
+  ///   `filtered_history().len()` for History).
+  /// - `items_fitting_in_viewport`: how many items actually fit given
+  ///   variable per-item heights (caller computes via textwrap; lives
+  ///   outside the model because it depends on `Workspace`).
+  pub fn pre_draw(
+    &mut self,
+    viewport: Viewport,
+    total_items: usize,
+    items_fitting_in_viewport: usize,
+  ) {
+    let rows = viewport.rows as usize;
+    let list = match self.feed_tab {
+      FeedTab::Inbox => &mut self.inbox_list,
+      FeedTab::Library => &mut self.library_list,
+      FeedTab::Discoveries => &mut self.discovery.list,
+      FeedTab::History => &mut self.history_list,
+    };
+    // ListState.set_count + set_viewport call ensure_visible internally,
+    // so the basic "selection-on-screen" invariant is restored here.
+    list.set_count(total_items);
+    list.set_viewport(rows);
+
+    // 2-item bottom buffer (preserves pre-PR-4 visual behaviour: the
+    // cursor scrolls forward when within 2 items of the bottom edge,
+    // provided more items lie below the current window).
+    let selected = list.selected();
+    let offset = list.offset();
+    if items_fitting_in_viewport >= 2
+      && selected >= offset + items_fitting_in_viewport.saturating_sub(2)
+      && offset + items_fitting_in_viewport < total_items
+    {
+      let new_offset =
+        (selected + 2).saturating_sub(items_fitting_in_viewport);
+      list.set_offset(new_offset);
+    }
   }
 }
 
@@ -292,5 +342,91 @@ mod tests {
     m.exit_library_visual_mode();
     assert!(!m.library_visual_mode);
     assert!(m.library_selected_urls.is_empty());
+  }
+
+  // ── pre_draw ──────────────────────────────────────────────────────────
+
+  #[test]
+  fn pre_draw_makes_selection_visible_when_offscreen() {
+    // Set up: selection at item 50, but offset forced to 0 (out of viewport).
+    let mut m = FeedModel::default();
+    m.inbox_list.set_count(100);
+    m.inbox_list.set_viewport(20);
+    m.inbox_list.set_selected(50);
+    m.inbox_list.set_offset(0);
+    assert_eq!(m.inbox_list.offset(), 0);
+
+    m.pre_draw(Viewport::new(80, 20), 100, 20);
+
+    // After pre_draw the cursor must lie within the viewport.
+    let offset = m.inbox_list.offset();
+    assert!(offset <= 50, "offset {offset} should not exceed selected 50");
+    assert!(offset + 20 > 50, "viewport [{offset}..{}) must cover 50", offset + 20);
+  }
+
+  #[test]
+  fn pre_draw_preserves_offset_when_selection_in_viewport() {
+    let mut m = FeedModel::default();
+    m.inbox_list.set_count(100);
+    m.inbox_list.set_viewport(20);
+    m.inbox_list.set_selected(5);
+    m.inbox_list.set_offset(0);
+
+    m.pre_draw(Viewport::new(80, 20), 100, 20);
+
+    // Selection 5 is well inside [0, 20) — and the 2-item buffer doesn't
+    // fire because 5 is far from the bottom edge. Offset stays at 0.
+    assert_eq!(m.inbox_list.offset(), 0);
+  }
+
+  #[test]
+  fn pre_draw_two_item_buffer_advances_offset_near_bottom() {
+    // viewport fits 10 items; selection at row 9 (one short of bottom edge);
+    // many more items follow → buffer should kick in.
+    let mut m = FeedModel::default();
+    m.inbox_list.set_count(50);
+    m.inbox_list.set_viewport(10);
+    m.inbox_list.set_offset(0);
+    m.inbox_list.set_selected(9);
+
+    m.pre_draw(Viewport::new(80, 10), 50, 10);
+
+    // Buffer fires: new_offset = 9 + 2 - 10 = 1.
+    assert_eq!(m.inbox_list.offset(), 1);
+  }
+
+  #[test]
+  fn pre_draw_two_item_buffer_does_not_run_off_the_end() {
+    // Selection near the very end — no more items below, buffer should
+    // not advance past the end of the list.
+    let mut m = FeedModel::default();
+    m.inbox_list.set_count(15);
+    m.inbox_list.set_viewport(10);
+    m.inbox_list.set_offset(5);
+    m.inbox_list.set_selected(14);
+
+    m.pre_draw(Viewport::new(80, 10), 15, 10);
+
+    // offset 5 + items_fitting 10 == 15 == total_items, so buffer guard
+    // `offset + items_fitting < total_items` blocks the advance.
+    // ensure_visible in set_viewport pulls offset to 14+1-10 = 5. Stable.
+    assert_eq!(m.inbox_list.offset(), 5);
+  }
+
+  #[test]
+  fn pre_draw_dispatches_by_feed_tab() {
+    // Library tab should reconcile library_list, not inbox_list.
+    let mut m = FeedModel::default();
+    m.feed_tab = FeedTab::Library;
+    m.library_list.set_count(100);
+    m.library_list.set_viewport(10);
+    m.library_list.set_selected(50);
+    m.library_list.set_offset(0);
+
+    m.pre_draw(Viewport::new(80, 10), 100, 10);
+
+    // Library list was reconciled; inbox_list is untouched.
+    assert!(m.library_list.offset() > 0);
+    assert_eq!(m.inbox_list.offset(), 0);
   }
 }

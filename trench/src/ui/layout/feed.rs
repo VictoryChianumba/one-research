@@ -450,20 +450,16 @@ fn draw_history_tab(frame: &mut Frame, app: &mut App, area: Rect) {
     frame.render_widget(table, inner);
     return;
   }
-  // Intentional render-time mutation. Refactor B (render purification)
-  // hoisted the no-layout mutations into pre_draw_update; this auto-scroll
-  // needs viewport_rows, which is layout-derived. A B2a attempt to hoist
-  // via the focus pane-rect cache produced subtle regressions and was
-  // reverted. Stays here until a proper layout-metrics extraction lands.
+  // Auto-scroll the active list to keep the cursor visible. Lives in
+  // `FeedModel::pre_draw` post-PR-4 — history's items are fixed-height,
+  // so `items_fitting` is just `viewport_rows`. See ADR-001 D3.
+  app.feed.pre_draw(
+    crate::ui::Viewport::new(inner.width, viewport_rows as u16),
+    total,
+    viewport_rows,
+  );
   let selected = app.feed.history_list.selected().min(total.saturating_sub(1));
-  let mut offset =
-    app.feed.history_list.offset().min(total.saturating_sub(viewport_rows.min(total)));
-  if selected < offset {
-    offset = selected;
-  } else if selected >= offset + viewport_rows {
-    offset = selected + 1 - viewport_rows;
-  }
-  app.feed.history_list.set_offset(offset);
+  let offset = app.feed.history_list.offset();
 
   let entries = app.filtered_history();
   let end = (offset + viewport_rows + 2).min(total);
@@ -619,11 +615,13 @@ pub fn draw_narrow_feed(frame: &mut Frame, app: &mut App, area: Rect) {
   let selected = app.active_selected_index();
   let title_w = reader_feed_title_width(list_area.width as usize);
 
-  // Intentional render-time mutation. Same rationale as draw_history_tab's
-  // auto-scroll comment: this is item-height-aware (uses the reverse-walk
-  // over the visible window) and depends on viewport_rows + per-item
-  // wrapped heights — values only known after the layout pass. Stays
-  // here until refactor B's deferred layout-metrics extraction lands.
+  // Render-time mutation deferred from PR 4: the narrow-feed auto-scroll
+  // uses an item-height-aware reverse-walk over `app.visible_window`, so
+  // it depends on Workspace items + per-item wrapped heights and doesn't
+  // fit FeedModel::pre_draw's caller-supplies-the-counts contract. The
+  // simpler history + item-table sites moved into pre_draw; this one
+  // waits for either (a) a model-side reverse-walk variant, or (b) the
+  // narrow-feed list-cell to grow a fixed-height variant.
   let mut offset = app.active_list_offset();
   {
     let total = app.visible_count();
@@ -864,47 +862,23 @@ pub fn draw_item_table(frame: &mut Frame, app: &mut App, area: Rect) {
   // Viewport height in rows (inner height minus 2 header rows).
   let viewport_rows = inner.height.saturating_sub(2) as usize;
 
-  // ── Auto scroll tracking — item-count-based ───────────────────────────────
-  // Intentional render-time mutation. Refactor B (render purification)
-  // hoisted the no-layout mutations into pre_draw_update; this auto-scroll
-  // needs viewport_rows + the item-height-aware visible_count, both layout-
-  // derived. A B2a attempt to hoist via the focus pane-rect cache produced
-  // subtle regressions and was reverted. Stays here until a proper layout-
-  // metrics extraction lands.
-  // Count and visible_count computed in a scoped borrow so list_offset can be
-  // mutated afterwards without a live reference into app.workspace.items.
-  let total_items_pre = app.visible_count();
-  let visible_count = count_visible_items_from_app(
+  // Auto-scroll: reconcile the active list against the current viewport
+  // and apply the 2-item bottom buffer. The math moved into
+  // FeedModel::pre_draw in PR 4; the caller computes the layout-derived
+  // `items_fitting` (item-height-aware textwrap, depends on Workspace).
+  // See ADR-001 D3.
+  let total_items = app.visible_count();
+  let items_fitting = count_visible_items_from_app(
     app,
     app.active_list_offset(),
     viewport_rows,
     title_wrap_w,
   );
-
-  let mut list_offset = app.active_list_offset();
-  let selected_index = app.active_selected_index();
-
-  if selected_index < list_offset {
-    // Selection moved above the window — scroll up.
-    list_offset = selected_index;
-  } else if visible_count >= 2
-    && selected_index >= list_offset + visible_count.saturating_sub(2)
-    && list_offset + visible_count < total_items_pre
-  {
-    // Selection is within 2 items of the bottom edge AND there are
-    // unrevealed items below — scroll down. The total-items guard
-    // prevents a runaway feedback loop on short lists: each forward
-    // scroll shrinks visible_count (fewer items fit at a later offset),
-    // which pulls the scroll trigger again, until offset = total - 1
-    // and only one item is visible. Without this guard, j-spam on a
-    // 5-item Library scrolls until 4 items disappear off the top.
-    list_offset = (selected_index + 2).saturating_sub(visible_count);
-  }
-  list_offset = list_offset.min(total_items_pre.saturating_sub(1));
-  app.set_active_list_offset(list_offset);
-
-  // Now get the full visible slice for rendering.
-  let total_items = total_items_pre;
+  app.feed.pre_draw(
+    crate::ui::Viewport::new(inner.width, viewport_rows as u16),
+    total_items,
+    items_fitting,
+  );
 
   // ── Slice to visible window — trust app.list_offset as first visible item ─
   // Take viewport_rows + 2 extra so the last row is never clipped even when
