@@ -13,6 +13,7 @@ mod history;
 // share the same hardened client (timeout, redirect cap, UA).
 use trench_http as http;
 mod data;
+mod feed;
 mod ingestion;
 mod keys;
 mod library;
