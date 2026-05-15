@@ -66,6 +66,80 @@ impl FeedModel {
   pub fn feed_tab(&self) -> FeedTab {
     self.feed_tab
   }
+
+  // ── Tab navigation ────────────────────────────────────────────────────
+  // visible_cache is keyed by `feed_tab`, so a tab switch is a natural
+  // cache miss — these methods do not emit `Effect`s. Callers (key
+  // handlers) follow up with `app.reset_active_feed_position()` when the
+  // gesture should also reset the active list cursor.
+
+  /// Advance to the next tab (Inbox → Library → Discoveries → History → Inbox).
+  pub fn cycle_tab(&mut self) {
+    self.feed_tab = match self.feed_tab {
+      FeedTab::Inbox => FeedTab::Library,
+      FeedTab::Library => FeedTab::Discoveries,
+      FeedTab::Discoveries => FeedTab::History,
+      FeedTab::History => FeedTab::Inbox,
+    };
+  }
+
+  /// Walk back one tab (reverse of `cycle_tab`).
+  pub fn cycle_tab_back(&mut self) {
+    self.feed_tab = match self.feed_tab {
+      FeedTab::Inbox => FeedTab::History,
+      FeedTab::Library => FeedTab::Inbox,
+      FeedTab::Discoveries => FeedTab::Library,
+      FeedTab::History => FeedTab::Discoveries,
+    };
+  }
+
+  /// Jump directly to a specific tab.
+  pub fn set_tab(&mut self, tab: FeedTab) {
+    self.feed_tab = tab;
+  }
+
+  // ── Search bar ────────────────────────────────────────────────────────
+  // Search text edits go through App's `push_search_char` / `pop_search_char`
+  // chokepoints (they emit `Effect::SearchQueryChanged`). These methods
+  // only toggle the *active* flag — entering/exiting search mode.
+
+  /// Enter search-bar input mode.
+  pub fn enter_search(&mut self) {
+    self.search_active = true;
+  }
+
+  /// Exit search-bar input mode. Does not clear the query.
+  pub fn exit_search(&mut self) {
+    self.search_active = false;
+  }
+
+  // ── Filter panel ──────────────────────────────────────────────────────
+
+  /// Move keyboard focus into the filter panel.
+  pub fn enter_filter_focus(&mut self) {
+    self.filter_focus = true;
+  }
+
+  /// Move keyboard focus out of the filter panel.
+  pub fn exit_filter_focus(&mut self) {
+    self.filter_focus = false;
+  }
+
+  // ── Library visual-select mode ────────────────────────────────────────
+  // Anchor is captured at entry from the current `library_list` cursor.
+  // Selection always covers the contiguous range from anchor to cursor.
+
+  /// Enter library bulk-select mode; anchor at current library cursor.
+  pub fn enter_library_visual_mode(&mut self) {
+    self.library_visual_mode = true;
+    self.library_visual_anchor = self.library_list.selected();
+  }
+
+  /// Exit library bulk-select mode; clear the per-URL selection set.
+  pub fn exit_library_visual_mode(&mut self) {
+    self.library_visual_mode = false;
+    self.library_selected_urls.clear();
+  }
 }
 
 impl Default for FeedModel {
@@ -129,5 +203,94 @@ mod tests {
     assert!(!model.library_visual_mode);
     assert_eq!(model.library_visual_anchor, 0);
     assert!(model.library_selected_urls.is_empty());
+  }
+
+  #[test]
+  fn cycle_tab_walks_forward_and_wraps() {
+    let mut m = FeedModel::default();
+    m.cycle_tab();
+    assert!(m.feed_tab == FeedTab::Library);
+    m.cycle_tab();
+    assert!(m.feed_tab == FeedTab::Discoveries);
+    m.cycle_tab();
+    assert!(m.feed_tab == FeedTab::History);
+    m.cycle_tab();
+    assert!(m.feed_tab == FeedTab::Inbox);
+  }
+
+  #[test]
+  fn cycle_tab_back_walks_backward_and_wraps() {
+    let mut m = FeedModel::default();
+    m.cycle_tab_back();
+    assert!(m.feed_tab == FeedTab::History);
+    m.cycle_tab_back();
+    assert!(m.feed_tab == FeedTab::Discoveries);
+    m.cycle_tab_back();
+    assert!(m.feed_tab == FeedTab::Library);
+    m.cycle_tab_back();
+    assert!(m.feed_tab == FeedTab::Inbox);
+  }
+
+  #[test]
+  fn set_tab_jumps_directly() {
+    let mut m = FeedModel::default();
+    m.set_tab(FeedTab::Discoveries);
+    assert!(m.feed_tab == FeedTab::Discoveries);
+    m.set_tab(FeedTab::Inbox);
+    assert!(m.feed_tab == FeedTab::Inbox);
+  }
+
+  #[test]
+  fn search_mode_toggles() {
+    let mut m = FeedModel::default();
+    assert!(!m.search_active);
+    m.enter_search();
+    assert!(m.search_active);
+    m.exit_search();
+    assert!(!m.search_active);
+  }
+
+  #[test]
+  fn exit_search_preserves_query_text() {
+    // Exiting search mode is a focus change, not a clear.
+    let mut m = FeedModel::default();
+    m.search_query = "transformers".to_string();
+    m.search_query_lower = "transformers".to_string();
+    m.enter_search();
+    m.exit_search();
+    assert_eq!(m.search_query, "transformers");
+    assert_eq!(m.search_query_lower, "transformers");
+  }
+
+  #[test]
+  fn filter_focus_toggles() {
+    let mut m = FeedModel::default();
+    assert!(!m.filter_focus);
+    m.enter_filter_focus();
+    assert!(m.filter_focus);
+    m.exit_filter_focus();
+    assert!(!m.filter_focus);
+  }
+
+  #[test]
+  fn library_visual_mode_captures_anchor_at_entry() {
+    let mut m = FeedModel::default();
+    m.library_list.set_count(50);
+    m.library_list.set_viewport(20);
+    m.library_list.set_selected(17);
+    m.enter_library_visual_mode();
+    assert!(m.library_visual_mode);
+    assert_eq!(m.library_visual_anchor, 17);
+  }
+
+  #[test]
+  fn exit_library_visual_mode_clears_selection() {
+    let mut m = FeedModel::default();
+    m.library_selected_urls.insert("https://example.com/a".into());
+    m.library_selected_urls.insert("https://example.com/b".into());
+    m.library_visual_mode = true;
+    m.exit_library_visual_mode();
+    assert!(!m.library_visual_mode);
+    assert!(m.library_selected_urls.is_empty());
   }
 }

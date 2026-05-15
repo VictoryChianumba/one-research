@@ -104,12 +104,12 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
   if app.feed.search_active {
     match key.code {
       KeyCode::Esc => {
-        app.feed.search_active = false;
+        app.feed.exit_search();
         app.clear_search_query();
         app.reset_active_feed_position();
       }
       KeyCode::Enter => {
-        app.feed.search_active = false;
+        app.feed.exit_search();
       }
       KeyCode::Backspace => {
         app.pop_search_char();
@@ -134,11 +134,11 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
       KeyCode::Char(' ') => app.toggle_filter_at_cursor(),
       KeyCode::Char('c') => app.clear_filters(),
       KeyCode::Char('f') | KeyCode::Tab => {
-        app.feed.filter_focus = false;
+        app.feed.exit_filter_focus();
       }
       KeyCode::Esc => {
         app.clear_filters();
-        app.feed.filter_focus = false;
+        app.feed.exit_filter_focus();
       }
       _ => {}
     }
@@ -173,7 +173,7 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
           app.details_scroll.reset();
         }
         KeyCode::Char('/') => {
-          app.feed.search_active = true;
+          app.feed.enter_search();
           app.clear_search_query();
           app.reset_active_feed_position();
         }
@@ -215,25 +215,15 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
 
     match key.code {
       KeyCode::Tab => {
-        app.feed.feed_tab = match app.feed.feed_tab {
-          FeedTab::Inbox => FeedTab::Library,
-          FeedTab::Library => FeedTab::Discoveries,
-          FeedTab::Discoveries => FeedTab::History,
-          FeedTab::History => FeedTab::Inbox,
-        };
+        app.feed.cycle_tab();
         app.reset_active_feed_position();
       }
       KeyCode::BackTab => {
-        app.feed.feed_tab = match app.feed.feed_tab {
-          FeedTab::Inbox => FeedTab::History,
-          FeedTab::Library => FeedTab::Inbox,
-          FeedTab::Discoveries => FeedTab::Library,
-          FeedTab::History => FeedTab::Discoveries,
-        };
+        app.feed.cycle_tab_back();
         app.reset_active_feed_position();
       }
       KeyCode::Char('f') => {
-        app.feed.filter_focus = true;
+        app.feed.enter_filter_focus();
       }
       KeyCode::Char('q') => app.show_quit_popup(),
       KeyCode::Esc => {
@@ -295,7 +285,7 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
         }
       }
       KeyCode::Char('/') => {
-        app.feed.search_active = true;
+        app.feed.enter_search();
         app.clear_search_query();
         app.reset_active_feed_position();
       }
@@ -468,8 +458,7 @@ fn handle_library_tab(key: KeyEvent, app: &mut App) -> bool {
       // Capital V = visual-line mode (Vim convention). Lowercase v
       // remains globally bound to "open repo viewer for selected item"
       // in the generic feed handler at handle_feed_view.
-      app.feed.library_visual_mode = true;
-      app.feed.library_visual_anchor = app.feed.library_list.selected();
+      app.feed.enter_library_visual_mode();
       app.library_recompute_selection();
       true
     }
@@ -582,7 +571,7 @@ fn handle_history_tab(key: KeyEvent, app: &mut App) -> bool {
           let config = app.config.clone();
           // Re-running a query starts a fresh discovery session.
           app.feed.discovery.force_new = true;
-          app.feed.feed_tab = FeedTab::Discoveries;
+          app.feed.set_tab(FeedTab::Discoveries);
           app.reset_active_feed_position();
           spawn_ai_discovery(topic, config, app);
         }
