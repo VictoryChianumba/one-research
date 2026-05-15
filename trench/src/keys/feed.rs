@@ -11,41 +11,41 @@ use crate::models::WorkflowState;
 
 pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
   // Discoveries tab — search bar input (when focused).
-  if app.feed_tab == FeedTab::Discoveries && app.discovery.search_focused {
-    let palette_active = app.discovery.query.starts_with('/');
+  if app.feed.feed_tab == FeedTab::Discoveries && app.feed.discovery.search_focused {
+    let palette_active = app.feed.discovery.query.starts_with('/');
     match key.code {
       KeyCode::Esc => {
-        app.discovery.search_focused = false;
-        app.discovery.palette.reset();
+        app.feed.discovery.search_focused = false;
+        app.feed.discovery.palette.reset();
       }
       KeyCode::Up if palette_active => {
         // Mirror the prior hardcoded `visible=8` until layout starts
         // pushing viewport size into the palette state (Phase 4).
-        app.discovery.palette.set_viewport(8);
-        app.discovery.palette.move_up();
+        app.feed.discovery.palette.set_viewport(8);
+        app.feed.discovery.palette.move_up();
       }
       KeyCode::Down if palette_active => {
-        let count = discovery_palette_count(&app.discovery.query);
-        app.discovery.palette.set_viewport(8);
-        app.discovery.palette.set_count(count);
-        app.discovery.palette.move_down();
+        let count = discovery_palette_count(&app.feed.discovery.query);
+        app.feed.discovery.palette.set_viewport(8);
+        app.feed.discovery.palette.set_count(count);
+        app.feed.discovery.palette.move_down();
       }
       KeyCode::Tab if palette_active => {
         // Complete selected command into the input.
         if let Some(completion) = discovery_palette_completion(
-          &app.discovery.query,
-          app.discovery.palette.selected(),
+          &app.feed.discovery.query,
+          app.feed.discovery.palette.selected(),
         ) {
           app.set_discovery_query(completion);
-          app.discovery.palette.reset();
+          app.feed.discovery.palette.reset();
         }
       }
       KeyCode::Enter => {
-        if !app.discovery.query.is_empty() && !app.discovery.loading {
-          let query = app.discovery.query.clone();
-          app.discovery.palette.reset();
+        if !app.feed.discovery.query.is_empty() && !app.feed.discovery.loading {
+          let query = app.feed.discovery.query.clone();
+          app.feed.discovery.palette.reset();
           if query.starts_with('/') {
-            app.discovery.search_focused = false;
+            app.feed.discovery.search_focused = false;
             app.clear_discovery_query();
             let cmd = crate::commands::parser::parse_slash_command(&query);
             crate::commands::dispatch::dispatch_slash_command(app, cmd);
@@ -56,19 +56,19 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
         }
       }
       KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-        app.discovery.force_new = true;
+        app.feed.discovery.force_new = true;
         app.clear_discovery_query();
-        app.discovery.palette.reset();
+        app.feed.discovery.palette.reset();
       }
       KeyCode::Backspace => {
         app.pop_discovery_char();
-        if !app.discovery.query.starts_with('/') {
-          app.discovery.palette.reset();
+        if !app.feed.discovery.query.starts_with('/') {
+          app.feed.discovery.palette.reset();
         }
       }
       KeyCode::Char(c) => {
         app.push_discovery_char(c);
-        app.discovery.palette.reset();
+        app.feed.discovery.palette.reset();
       }
       _ => {}
     }
@@ -76,10 +76,10 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
   }
 
   // Discoveries tab — any printable char focuses the search bar.
-  if app.feed_tab == FeedTab::Discoveries {
+  if app.feed.feed_tab == FeedTab::Discoveries {
     if let KeyCode::Char(c) = key.code {
       if c != 'q' {
-        app.discovery.search_focused = true;
+        app.feed.discovery.search_focused = true;
         app.push_discovery_char(c);
         return;
       }
@@ -87,7 +87,7 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
   }
 
   // History tab — handle filter cycling, navigation, reopen, delete.
-  if app.feed_tab == FeedTab::History {
+  if app.feed.feed_tab == FeedTab::History {
     if handle_history_tab(key, app) {
       return;
     }
@@ -95,21 +95,21 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
 
   // Library tab — handle workflow-state chip cycling. Other keys (j/k, Enter,
   // i/r/w/x, etc.) fall through to the generic feed handler below.
-  if app.feed_tab == FeedTab::Library {
+  if app.feed.feed_tab == FeedTab::Library {
     if handle_library_tab(key, app) {
       return;
     }
   }
 
-  if app.search_active {
+  if app.feed.search_active {
     match key.code {
       KeyCode::Esc => {
-        app.search_active = false;
+        app.feed.search_active = false;
         app.clear_search_query();
         app.reset_active_feed_position();
       }
       KeyCode::Enter => {
-        app.search_active = false;
+        app.feed.search_active = false;
       }
       KeyCode::Backspace => {
         app.pop_search_char();
@@ -119,7 +119,7 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
       }
       _ => {}
     }
-  } else if app.filter_focus {
+  } else if app.feed.filter_focus {
     match key.code {
       KeyCode::Char('j') | KeyCode::Down => {
         if kbd_scroll_ok(app) {
@@ -134,11 +134,11 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
       KeyCode::Char(' ') => app.toggle_filter_at_cursor(),
       KeyCode::Char('c') => app.clear_filters(),
       KeyCode::Char('f') | KeyCode::Tab => {
-        app.filter_focus = false;
+        app.feed.filter_focus = false;
       }
       KeyCode::Esc => {
         app.clear_filters();
-        app.filter_focus = false;
+        app.feed.filter_focus = false;
       }
       _ => {}
     }
@@ -173,7 +173,7 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
           app.details_scroll.reset();
         }
         KeyCode::Char('/') => {
-          app.search_active = true;
+          app.feed.search_active = true;
           app.clear_search_query();
           app.reset_active_feed_position();
         }
@@ -215,7 +215,7 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
 
     match key.code {
       KeyCode::Tab => {
-        app.feed_tab = match app.feed_tab {
+        app.feed.feed_tab = match app.feed.feed_tab {
           FeedTab::Inbox => FeedTab::Library,
           FeedTab::Library => FeedTab::Discoveries,
           FeedTab::Discoveries => FeedTab::History,
@@ -224,7 +224,7 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
         app.reset_active_feed_position();
       }
       KeyCode::BackTab => {
-        app.feed_tab = match app.feed_tab {
+        app.feed.feed_tab = match app.feed.feed_tab {
           FeedTab::Inbox => FeedTab::History,
           FeedTab::Library => FeedTab::Inbox,
           FeedTab::Discoveries => FeedTab::Library,
@@ -233,7 +233,7 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
         app.reset_active_feed_position();
       }
       KeyCode::Char('f') => {
-        app.filter_focus = true;
+        app.feed.filter_focus = true;
       }
       KeyCode::Char('q') => app.show_quit_popup(),
       KeyCode::Esc => {
@@ -295,7 +295,7 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
         }
       }
       KeyCode::Char('/') => {
-        app.search_active = true;
+        app.feed.search_active = true;
         app.clear_search_query();
         app.reset_active_feed_position();
       }
@@ -397,7 +397,7 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
 fn handle_library_tab(key: KeyEvent, app: &mut App) -> bool {
   // Visual-mode-only handlers fire before the generic chip ones so j/k extend
   // selection rather than just moving the cursor.
-  if app.library_visual_mode {
+  if app.feed.library_visual_mode {
     match key.code {
       KeyCode::Esc => {
         app.library_exit_visual();
@@ -406,13 +406,13 @@ fn handle_library_tab(key: KeyEvent, app: &mut App) -> bool {
       KeyCode::Char('j') | KeyCode::Down => {
         let len = app.visible_count();
         if len > 0 {
-          let next = (app.library_list.selected() + 1).min(len - 1);
+          let next = (app.feed.library_list.selected() + 1).min(len - 1);
           app.library_extend_selection(next);
         }
         return true;
       }
       KeyCode::Char('k') | KeyCode::Up => {
-        let next = app.library_list.selected().saturating_sub(1);
+        let next = app.feed.library_list.selected().saturating_sub(1);
         app.library_extend_selection(next);
         return true;
       }
@@ -442,7 +442,7 @@ fn handle_library_tab(key: KeyEvent, app: &mut App) -> bool {
       }
       KeyCode::Char('t') => {
         let urls: Vec<String> =
-          app.library_selected_urls.iter().cloned().collect();
+          app.feed.library_selected_urls.iter().cloned().collect();
         app.open_tag_picker(urls);
         return true;
       }
@@ -456,20 +456,20 @@ fn handle_library_tab(key: KeyEvent, app: &mut App) -> bool {
   match key.code {
     KeyCode::Char(']') => {
       app.mutate_library_filter(|f| *f = f.next());
-      app.library_list.reset();
+      app.feed.library_list.reset();
       true
     }
     KeyCode::Char('[') => {
       app.mutate_library_filter(|f| *f = f.prev());
-      app.library_list.reset();
+      app.feed.library_list.reset();
       true
     }
     KeyCode::Char('V') => {
       // Capital V = visual-line mode (Vim convention). Lowercase v
       // remains globally bound to "open repo viewer for selected item"
       // in the generic feed handler at handle_feed_view.
-      app.library_visual_mode = true;
-      app.library_visual_anchor = app.library_list.selected();
+      app.feed.library_visual_mode = true;
+      app.feed.library_visual_anchor = app.feed.library_list.selected();
       app.library_recompute_selection();
       true
     }
@@ -490,24 +490,24 @@ fn handle_history_tab(key: KeyEvent, app: &mut App) -> bool {
   match key.code {
     KeyCode::Char(']') => {
       app.mutate_history_filter(|f| *f = f.next());
-      app.history_list.reset();
+      app.feed.history_list.reset();
       true
     }
     KeyCode::Char('[') => {
       app.mutate_history_filter(|f| *f = f.prev());
-      app.history_list.reset();
+      app.feed.history_list.reset();
       true
     }
     KeyCode::Char('j') | KeyCode::Down => {
       let len = app.filtered_history().len();
       if len > 0 {
-        let next = (app.history_list.selected() + 1).min(len - 1);
+        let next = (app.feed.history_list.selected() + 1).min(len - 1);
         app.set_active_selected_index(next);
       }
       true
     }
     KeyCode::Char('k') | KeyCode::Up => {
-      let next = app.history_list.selected().saturating_sub(1);
+      let next = app.feed.history_list.selected().saturating_sub(1);
       app.set_active_selected_index(next);
       true
     }
@@ -524,7 +524,7 @@ fn handle_history_tab(key: KeyEvent, app: &mut App) -> bool {
     }
     KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
       let visible = app.filtered_history();
-      let Some(target) = visible.get(app.history_list.selected()).cloned()
+      let Some(target) = visible.get(app.feed.history_list.selected()).cloned()
       else {
         return true;
       };
@@ -534,7 +534,7 @@ fn handle_history_tab(key: KeyEvent, app: &mut App) -> bool {
       });
       crate::store::history::save(&app.workspace.history);
       let len = app.filtered_history().len();
-      if len > 0 && app.history_list.selected() >= len {
+      if len > 0 && app.feed.history_list.selected() >= len {
         app.set_active_selected_index(len - 1);
       }
       true
@@ -542,7 +542,7 @@ fn handle_history_tab(key: KeyEvent, app: &mut App) -> bool {
     KeyCode::Char('o') => {
       let visible = app.filtered_history();
       let Some(entry) =
-        visible.get(app.history_list.selected()).map(|e| (*e).clone())
+        visible.get(app.feed.history_list.selected()).map(|e| (*e).clone())
       else {
         return true;
       };
@@ -557,7 +557,7 @@ fn handle_history_tab(key: KeyEvent, app: &mut App) -> bool {
       true
     }
     KeyCode::Enter => {
-      let Some(entry) = app.history_get(app.history_list.selected()).cloned() else {
+      let Some(entry) = app.history_get(app.feed.history_list.selected()).cloned() else {
         return true;
       };
       match entry.kind {
@@ -581,8 +581,8 @@ fn handle_history_tab(key: KeyEvent, app: &mut App) -> bool {
           let topic = entry.key.clone();
           let config = app.config.clone();
           // Re-running a query starts a fresh discovery session.
-          app.discovery.force_new = true;
-          app.feed_tab = FeedTab::Discoveries;
+          app.feed.discovery.force_new = true;
+          app.feed.feed_tab = FeedTab::Discoveries;
           app.reset_active_feed_position();
           spawn_ai_discovery(topic, config, app);
         }

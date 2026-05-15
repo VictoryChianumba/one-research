@@ -398,7 +398,7 @@ fn handle_mouse(
             }
           }
           _ => {
-            if app.filter_focus {
+            if app.feed.filter_focus {
               app.filter_cursor_down();
             } else {
               app.move_down();
@@ -445,7 +445,7 @@ fn handle_mouse(
             }
           }
           _ => {
-            if app.filter_focus {
+            if app.feed.filter_focus {
               app.filter_cursor_up();
             } else {
               app.move_up();
@@ -508,7 +508,7 @@ fn handle_mouse(
           _ => {}
         }
         if matches!(pane, PaneId::Feed) {
-          app.filter_focus = false;
+          app.feed.filter_focus = false;
         }
       }
     }
@@ -830,14 +830,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
       item.workflow_state = *state;
     }
   }
-  for item in &mut app.discovery.items {
+  for item in &mut app.feed.discovery.items {
     if let Some(state) = app.workspace.persisted_states.get(&item.url) {
       item.workflow_state = *state;
     }
   }
   log::debug!("startup: persisted state apply {}ms", t.elapsed().as_millis());
 
-  app.inbox_list.set_offset(0);
+  app.feed.inbox_list.set_offset(0);
 
   // 4. Spawn background thread to fetch all sources then enrich.
   {

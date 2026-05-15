@@ -12,10 +12,10 @@ use crate::models::{ContentType, SignalLevel};
 pub fn draw_filter_panel(frame: &mut Frame, app: &App, area: Rect) {
   let t = app.theme();
   let inner = area;
-  let focused = app.filter_focus;
+  let focused = app.feed.filter_focus;
 
-  let f = &app.active_filters;
-  let c = app.filter_cursor;
+  let f = &app.feed.active_filters;
+  let c = app.feed.filter_cursor;
   let mut s: usize = 0;
   let mut lines: Vec<Line> = Vec::new();
   let mut cursor_line: usize = 0;

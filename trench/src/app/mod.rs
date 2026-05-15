@@ -30,55 +30,16 @@ pub struct App {
   pub should_quit: bool,
   pub quit_popup: QuitPopupState,
 
-  /// Cursor + offset + viewport for the Inbox list. Owns the
-  /// "selection-stays-visible" invariant. Replaced raw
-  /// `selected_index` + `list_offset` scalars in Migration #1.
-  pub inbox_list: crate::primitives::ListState,
+  /// Feed-pane composition-root model. Owns: tab selection, per-tab list
+  /// cursors, library/history filter chips, library bulk-select, search
+  /// bar state, filter panel state, and the discovery sub-state. Slice 1
+  /// PR 2 lifted these fields off `App`; see
+  /// `docs/adr/ADR-001-render-purification.md`.
+  pub feed: crate::feed::FeedModel,
 
-  /// All discovery-related state grouped into one sub-state.
-  pub discovery: DiscoveryState,
-
-  pub feed_tab: FeedTab,
-  pub history_filter: crate::history::HistoryFilter,
-  /// Cursor + offset for the History list. Migrated from raw scalars
-  /// in Migration #2. Backed by `filtered_history()` rather than
-  /// `items_for_tab()` since History reads from `workspace.history`
-  /// (a separate data path from feed items).
-  pub history_list: crate::primitives::ListState,
-  /// Library tab: workflow-state filter chip + per-tab navigation.
-  pub library_filter: crate::library::LibraryFilter,
-  /// Cursor + offset + viewport for the Library list. Owns the
-  /// "selection-stays-visible" invariant.
-  pub library_list: crate::primitives::ListState,
-  /// Library bulk-select state. `library_visual_mode` enables visual selection;
-  /// the anchor row is captured at activation; selection always covers the
-  /// contiguous range from anchor to current cursor. Anchor stays out of
-  /// `ListState` because it's a feature-specific selection mode.
-  pub library_visual_mode: bool,
-  pub library_visual_anchor: usize,
-  pub library_selected_urls: HashSet<String>,
   /// Tag picker popup state.
   pub tag_picker: TagPickerState,
-  pub search_query: String,
-  /// Lowercased mirror of `search_query`. Populated by the search-mutator
-  /// helpers (`push_search_char`, `pop_search_char`, `clear_search_query`).
-  /// Read by every visible-items / filtered-history filter pass — caching it
-  /// here avoids a `to_lowercase` heap alloc on every cache miss.
-  pub search_query_lower: String,
-  pub search_active: bool,
   pub status_message: Option<String>,
-
-  // Pane focus
-
-  // Filter panel
-  pub filter_focus: bool,
-  /// Cursor position in the filter panel. Stays a raw usize rather
-  /// than migrating to ListState because the panel's scroll offset is
-  /// derived per-frame from `cursor_line` (visual line index, distinct
-  /// from this logical cursor since headers + blanks expand the layout).
-  /// Considered for the ListState retrofit in Migration #6, kept as-is.
-  pub filter_cursor: usize,
-  pub active_filters: FilterState,
 
   // Background fetching
   pub fetch_rx: Option<Receiver<FetchMessage>>,
@@ -264,33 +225,14 @@ impl App {
       },
       should_quit: false,
       quit_popup: QuitPopupState::default(),
-      inbox_list: crate::primitives::ListState::new(),
-      discovery: DiscoveryState {
-        items: crate::store::discovery_cache::load(),
-        session: crate::store::session::load(),
-        ..DiscoveryState::default()
-      },
-      feed_tab: FeedTab::Inbox,
-      history_filter: crate::history::HistoryFilter::default(),
-      history_list: crate::primitives::ListState::new(),
-      library_filter: crate::library::LibraryFilter::default(),
-      library_list: crate::primitives::ListState::new(),
-      library_visual_mode: false,
-      library_visual_anchor: 0,
-      library_selected_urls: HashSet::new(),
+      feed: crate::feed::FeedModel::new(),
       tag_picker: TagPickerState::default(),
-      search_query: String::new(),
-      search_query_lower: String::new(),
-      search_active: false,
       status_message: None,
       fetch_rx: None,
       loading_sources: Vec::new(),
       loaded_sources: Vec::new(),
       is_loading: false,
       spinner_frame: 0,
-      filter_focus: false,
-      filter_cursor: 0,
-      active_filters: FilterState::new(),
       view: AppView::Feed,
       repo_context: None,
       github_token: None,
@@ -475,13 +417,13 @@ impl App {
 
   /// Same as `rebuild_indices` but for `discovery_items`.
   pub fn rebuild_discovery_indices(&mut self) {
-    self.discovery.url_index.clear();
-    self.discovery.arxiv_id_index.clear();
-    self.discovery.url_index.reserve(self.discovery.items.len());
-    for (idx, item) in self.discovery.items.iter().enumerate() {
-      self.discovery.url_index.insert(item.url.clone(), idx);
+    self.feed.discovery.url_index.clear();
+    self.feed.discovery.arxiv_id_index.clear();
+    self.feed.discovery.url_index.reserve(self.feed.discovery.items.len());
+    for (idx, item) in self.feed.discovery.items.iter().enumerate() {
+      self.feed.discovery.url_index.insert(item.url.clone(), idx);
       if let Some(aid) = arxiv_id_from_url(&item.url) {
-        self.discovery.arxiv_id_index.insert(aid.to_string(), idx);
+        self.feed.discovery.arxiv_id_index.insert(aid.to_string(), idx);
       }
     }
   }
@@ -505,7 +447,7 @@ impl App {
   /// - `discovery_loading` — discovery agent in flight
   /// - `settings_save_time` — TTL window for the "Saved." indicator
   pub fn has_active_animation(&self) -> bool {
-    if self.is_loading || self.is_refreshing || self.discovery.loading {
+    if self.is_loading || self.is_refreshing || self.feed.discovery.loading {
       return true;
     }
     if self.settings.save_time.is_some() {
@@ -529,7 +471,7 @@ impl App {
     {
       let cache = self.visible_cache.borrow();
       if let Some((tab, ref indices)) = *cache {
-        if tab == self.feed_tab {
+        if tab == self.feed.feed_tab {
           return indices.len();
         }
       }
@@ -548,7 +490,7 @@ impl App {
     {
       let cache = self.visible_cache.borrow();
       if let Some((tab, indices)) = cache.as_ref() {
-        if *tab == self.feed_tab {
+        if *tab == self.feed.feed_tab {
           let item_idx = *indices.get(idx)?;
           let items = self.items_for_tab();
           return items.get(item_idx);
@@ -567,13 +509,13 @@ impl App {
     {
       let cache = self.visible_cache.borrow();
       if let Some((tab, ref indices)) = *cache {
-        if tab == self.feed_tab {
+        if tab == self.feed.feed_tab {
           let items = self.items_for_tab();
           return indices.iter().map(|&i| &items[i]).collect();
         }
       }
     }
-    let q = self.search_query_lower.as_str();
+    let q = self.feed.search_query_lower.as_str();
     let items = self.items_for_tab();
     let indices: Vec<usize> = items
       .iter()
@@ -581,14 +523,14 @@ impl App {
       .filter(|(_, item)| {
         // Tab-scoped pre-filter: Inbox shows only Inbox-state items, Library
         // shows whichever workflow chip is active.
-        match self.feed_tab {
+        match self.feed.feed_tab {
           FeedTab::Inbox => {
             if item.workflow_state != WorkflowState::Inbox {
               return false;
             }
           }
           FeedTab::Library => {
-            if !self.library_filter.matches(item.workflow_state) {
+            if !self.feed.library_filter.matches(item.workflow_state) {
               return false;
             }
           }
@@ -612,17 +554,17 @@ impl App {
         {
           return false;
         }
-        if !self.active_filters.tags.is_empty() {
+        if !self.feed.active_filters.tags.is_empty() {
           let item_tags = crate::tags::for_url(&self.workspace.item_tags, &item.url);
-          if !item_tags.iter().any(|t| self.active_filters.tags.contains(t)) {
+          if !item_tags.iter().any(|t| self.feed.active_filters.tags.contains(t)) {
             return false;
           }
         }
-        self.active_filters.matches(item)
+        self.feed.active_filters.matches(item)
       })
       .map(|(i, _)| i)
       .collect();
-    *self.visible_cache.borrow_mut() = Some((self.feed_tab, indices.clone()));
+    *self.visible_cache.borrow_mut() = Some((self.feed.feed_tab, indices.clone()));
     indices.iter().map(|&i| &items[i]).collect()
   }
 
@@ -630,7 +572,7 @@ impl App {
     {
       let cache = self.visible_cache.borrow();
       if let Some((tab, indices)) = cache.as_ref() {
-        if *tab == self.feed_tab {
+        if *tab == self.feed.feed_tab {
           let items = self.items_for_tab();
           let start = start.min(indices.len());
           let end = end.min(indices.len());
@@ -664,9 +606,9 @@ impl App {
   /// Same shape as `reset_items` but for the discovery-side mirrors —
   /// keeps the parallel indexes in sync.
   pub fn reset_discovery_items(&mut self) {
-    self.discovery.items.clear();
-    self.discovery.url_index.clear();
-    self.discovery.arxiv_id_index.clear();
+    self.feed.discovery.items.clear();
+    self.feed.discovery.url_index.clear();
+    self.feed.discovery.arxiv_id_index.clear();
     self.route_effects(&[crate::effect::Effect::ItemsChanged]);
   }
 
@@ -718,39 +660,39 @@ impl App {
   }
 
   pub fn items_for_tab(&self) -> &[FeedItem] {
-    match self.feed_tab {
+    match self.feed.feed_tab {
       FeedTab::Inbox => &self.workspace.items,
       FeedTab::Library => &self.workspace.items,
-      FeedTab::Discoveries => &self.discovery.items,
+      FeedTab::Discoveries => &self.feed.discovery.items,
       FeedTab::History => &[],
     }
   }
 
   fn items_for_tab_mut(&mut self) -> &mut Vec<FeedItem> {
-    match self.feed_tab {
+    match self.feed.feed_tab {
       FeedTab::Inbox => &mut self.workspace.items,
       FeedTab::Library => &mut self.workspace.items,
-      FeedTab::Discoveries => &mut self.discovery.items,
+      FeedTab::Discoveries => &mut self.feed.discovery.items,
       // History doesn't use FeedItem; callers should not dispatch here for this tab.
       FeedTab::History => &mut self.workspace.items,
     }
   }
 
   pub fn active_selected_index(&self) -> usize {
-    match self.feed_tab {
-      FeedTab::Inbox => self.inbox_list.selected(),
-      FeedTab::Library => self.library_list.selected(),
-      FeedTab::Discoveries => self.discovery.list.selected(),
-      FeedTab::History => self.history_list.selected(),
+    match self.feed.feed_tab {
+      FeedTab::Inbox => self.feed.inbox_list.selected(),
+      FeedTab::Library => self.feed.library_list.selected(),
+      FeedTab::Discoveries => self.feed.discovery.list.selected(),
+      FeedTab::History => self.feed.history_list.selected(),
     }
   }
 
   pub fn active_list_offset(&self) -> usize {
-    match self.feed_tab {
-      FeedTab::Inbox => self.inbox_list.offset(),
-      FeedTab::Library => self.library_list.offset(),
-      FeedTab::Discoveries => self.discovery.list.offset(),
-      FeedTab::History => self.history_list.offset(),
+    match self.feed.feed_tab {
+      FeedTab::Inbox => self.feed.inbox_list.offset(),
+      FeedTab::Library => self.feed.library_list.offset(),
+      FeedTab::Discoveries => self.feed.discovery.list.offset(),
+      FeedTab::History => self.feed.history_list.offset(),
     }
   }
 
@@ -760,36 +702,36 @@ impl App {
     // History reads from `workspace.history` via filtered_history()
     // — `visible_count()` returns 0 for History because items_for_tab
     // returns an empty slice. Other tabs use the items path.
-    let count = match self.feed_tab {
+    let count = match self.feed.feed_tab {
       FeedTab::History => self.filtered_history().len(),
       _ => self.visible_count(),
     };
-    match self.feed_tab {
+    match self.feed.feed_tab {
       FeedTab::Inbox => {
-        self.inbox_list.set_count(count);
-        self.inbox_list.set_selected(value);
+        self.feed.inbox_list.set_count(count);
+        self.feed.inbox_list.set_selected(value);
       }
       FeedTab::Library => {
-        self.library_list.set_count(count);
-        self.library_list.set_selected(value);
+        self.feed.library_list.set_count(count);
+        self.feed.library_list.set_selected(value);
       }
       FeedTab::Discoveries => {
-        self.discovery.list.set_count(count);
-        self.discovery.list.set_selected(value);
+        self.feed.discovery.list.set_count(count);
+        self.feed.discovery.list.set_selected(value);
       }
       FeedTab::History => {
-        self.history_list.set_count(count);
-        self.history_list.set_selected(value);
+        self.feed.history_list.set_count(count);
+        self.feed.history_list.set_selected(value);
       }
     }
   }
 
   pub fn set_active_list_offset(&mut self, value: usize) {
-    match self.feed_tab {
-      FeedTab::Inbox => self.inbox_list.set_offset(value),
-      FeedTab::Library => self.library_list.set_offset(value),
-      FeedTab::Discoveries => self.discovery.list.set_offset(value),
-      FeedTab::History => self.history_list.set_offset(value),
+    match self.feed.feed_tab {
+      FeedTab::Inbox => self.feed.inbox_list.set_offset(value),
+      FeedTab::Library => self.feed.library_list.set_offset(value),
+      FeedTab::Discoveries => self.feed.discovery.list.set_offset(value),
+      FeedTab::History => self.feed.history_list.set_offset(value),
     }
   }
 
@@ -868,7 +810,7 @@ impl App {
   pub fn show_quit_popup(&mut self) {
     let kind = if self.focus.focused_pane == PaneId::Reader && self.reader_active {
       QuitPopupKind::LeaveReader
-    } else if self.discovery.loading || self.is_loading {
+    } else if self.feed.discovery.loading || self.is_loading {
       QuitPopupKind::QuitWithProgress
     } else if self.chat.active
       && self.chat.ui.as_ref().map_or(false, |c| !c.input.trim().is_empty())
@@ -1192,20 +1134,20 @@ mod tests {
   #[test]
   fn reset_discovery_items_clears_indices() {
     let mut app = App::new();
-    app.discovery.items = mock_items();
+    app.feed.discovery.items = mock_items();
     // Manually populate the discovery indices to mirror what
     // merge_discovery_items would do; rebuild_indices targets the primary
     // items vec, not discovery_items.
-    for (idx, item) in app.discovery.items.iter().enumerate() {
-      app.discovery.url_index.insert(item.url.clone(), idx);
+    for (idx, item) in app.feed.discovery.items.iter().enumerate() {
+      app.feed.discovery.url_index.insert(item.url.clone(), idx);
     }
-    assert!(!app.discovery.url_index.is_empty());
+    assert!(!app.feed.discovery.url_index.is_empty());
 
     app.reset_discovery_items();
 
-    assert!(app.discovery.items.is_empty());
-    assert!(app.discovery.url_index.is_empty());
-    assert!(app.discovery.arxiv_id_index.is_empty());
+    assert!(app.feed.discovery.items.is_empty());
+    assert!(app.feed.discovery.url_index.is_empty());
+    assert!(app.feed.discovery.arxiv_id_index.is_empty());
   }
 
   #[test]
@@ -1218,7 +1160,7 @@ mod tests {
     app.is_refreshing = true;
     assert!(app.has_active_animation());
     app.is_refreshing = false;
-    app.discovery.loading = true;
+    app.feed.discovery.loading = true;
     assert!(app.has_active_animation());
   }
 

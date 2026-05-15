@@ -48,23 +48,23 @@ fn draw_compact_title_bar(frame: &mut Frame, app: &App, area: Rect) {
   let active_style = Style::default().fg(t.text).add_modifier(Modifier::BOLD);
   let inactive_style = Style::default().fg(t.text_dim);
   let inbox_style =
-    if app.feed_tab == FeedTab::Inbox { active_style } else { inactive_style };
-  let library_style = if app.feed_tab == FeedTab::Library {
+    if app.feed.feed_tab == FeedTab::Inbox { active_style } else { inactive_style };
+  let library_style = if app.feed.feed_tab == FeedTab::Library {
     active_style
   } else {
     inactive_style
   };
-  let discoveries_style = if app.feed_tab == FeedTab::Discoveries {
+  let discoveries_style = if app.feed.feed_tab == FeedTab::Discoveries {
     active_style
   } else {
     inactive_style
   };
-  let history_style = if app.feed_tab == FeedTab::History {
+  let history_style = if app.feed.feed_tab == FeedTab::History {
     active_style
   } else {
     inactive_style
   };
-  let discovery_spin = if app.discovery.loading {
+  let discovery_spin = if app.feed.discovery.loading {
     format!(" {}", SPINNER[app.spinner_frame % SPINNER.len()])
   } else {
     String::new()
@@ -76,7 +76,7 @@ fn draw_compact_title_bar(frame: &mut Frame, app: &App, area: Rect) {
   ];
   let nav_text = format!(
     "Inbox {inbox_count}  Library {library_count}  Discoveries {}{}  History {}  Total {total}",
-    app.discovery.items.len(),
+    app.feed.discovery.items.len(),
     discovery_spin,
     app.workspace.history.len(),
   );
@@ -101,7 +101,7 @@ fn draw_compact_title_bar(frame: &mut Frame, app: &App, area: Rect) {
     Span::styled(library_count.to_string(), library_style),
     Span::styled("  Discoveries ", discoveries_style),
     Span::styled(
-      format!("{}{}", app.discovery.items.len(), discovery_spin),
+      format!("{}{}", app.feed.discovery.items.len(), discovery_spin),
       discoveries_style,
     ),
     Span::styled("  History ", history_style),
@@ -136,19 +136,19 @@ pub fn draw_search_row(frame: &mut Frame, app: &App, area: Rect) {
     .constraints([Constraint::Min(0), Constraint::Length(RIGHT_COL_WIDTH)])
     .split(content_area);
 
-  let search_text = if app.search_active || !app.search_query.is_empty() {
-    format!(" / {}", app.search_query)
+  let search_text = if app.feed.search_active || !app.feed.search_query.is_empty() {
+    format!(" / {}", app.feed.search_query)
   } else {
     " / Search items...".to_string()
   };
-  let search_style = if app.search_active {
+  let search_style = if app.feed.search_active {
     Style::default().fg(t.text)
   } else {
     Style::default().fg(t.text_dim)
   };
   frame.render_widget(Paragraph::new(search_text).style(search_style), cols[0]);
 
-  let filter_style = if app.filter_focus {
+  let filter_style = if app.feed.filter_focus {
     Style::default().fg(t.accent)
   } else {
     Style::default().fg(t.text_dim)
@@ -180,7 +180,7 @@ fn filter_summary(app: &App) -> std::cell::Ref<'_, str> {
 }
 
 fn compute_filter_summary(app: &App) -> String {
-  let f = &app.active_filters;
+  let f = &app.feed.active_filters;
   let source_summary = if f.active_count() == 0 {
     "any".to_string()
   } else {

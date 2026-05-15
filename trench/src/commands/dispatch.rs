@@ -17,24 +17,24 @@ pub fn dispatch_slash_command(app: &mut App, cmd: SlashCommandInvocation) {
     }
     SlashCommandInvocation::ClearHistory => {
       app.mutate_history(|h| h.clear());
-      app.history_list.reset();
+      app.feed.history_list.reset();
       crate::store::history::save(&app.workspace.history);
       app.push_chat_assistant_message("Cleared activity history.".to_string());
       app.status_message = Some("Cleared history".to_string());
     }
     SlashCommandInvocation::ClearDiscoveries => {
       app.reset_discovery_items();
-      app.discovery.list.reset();
-      app.discovery.status = String::new();
-      app.discovery.loading = false;
-      app.discovery.session = crate::discovery::SessionHistory::default();
-      crate::store::discovery_cache::save(&app.discovery.items);
+      app.feed.discovery.list.reset();
+      app.feed.discovery.status = String::new();
+      app.feed.discovery.loading = false;
+      app.feed.discovery.session = crate::discovery::SessionHistory::default();
+      crate::store::discovery_cache::save(&app.feed.discovery.items);
       crate::store::session::clear();
       app.push_chat_assistant_message(
         "Cleared discovery results and session history.".to_string(),
       );
       app.status_message = Some("Cleared discovery results".to_string());
-      if app.feed_tab == FeedTab::Discoveries {
+      if app.feed.feed_tab == FeedTab::Discoveries {
         app.reset_active_feed_position();
       }
     }
@@ -113,7 +113,7 @@ pub fn dispatch_slash_command(app: &mut App, cmd: SlashCommandInvocation) {
       );
     }
     SlashCommandInvocation::Digest => {
-      app.discovery.forced_intent = Some(QueryIntent::Digest);
+      app.feed.discovery.forced_intent = Some(QueryIntent::Digest);
       crate::workflows::discover::start(
         app,
         "what happened in AI/ML this week".to_string(),
@@ -167,7 +167,7 @@ pub fn dispatch_slash_command(app: &mut App, cmd: SlashCommandInvocation) {
         );
         return;
       };
-      let label = app.library_filter.label().to_string();
+      let label = app.feed.library_filter.label().to_string();
       let items = app.visible_items();
       match crate::export::export_library(&items, &label, fmt) {
         Ok(path) => {
@@ -196,7 +196,7 @@ fn dispatch_discovery_with_intent(
   if topic.is_empty() {
     app.push_chat_assistant_message(format!("Usage: {command} TOPIC"));
   } else {
-    app.discovery.forced_intent = Some(intent);
+    app.feed.discovery.forced_intent = Some(intent);
     crate::workflows::discover::start(app, topic);
   }
 }

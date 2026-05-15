@@ -242,8 +242,8 @@ fn details_subject<'a>(
   app: &'a App,
   history: &[&'a crate::history::HistoryEntry],
 ) -> Option<DetailsSubject<'a>> {
-  if app.feed_tab == FeedTab::History {
-    let entry = *history.get(app.history_list.selected())?;
+  if app.feed.feed_tab == FeedTab::History {
+    let entry = *history.get(app.feed.history_list.selected())?;
     return match entry.kind {
       crate::history::HistoryKind::Paper => {
         // O(1) hashmap lookup vs the prior O(N) chain+find scan that
@@ -255,9 +255,9 @@ fn details_subject<'a>(
           .map(|&i| &app.workspace.items[i])
           .or_else(|| {
             app
-              .discovery.url_index
+              .feed.discovery.url_index
               .get(&entry.key)
-              .map(|&i| &app.discovery.items[i])
+              .map(|&i| &app.feed.discovery.items[i])
           });
         Some(DetailsSubject::HistoryPaper {
           entry,

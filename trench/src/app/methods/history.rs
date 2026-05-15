@@ -88,10 +88,10 @@ impl App {
   fn details_subject_key(&self) -> Option<String> {
     use crate::app::FeedTab;
     use crate::history::HistoryKind;
-    match self.feed_tab {
+    match self.feed.feed_tab {
       FeedTab::History => {
         let history = self.filtered_history();
-        let entry = history.get(self.history_list.selected())?;
+        let entry = history.get(self.feed.history_list.selected())?;
         Some(match entry.kind {
           HistoryKind::Paper => entry.key.clone(),
           HistoryKind::Query => format!("query:{}", entry.key),
@@ -148,15 +148,15 @@ impl App {
       if let Some(&idx) = self.workspace.arxiv_id_index.get(arxiv_id) {
         return self.workspace.items.get(idx).cloned();
       }
-      if let Some(&idx) = self.discovery.arxiv_id_index.get(arxiv_id) {
-        return self.discovery.items.get(idx).cloned();
+      if let Some(&idx) = self.feed.discovery.arxiv_id_index.get(arxiv_id) {
+        return self.feed.discovery.items.get(idx).cloned();
       }
     }
     self
-      .discovery
+      .feed.discovery
       .url_index
       .get(&entry.key)
-      .and_then(|&idx| self.discovery.items.get(idx))
+      .and_then(|&idx| self.feed.discovery.items.get(idx))
       .cloned()
       .or_else(|| entry.paper_meta.as_ref().map(|m| reconstruct_history_feed_item(entry, m)))
   }
@@ -169,9 +169,9 @@ impl App {
       return false;
     };
 
-    self.feed_tab = tab;
+    self.feed.feed_tab = tab;
     if tab == FeedTab::Library {
-      self.library_filter = match workflow_state {
+      self.feed.library_filter = match workflow_state {
         WorkflowState::Queued => LibraryFilter::Queue,
         WorkflowState::DeepRead => LibraryFilter::Read,
         WorkflowState::Archived => LibraryFilter::Archived,
@@ -191,14 +191,14 @@ impl App {
 
   fn compute_filtered_history_indices(&self) -> Vec<usize> {
     let now = chrono::Utc::now();
-    let q = self.search_query_lower.as_str();
-    let src_filter = &self.active_filters.sources;
+    let q = self.feed.search_query_lower.as_str();
+    let src_filter = &self.feed.active_filters.sources;
     self
       .workspace
       .history
       .iter()
       .enumerate()
-      .filter(|(_, e)| self.history_filter.matches(e, now))
+      .filter(|(_, e)| self.feed.history_filter.matches(e, now))
       .filter(|(_, e)| q.is_empty() || e.title_lower.contains(q))
       .filter(|(_, e)| src_filter.is_empty() || src_filter.contains(&e.source))
       .map(|(i, _)| i)
@@ -231,16 +231,16 @@ impl App {
           item.url.clone(),
         ));
       }
-      if let Some(&idx) = self.discovery.arxiv_id_index.get(arxiv_id) {
-        let item = self.discovery.items.get(idx)?;
+      if let Some(&idx) = self.feed.discovery.arxiv_id_index.get(arxiv_id) {
+        let item = self.feed.discovery.items.get(idx)?;
         return Some((FeedTab::Discoveries, item.workflow_state, item.url.clone()));
       }
     }
     self
-      .discovery
+      .feed.discovery
       .url_index
       .get(&entry.key)
-      .and_then(|&idx| self.discovery.items.get(idx))
+      .and_then(|&idx| self.feed.discovery.items.get(idx))
       .map(|item| (FeedTab::Discoveries, item.workflow_state, item.url.clone()))
   }
 }

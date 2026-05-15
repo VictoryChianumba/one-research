@@ -290,7 +290,7 @@ pub(super) fn draw_reader_bottom_pane(
 
   let title_str = if app.reader_bottom_details {
     " Feed Drawer Details · d: back  j/k: scroll  Esc: back "
-  } else if app.search_active || !app.search_query.is_empty() {
+  } else if app.feed.search_active || !app.feed.search_query.is_empty() {
     " Feed Drawer · / search active  Enter: open  Esc: clear  q: close "
   } else {
     " Feed Drawer · j/k: navigate  /: search  Enter: open  d: details  q: close "
@@ -321,7 +321,7 @@ fn draw_bottom_pane_details(frame: &mut Frame, app: &App, area: Rect) {
 
   let t = app.theme();
   let sel = app.reader_feed_popup_selected;
-  if app.feed_tab == FeedTab::History {
+  if app.feed.feed_tab == FeedTab::History {
     let Some(entry) = app.history_get(sel) else { return };
     let rows =
       Layout::vertical([Constraint::Length(3), Constraint::Min(0)]).split(area);
@@ -429,7 +429,7 @@ fn draw_bottom_pane_feed(frame: &mut Frame, app: &mut App, area: Rect) {
   // layout-derived. The B2b hoist (reader-bottom variant) wasn't
   // attempted after B2a's regressions; stays here until refactor B's
   // deferred layout-metrics extraction lands.
-  let total = if app.feed_tab == FeedTab::History {
+  let total = if app.feed.feed_tab == FeedTab::History {
     app.history_count()
   } else {
     app.visible_count()
@@ -450,7 +450,7 @@ fn draw_bottom_pane_feed(frame: &mut Frame, app: &mut App, area: Rect) {
 
   if total == 0 {
     let empty =
-      if app.search_query.is_empty() { "No items" } else { "No matches" };
+      if app.feed.search_query.is_empty() { "No items" } else { "No matches" };
     frame.render_widget(
       Paragraph::new(empty)
         .alignment(Alignment::Center)
@@ -460,7 +460,7 @@ fn draw_bottom_pane_feed(frame: &mut Frame, app: &mut App, area: Rect) {
     return;
   }
 
-  if app.feed_tab == FeedTab::History {
+  if app.feed.feed_tab == FeedTab::History {
     let window =
       app.history_window(offset, offset.saturating_add(viewport_rows));
     for (rel_i, entry) in window.iter().enumerate() {

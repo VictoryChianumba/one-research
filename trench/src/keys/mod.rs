@@ -187,10 +187,10 @@ pub fn dispatch(key: KeyEvent, app: &mut App) {
 /// a hotkey — search bar, sources popup input, settings field editing,
 /// discovery palette, focused chat/notes panes, custom theme editor.
 fn is_text_entry_context(app: &App) -> bool {
-  if app.search_active || app.sources_popup.input.is_focused() || app.settings.editing {
+  if app.feed.search_active || app.sources_popup.input.is_focused() || app.settings.editing {
     return true;
   }
-  if app.feed_tab == FeedTab::Discoveries && app.discovery.search_focused {
+  if app.feed.feed_tab == FeedTab::Discoveries && app.feed.discovery.search_focused {
     return true;
   }
   if app.chat.active && app.focus.focused_pane == PaneId::Chat {
@@ -758,9 +758,9 @@ fn find_item_by_url<'a>(
 ) -> Option<&'a crate::models::FeedItem> {
   app.workspace.url_index.get(url).and_then(|&idx| app.workspace.items.get(idx)).or_else(|| {
     app
-      .discovery.url_index
+      .feed.discovery.url_index
       .get(url)
-      .and_then(|&idx| app.discovery.items.get(idx))
+      .and_then(|&idx| app.feed.discovery.items.get(idx))
   })
 }
 
@@ -771,9 +771,9 @@ fn find_item_by_arxiv_id<'a>(
   app.workspace.arxiv_id_index.get(arxiv_id).and_then(|&idx| app.workspace.items.get(idx)).or_else(
     || {
       app
-        .discovery.arxiv_id_index
+        .feed.discovery.arxiv_id_index
         .get(arxiv_id)
-        .and_then(|&idx| app.discovery.items.get(idx))
+        .and_then(|&idx| app.feed.discovery.items.get(idx))
     },
   )
 }
@@ -813,7 +813,7 @@ fn notes_context_from_history_entry(
 
 fn history_selected_paper_ref(app: &App) -> Option<crate::app::NotesContext> {
   let visible = app.filtered_history();
-  let entry = visible.get(app.history_list.selected())?;
+  let entry = visible.get(app.feed.history_list.selected())?;
   notes_context_from_history_entry(app, entry)
 }
 
@@ -831,7 +831,7 @@ fn resolve_notes_paper_context(
       .cloned()
       .or_else(|| app.reader_notes_context(side)),
     PaneId::Feed | PaneId::Details => {
-      if app.feed_tab == FeedTab::History {
+      if app.feed.feed_tab == FeedTab::History {
         history_selected_paper_ref(app)
       } else {
         app.selected_item().map(notes_context_from_item)

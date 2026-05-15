@@ -33,15 +33,15 @@ pub(super) fn is_scroll_key(key: KeyEvent) -> bool {
 }
 
 pub(super) fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
-  if app.search_active {
+  if app.feed.search_active {
     match key.code {
       KeyCode::Esc => {
-        app.search_active = false;
+        app.feed.search_active = false;
         app.clear_search_query();
         app.reader_feed_popup_selected = 0;
       }
       KeyCode::Enter => {
-        app.search_active = false;
+        app.feed.search_active = false;
       }
       KeyCode::Backspace => {
         app.pop_search_char();
@@ -81,12 +81,12 @@ pub(super) fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
       app.reader_bottom_scroll.reset();
     }
     KeyCode::Char('/') => {
-      app.search_active = true;
+      app.feed.search_active = true;
       app.clear_search_query();
       app.reader_feed_popup_selected = 0;
     }
     KeyCode::Tab => {
-      app.feed_tab = match app.feed_tab {
+      app.feed.feed_tab = match app.feed.feed_tab {
         FeedTab::Inbox => FeedTab::Library,
         FeedTab::Library => FeedTab::Discoveries,
         FeedTab::Discoveries => FeedTab::History,
@@ -95,7 +95,7 @@ pub(super) fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
       app.reset_active_feed_position();
     }
     KeyCode::BackTab => {
-      app.feed_tab = match app.feed_tab {
+      app.feed.feed_tab = match app.feed.feed_tab {
         FeedTab::Inbox => FeedTab::History,
         FeedTab::Library => FeedTab::Inbox,
         FeedTab::Discoveries => FeedTab::Library,
@@ -106,7 +106,7 @@ pub(super) fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
     KeyCode::Enter => {
       if !app.reader_bottom_details && !app.fulltext_loading {
         let idx = app.reader_feed_popup_selected;
-        if app.feed_tab == FeedTab::History {
+        if app.feed.feed_tab == FeedTab::History {
           let entry = app.history_get(idx).cloned();
           if let Some(entry) = entry {
             match entry.kind {
@@ -132,8 +132,8 @@ pub(super) fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
               crate::history::HistoryKind::Query => {
                 let topic = entry.key.clone();
                 let config = app.config.clone();
-                app.discovery.force_new = true;
-                app.feed_tab = FeedTab::Discoveries;
+                app.feed.discovery.force_new = true;
+                app.feed.feed_tab = FeedTab::Discoveries;
                 app.reset_active_feed_position();
                 spawn_ai_discovery(topic, config, app);
               }
@@ -189,12 +189,12 @@ fn clamp_reader_feed_selection(app: &mut App) {
 // TODO(reader-drawer-tabs): the reader-feed drawer should let users
 // browse across feed tabs (Inbox, Library, Discoveries, History)
 // with the same UX as the main feed view. Tab/BackTab here already
-// cycles app.feed_tab globally, but full parity is still missing:
+// cycles app.feed.feed_tab globally, but full parity is still missing:
 // per-tab filters, workflow-state chips for Library, etc. Revisit
 // when refactor B settles and we can hoist the tab-aware count/
 // selection into the dispatcher cleanly.
 fn reader_feed_count(app: &App) -> usize {
-  if app.feed_tab == FeedTab::History {
+  if app.feed.feed_tab == FeedTab::History {
     app.history_count()
   } else {
     app.visible_count()

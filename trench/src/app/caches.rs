@@ -103,8 +103,8 @@ impl App {
   // sites don't need to remember which effect to emit.
 
   pub(crate) fn mutate_search_query(&mut self, f: impl FnOnce(&mut String)) {
-    f(&mut self.search_query);
-    self.search_query_lower = self.search_query.to_lowercase();
+    f(&mut self.feed.search_query);
+    self.feed.search_query_lower = self.feed.search_query.to_lowercase();
     self.route_effects(&[Effect::SearchQueryChanged]);
   }
 
@@ -126,25 +126,25 @@ impl App {
 
   /// Mirror of `push_search_char` for the discovery palette.
   pub fn push_discovery_char(&mut self, c: char) {
-    self.discovery.query.push(c);
-    self.discovery.query_lower = self.discovery.query.to_lowercase();
+    self.feed.discovery.query.push(c);
+    self.feed.discovery.query_lower = self.feed.discovery.query.to_lowercase();
   }
 
   pub fn pop_discovery_char(&mut self) {
-    self.discovery.query.pop();
-    self.discovery.query_lower = self.discovery.query.to_lowercase();
+    self.feed.discovery.query.pop();
+    self.feed.discovery.query_lower = self.feed.discovery.query.to_lowercase();
   }
 
   pub fn clear_discovery_query(&mut self) {
-    self.discovery.query.clear();
-    self.discovery.query_lower.clear();
+    self.feed.discovery.query.clear();
+    self.feed.discovery.query_lower.clear();
   }
 
   /// Set the discovery query to an arbitrary string (used by slash-palette
   /// completion). Refreshes the lowercased mirror.
   pub fn set_discovery_query(&mut self, s: String) {
-    self.discovery.query = s;
-    self.discovery.query_lower = self.discovery.query.to_lowercase();
+    self.feed.discovery.query = s;
+    self.feed.discovery.query_lower = self.feed.discovery.query.to_lowercase();
   }
 
   pub(crate) fn set_workflow_state_for_url(
@@ -161,7 +161,7 @@ impl App {
       }
     }
     if !found {
-      for item in self.discovery.items.iter_mut() {
+      for item in self.feed.discovery.items.iter_mut() {
         if item.url == url {
           item.workflow_state = state;
           found = true;
@@ -194,7 +194,7 @@ impl App {
     &mut self,
     f: impl FnOnce(&mut crate::history::HistoryFilter),
   ) {
-    f(&mut self.history_filter);
+    f(&mut self.feed.history_filter);
     self.route_effects(&[Effect::HistoryFilterChanged]);
   }
 
@@ -205,12 +205,12 @@ impl App {
     &mut self,
     f: impl FnOnce(&mut crate::library::LibraryFilter),
   ) {
-    f(&mut self.library_filter);
+    f(&mut self.feed.library_filter);
     self.route_effects(&[Effect::LibraryFilterChanged]);
   }
 
   pub(crate) fn mutate_filters(&mut self, f: impl FnOnce(&mut FilterState)) {
-    f(&mut self.active_filters);
+    f(&mut self.feed.active_filters);
     self.route_effects(&[Effect::FiltersChanged]);
   }
 }

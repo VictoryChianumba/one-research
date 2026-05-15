@@ -309,7 +309,7 @@ pub fn draw_main_row(frame: &mut Frame, app: &mut App, area: Rect) -> MainRowRec
   if area.width < 100 {
     let bottom_title = if app.notes_active {
       app.notes_mode.title()
-    } else if app.filter_focus {
+    } else if app.feed.filter_focus {
       "Filters"
     } else {
       "Details"
@@ -333,7 +333,7 @@ pub fn draw_main_row(frame: &mut Frame, app: &mut App, area: Rect) -> MainRowRec
         &theme,
       );
       log::debug!("notes::draw (narrow): {}ms", t.elapsed().as_millis());
-    } else if app.filter_focus {
+    } else if app.feed.filter_focus {
       let t = std::time::Instant::now();
       draw_filter_panel(frame, app, bottom_rect);
       log::debug!("draw_filter_panel (narrow): {}ms", t.elapsed().as_millis());
@@ -363,7 +363,7 @@ pub fn draw_main_row(frame: &mut Frame, app: &mut App, area: Rect) -> MainRowRec
   };
   let right_title = if app.notes_active {
     app.notes_mode.title()
-  } else if app.filter_focus {
+  } else if app.feed.filter_focus {
     "Filters"
   } else {
     "Details"
@@ -388,7 +388,7 @@ pub fn draw_main_row(frame: &mut Frame, app: &mut App, area: Rect) -> MainRowRec
       &theme,
     );
     log::debug!("notes::draw: {}ms", t.elapsed().as_millis());
-  } else if app.filter_focus {
+  } else if app.feed.filter_focus {
     let t = std::time::Instant::now();
     draw_filter_panel(frame, app, right_rect);
     log::debug!("draw_filter_panel: {}ms", t.elapsed().as_millis());

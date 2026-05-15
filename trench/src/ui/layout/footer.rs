@@ -55,7 +55,7 @@ fn footer_command_line(app: &App) -> Line<'static> {
   let repo_style = Style::default().fg(t.success);
   let visible = app.visible_count();
   let total = app.items_for_tab().len();
-  let filtered = !app.search_query.is_empty() || !app.active_filters.is_empty();
+  let filtered = !app.feed.search_query.is_empty() || !app.feed.active_filters.is_empty();
   let repo_available = !app.reader_active
     && !app.chat.fullscreen
     && app.focus.focused_pane == PaneId::Feed
@@ -85,7 +85,7 @@ fn footer_command_line(app: &App) -> Line<'static> {
     };
     let keys = if app.reader_bottom_details {
       ": j/k scroll | d back | q/Esc close | ? help"
-    } else if app.search_active {
+    } else if app.feed.search_active {
       ": type filter | Enter keep | Esc clear | j/k move | ? help"
     } else {
       ": j/k move | / search | Enter open | d details | q/Esc close | ? help"
@@ -95,7 +95,7 @@ fn footer_command_line(app: &App) -> Line<'static> {
     return Line::from(spans);
   }
 
-  if app.search_active {
+  if app.feed.search_active {
     spans.push(Span::styled("search", accent));
     spans.push(Span::styled(
       ": type to filter | Enter keep | Esc clear | ? help",
@@ -104,7 +104,7 @@ fn footer_command_line(app: &App) -> Line<'static> {
     return Line::from(spans);
   }
 
-  if app.filter_focus {
+  if app.feed.filter_focus {
     spans.push(Span::styled("filters", accent));
     spans.push(Span::styled(
       ": j/k move | Space toggle | c clear | f/Tab return | Esc clear",
@@ -168,23 +168,23 @@ fn footer_command_line(app: &App) -> Line<'static> {
     spans.push(Span::styled(" | ", ordinary));
   }
 
-  if app.feed_tab == FeedTab::Discoveries {
+  if app.feed.feed_tab == FeedTab::Discoveries {
     spans.push(Span::styled("discoveries", accent));
     spans.push(Span::styled(
       ": / search | Enter open | Ctrl+N new | Tab history | ? help",
       ordinary,
     ));
-  } else if app.feed_tab == FeedTab::Library {
+  } else if app.feed.feed_tab == FeedTab::Library {
     let label =
-      if app.library_visual_mode { "library visual" } else { "library" };
-    let keys = if app.library_visual_mode {
+      if app.feed.library_visual_mode { "library visual" } else { "library" };
+    let keys = if app.feed.library_visual_mode {
       ": j/k select | r read | w queue | x archive | t tag | Esc cancel"
     } else {
       ": [/] state | v select | t tag | Tab discoveries | ? help"
     };
     spans.push(Span::styled(label, accent));
     spans.push(Span::styled(keys, ordinary));
-  } else if app.feed_tab == FeedTab::History {
+  } else if app.feed.feed_tab == FeedTab::History {
     spans.push(Span::styled("history", accent));
     spans.push(Span::styled(
       ": [/] time | Enter reopen | Ctrl+D delete | / search | Tab inbox | ? help",

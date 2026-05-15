@@ -5,16 +5,16 @@ use super::super::toggle_set;
 
 impl App {
   pub fn library_recompute_selection(&mut self) {
-    if !self.library_visual_mode {
-      self.library_selected_urls.clear();
+    if !self.feed.library_visual_mode {
+      self.feed.library_selected_urls.clear();
       return;
     }
-    let cursor = self.library_list.selected();
-    let anchor = self.library_visual_anchor;
+    let cursor = self.feed.library_list.selected();
+    let anchor = self.feed.library_visual_anchor;
     let (lo, hi) =
       if cursor <= anchor { (cursor, anchor) } else { (anchor, cursor) };
     let window = self.visible_window(lo, hi.saturating_add(1));
-    self.library_selected_urls =
+    self.feed.library_selected_urls =
       window.iter().map(|it| it.url.clone()).collect();
   }
 
@@ -28,13 +28,13 @@ impl App {
     // ListState::set_selected clamps to count-1, and count starts at
     // 0 so without this the new_cursor gets forced to 0.
     let count = self.visible_count();
-    self.library_list.set_count(count);
-    if !self.library_visual_mode {
-      self.library_list.set_selected(new_cursor);
+    self.feed.library_list.set_count(count);
+    if !self.feed.library_visual_mode {
+      self.feed.library_list.set_selected(new_cursor);
       return;
     }
-    let anchor = self.library_visual_anchor;
-    let old_cursor = self.library_list.selected();
+    let anchor = self.feed.library_visual_anchor;
+    let old_cursor = self.feed.library_list.selected();
     let old_lo = old_cursor.min(anchor);
     let old_hi = old_cursor.max(anchor);
     let new_lo = new_cursor.min(anchor);
@@ -86,19 +86,19 @@ impl App {
     };
 
     for url in &removed_urls {
-      self.library_selected_urls.remove(url);
+      self.feed.library_selected_urls.remove(url);
     }
     for url in added_urls {
-      self.library_selected_urls.insert(url);
+      self.feed.library_selected_urls.insert(url);
     }
 
-    self.library_list.set_selected(new_cursor);
+    self.feed.library_list.set_selected(new_cursor);
   }
 
   pub fn library_exit_visual(&mut self) {
-    self.library_visual_mode = false;
-    self.library_visual_anchor = 0;
-    self.library_selected_urls.clear();
+    self.feed.library_visual_mode = false;
+    self.feed.library_visual_anchor = 0;
+    self.feed.library_selected_urls.clear();
   }
 
   /// Apply a workflow-state transition to every selected item. Returns the
@@ -107,11 +107,11 @@ impl App {
     &mut self,
     state: crate::models::WorkflowState,
   ) -> usize {
-    if self.library_selected_urls.is_empty() {
+    if self.feed.library_selected_urls.is_empty() {
       return 0;
     }
     let urls: Vec<String> =
-      self.library_selected_urls.iter().cloned().collect();
+      self.feed.library_selected_urls.iter().cloned().collect();
     let mut count = 0;
     for url in urls {
       if self.set_workflow_state_for_url(&url, state) {
@@ -169,11 +169,11 @@ impl App {
 
   pub fn filter_cursor_down(&mut self) {
     let max = self.filter_total_items().saturating_sub(1);
-    self.filter_cursor = (self.filter_cursor + 1).min(max);
+    self.feed.filter_cursor = (self.feed.filter_cursor + 1).min(max);
   }
 
   pub fn filter_cursor_up(&mut self) {
-    self.filter_cursor = self.filter_cursor.saturating_sub(1);
+    self.feed.filter_cursor = self.feed.filter_cursor.saturating_sub(1);
   }
 
   /// Total number of selectable rows in the filter panel (dynamic source +
@@ -228,7 +228,7 @@ impl App {
     let src_count = source_names.len();
     let tag_names = crate::tags::all_tags(&self.workspace.item_tags);
     let tag_count = tag_names.len();
-    let c = self.filter_cursor;
+    let c = self.feed.filter_cursor;
 
     // Layout: [sources] [3 signals] [3 content types] [tags] [clear-all]
     let signals_start = src_count;

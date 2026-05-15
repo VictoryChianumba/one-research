@@ -23,19 +23,19 @@ pub fn draw_feed_pane(frame: &mut Frame, app: &mut App, area: Rect) {
   let content_area = area;
 
   // Discoveries tab: paper list always shown; persistent search bar pinned at bottom.
-  if app.feed_tab == FeedTab::Discoveries {
+  if app.feed.feed_tab == FeedTab::Discoveries {
     draw_discoveries_with_searchbar(frame, app, content_area);
     return;
   }
 
   // History tab: filter chips + activity log.
-  if app.feed_tab == FeedTab::History {
+  if app.feed.feed_tab == FeedTab::History {
     draw_history_tab(frame, app, content_area);
     return;
   }
 
   // Library tab: workflow-state filter chips + filtered item list.
-  if app.feed_tab == FeedTab::Library {
+  if app.feed.feed_tab == FeedTab::Library {
     draw_library_tab(frame, app, content_area);
     return;
   }
@@ -80,8 +80,8 @@ fn draw_discoveries_with_searchbar(
 fn draw_discovery_searchbar(frame: &mut Frame, app: &App, area: Rect) {
   let t = app.theme();
   let w = area.width as usize;
-  let has_session = !app.discovery.session.is_empty();
-  let intent_label = app.discovery.intent.label();
+  let has_session = !app.feed.discovery.session.is_empty();
+  let intent_label = app.feed.discovery.intent.label();
 
   // Separator line — title shows current status inline rather than a separate row.
   let intent_badge = if intent_label != "papers" {
@@ -89,9 +89,9 @@ fn draw_discovery_searchbar(frame: &mut Frame, app: &App, area: Rect) {
   } else {
     String::new()
   };
-  let (title_text, title_style) = if app.discovery.loading {
+  let (title_text, title_style) = if app.feed.discovery.loading {
     let short =
-      app.discovery.status.trim_end_matches('…').trim_end_matches("...");
+      app.feed.discovery.status.trim_end_matches('…').trim_end_matches("...");
     (
       format!("{}…{}", short, intent_badge),
       Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
@@ -112,8 +112,8 @@ fn draw_discovery_searchbar(frame: &mut Frame, app: &App, area: Rect) {
   ]);
 
   // Input line — prompt only when focused, query dim when unfocused.
-  let cursor = if app.discovery.search_focused { "█" } else { "" };
-  let (prompt, query_style) = if app.discovery.search_focused {
+  let cursor = if app.feed.discovery.search_focused { "█" } else { "" };
+  let (prompt, query_style) = if app.feed.discovery.search_focused {
     (
       Span::styled("  ", Style::default().fg(t.accent)),
       Style::default().fg(t.text),
@@ -126,12 +126,12 @@ fn draw_discovery_searchbar(frame: &mut Frame, app: &App, area: Rect) {
   };
   let input_line = Line::from(vec![
     prompt,
-    Span::styled(format!("{}{}", app.discovery.query, cursor), query_style),
+    Span::styled(format!("{}{}", app.feed.discovery.query, cursor), query_style),
   ]);
 
   // Hint line — contextual, always rendered to avoid height jitter.
-  let hint_text = if app.discovery.search_focused {
-    if app.discovery.query.starts_with('/') {
+  let hint_text = if app.feed.discovery.search_focused {
+    if app.feed.discovery.query.starts_with('/') {
       "Tab: complete  ↑↓: navigate  Enter: run  Esc: cancel"
     } else if has_session {
       "Enter: refine  Ctrl+N: new search  Esc: unfocus"
@@ -151,12 +151,12 @@ fn draw_discovery_searchbar(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_discovery_palette(frame: &mut Frame, app: &App, list_area: Rect) {
-  if !app.discovery.search_focused || !app.discovery.query.starts_with('/') {
+  if !app.feed.discovery.search_focused || !app.feed.discovery.query.starts_with('/') {
     return;
   }
 
   let all_specs = crate::commands::registry::discovery_slash_specs();
-  let query_lower = app.discovery.query_lower.as_str();
+  let query_lower = app.feed.discovery.query_lower.as_str();
   let suggestions: Vec<_> = all_specs
     .iter()
     .filter(|s| {
@@ -171,8 +171,8 @@ fn draw_discovery_palette(frame: &mut Frame, app: &App, list_area: Rect) {
   let t = app.theme();
   let w = list_area.width as usize;
   let visible = suggestions.len().min(8);
-  let selected = app.discovery.palette.selected().min(suggestions.len() - 1);
-  let scroll = app.discovery.palette.offset();
+  let selected = app.feed.discovery.palette.selected().min(suggestions.len() - 1);
+  let scroll = app.feed.discovery.palette.offset();
   let start = scroll;
   let end = (start + visible).min(suggestions.len());
 
@@ -270,7 +270,7 @@ pub fn draw_library_tab(frame: &mut Frame, app: &mut App, area: Rect) {
   let mut chip_spans: Vec<Span> = vec![Span::raw("  ")];
   let mut chip_width: usize = 2;
   for (i, filter) in crate::library::LibraryFilter::ORDER.iter().enumerate() {
-    let active = *filter == app.library_filter;
+    let active = *filter == app.feed.library_filter;
     let style = if active {
       Style::default().fg(t.accent).add_modifier(Modifier::BOLD)
     } else {
@@ -284,13 +284,13 @@ pub fn draw_library_tab(frame: &mut Frame, app: &mut App, area: Rect) {
       chip_width += 2;
     }
   }
-  let hint = if app.library_visual_mode {
-    let n = app.library_selected_urls.len();
+  let hint = if app.feed.library_visual_mode {
+    let n = app.feed.library_selected_urls.len();
     format!("VISUAL · {n} selected · r read · w queue · x archive · Esc cancel")
   } else {
     "[ ] cycle  ·  v select  ·  f filter  ·  / search".to_string()
   };
-  let hint_style = if app.library_visual_mode {
+  let hint_style = if app.feed.library_visual_mode {
     Style::default().fg(t.accent).add_modifier(Modifier::BOLD)
   } else {
     Style::default().fg(t.text_dim)
@@ -355,7 +355,7 @@ fn draw_history_tab(frame: &mut Frame, app: &mut App, area: Rect) {
   let mut chip_spans: Vec<Span> = vec![Span::styled("  ", Style::default())];
   let mut chip_width: usize = 2;
   for (i, filter) in crate::history::HistoryFilter::ORDER.iter().enumerate() {
-    let active = *filter == app.history_filter;
+    let active = *filter == app.feed.history_filter;
     let style = if active {
       Style::default().fg(t.accent).add_modifier(Modifier::BOLD)
     } else {
@@ -455,15 +455,15 @@ fn draw_history_tab(frame: &mut Frame, app: &mut App, area: Rect) {
   // needs viewport_rows, which is layout-derived. A B2a attempt to hoist
   // via the focus pane-rect cache produced subtle regressions and was
   // reverted. Stays here until a proper layout-metrics extraction lands.
-  let selected = app.history_list.selected().min(total.saturating_sub(1));
+  let selected = app.feed.history_list.selected().min(total.saturating_sub(1));
   let mut offset =
-    app.history_list.offset().min(total.saturating_sub(viewport_rows.min(total)));
+    app.feed.history_list.offset().min(total.saturating_sub(viewport_rows.min(total)));
   if selected < offset {
     offset = selected;
   } else if selected >= offset + viewport_rows {
     offset = selected + 1 - viewport_rows;
   }
-  app.history_list.set_offset(offset);
+  app.feed.history_list.set_offset(offset);
 
   let entries = app.filtered_history();
   let end = (offset + viewport_rows + 2).min(total);
@@ -505,9 +505,9 @@ fn draw_history_tab(frame: &mut Frame, app: &mut App, area: Rect) {
         .map(|&idx| &app.workspace.items[idx])
         .or_else(|| {
           app
-            .discovery.url_index
+            .feed.discovery.url_index
             .get(&entry.key)
-            .map(|&idx| &app.discovery.items[idx])
+            .map(|&idx| &app.feed.discovery.items[idx])
         });
       let row_style =
         if is_selected { t.style_selection() } else { Style::default() };
@@ -946,7 +946,7 @@ pub fn draw_item_table(frame: &mut Frame, app: &mut App, area: Rect) {
 
   // ── Build rows for visible window only ────────────────────────────────────
   let t_rows = std::time::Instant::now();
-  let visual_mode = app.feed_tab == FeedTab::Library && app.library_visual_mode;
+  let visual_mode = app.feed.feed_tab == FeedTab::Library && app.feed.library_visual_mode;
   let rows: Vec<Row> = window
     .iter()
     .enumerate()
@@ -954,7 +954,7 @@ pub fn draw_item_table(frame: &mut Frame, app: &mut App, area: Rect) {
       let item_idx = start + i;
       let is_cursor = item_idx == app.active_selected_index();
       let in_visual =
-        visual_mode && app.library_selected_urls.contains(&item.url);
+        visual_mode && app.feed.library_selected_urls.contains(&item.url);
       let is_selected = is_cursor || in_visual;
       let (content_height, title_lines) = &window_data[i];
 
