@@ -2,16 +2,56 @@
 //! [`crate::keys`] before being routed to a surface. Variants accrete as
 //! surfaces migrate.
 //!
-//! Phase 2 ships only the action variants needed by Sources (the first
-//! converted overlay). Phase 3 expands the vocabulary as more surfaces
-//! convert; Phase 4 hoists render-time state mutations into action
-//! handlers so render becomes pure.
+//! Slice 1 shipped only the variants needed by Sources
+//! (DismissTopModal, OpenSettings). Slice 2 adds `OpenInReader` —
+//! the cross-pane verb that consolidates the "open this paper in a
+//! reader" call paths into one place (ADR-002 §S4).
+//!
+//! `Action` is intentionally not `Clone` or `Debug` — `OpenInReader`
+//! carries a `tread::Reader` which is neither. Actions are
+//! consumed once at dispatch, not stored or compared, so the missing
+//! derives cost nothing.
 
-#[derive(Debug, Clone)]
+use crate::app::NotesContext;
+
+/// Which reader surface should receive an `OpenInReader` action.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReaderTarget {
+  /// Embedded primary reader pane.
+  Primary,
+  /// Embedded secondary reader pane (visible when split or dual is active).
+  Secondary,
+  /// Floating popup reader (`Ldr+Enter`).
+  Popup,
+}
+
+/// Whether to push a new tab or replace the active tab in the target
+/// reader instance.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OpenMode {
+  NewTab,
+  ReplaceActive,
+}
+
 pub enum Action {
   /// Top of the modal stack should be dismissed (Esc, q, etc.).
   DismissTopModal,
   /// Generic "open settings view" — used by Sources to leave back to
   /// Settings on Esc/q.
   OpenSettings,
+  /// Cross-pane: open a paper in one of the reader surfaces. The
+  /// payload (already-constructed `tread::Reader` plus its metadata)
+  /// is moved into the orchestrator, which calls the appropriate
+  /// `App::reader_*_push_tab` / `reader_*_replace_active_tab` method.
+  ///
+  /// Popup variant currently routes to the same path as Primary; the
+  /// async-load lifecycle is still handled outside this Action (PR 5).
+  OpenInReader {
+    target: ReaderTarget,
+    mode: OpenMode,
+    title: String,
+    arxiv_id: Option<String>,
+    notes_context: Option<NotesContext>,
+    reader: tread::Reader,
+  },
 }

@@ -965,38 +965,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                   kitty_supported,
                   Some(app.voice_controller.clone()),
                 );
-                if app.fulltext_for_secondary {
-                  if app.fulltext_new_tab {
-                    app.reader_secondary_push_tab(
-                      title,
-                      arxiv_id,
-                      notes_context,
-                      reader,
-                    );
-                  } else {
-                    app.reader_secondary_replace_active_tab(
-                      title,
-                      arxiv_id,
-                      notes_context,
-                      reader,
-                    );
-                  }
-                  app.reader.focused = FocusedReader::Secondary;
-                  app.focus.focused_pane = PaneId::SecondaryReader;
-                  app.fulltext_for_secondary = false;
+                let target = if app.fulltext_for_secondary {
+                  action::ReaderTarget::Secondary
                 } else {
-                  if app.fulltext_new_tab {
-                    app.reader_push_tab(title, arxiv_id, notes_context, reader);
-                  } else {
-                    app.reader_replace_active_tab(
-                      title,
-                      arxiv_id,
-                      notes_context,
-                      reader,
-                    );
-                  }
-                  app.focus.focused_pane = PaneId::Reader;
-                }
+                  action::ReaderTarget::Primary
+                };
+                let mode = if app.fulltext_new_tab {
+                  action::OpenMode::NewTab
+                } else {
+                  action::OpenMode::ReplaceActive
+                };
+                app.apply_open_in_reader(action::Action::OpenInReader {
+                  target,
+                  mode,
+                  title,
+                  arxiv_id,
+                  notes_context,
+                  reader,
+                });
+                app.fulltext_for_secondary = false;
                 app.fulltext_new_tab = false;
                 app.clear_notification();
               }

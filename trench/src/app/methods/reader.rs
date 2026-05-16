@@ -1,6 +1,61 @@
-use crate::app::{App, FocusedReader, NotesContext, ReaderTab};
+use crate::action::{Action, OpenMode, ReaderTarget};
+use crate::app::{App, FocusedReader, NotesContext, PaneId, ReaderTab};
 
 impl App {
+  /// Apply an `Action::OpenInReader` by routing to the appropriate
+  /// reader-pane method based on `target` + `mode`. The single chokepoint
+  /// for "open this paper in a reader surface" — no caller should set
+  /// `app.reader.active = true` directly (ADR-002 §S4).
+  ///
+  /// `Action` non-variant panics: this method panics if handed a non-
+  /// `OpenInReader` variant.  Other actions route through their own
+  /// surface-specific handlers.
+  pub fn apply_open_in_reader(&mut self, action: Action) {
+    let Action::OpenInReader {
+      target,
+      mode,
+      title,
+      arxiv_id,
+      notes_context,
+      reader,
+    } = action
+    else {
+      panic!("apply_open_in_reader called with non-OpenInReader variant");
+    };
+    match (target, mode) {
+      (ReaderTarget::Primary, OpenMode::NewTab) => {
+        self.reader_push_tab(title, arxiv_id, notes_context, reader);
+        self.focus.focused_pane = PaneId::Reader;
+      }
+      (ReaderTarget::Primary, OpenMode::ReplaceActive) => {
+        self.reader_replace_active_tab(title, arxiv_id, notes_context, reader);
+        self.focus.focused_pane = PaneId::Reader;
+      }
+      (ReaderTarget::Secondary, OpenMode::NewTab) => {
+        self.reader_secondary_push_tab(title, arxiv_id, notes_context, reader);
+        self.reader.focused = FocusedReader::Secondary;
+        self.focus.focused_pane = PaneId::SecondaryReader;
+      }
+      (ReaderTarget::Secondary, OpenMode::ReplaceActive) => {
+        self.reader_secondary_replace_active_tab(
+          title,
+          arxiv_id,
+          notes_context,
+          reader,
+        );
+        self.reader.focused = FocusedReader::Secondary;
+        self.focus.focused_pane = PaneId::SecondaryReader;
+      }
+      (ReaderTarget::Popup, _) => {
+        // Popup async-load lifecycle is handled outside this Action for
+        // now (PR 5 will fold it in via ReaderPopupModel::pre_draw).
+        // Falls through to the primary path until then so the variant
+        // isn't dead.
+        self.reader_push_tab(title, arxiv_id, notes_context, reader);
+        self.focus.focused_pane = PaneId::Reader;
+      }
+    }
+  }
   pub fn reader_notes_context(
     &self,
     side: FocusedReader,

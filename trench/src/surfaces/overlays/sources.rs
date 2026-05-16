@@ -49,6 +49,9 @@ impl SourcesSurface {
         self.input.blur();
         self.detect.reset();
       }
+      // Sources overlay doesn't open reader tabs; OpenInReader is routed
+      // by the orchestrator (App::apply_open_in_reader) directly.
+      Action::OpenInReader { .. } => {}
     }
     Vec::new()
   }
