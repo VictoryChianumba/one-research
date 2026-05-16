@@ -23,6 +23,11 @@ When you change behaviour described here, update this file in the same commit.
 | **Action** | The input vocabulary. Keystrokes are translated into `Action` variants by `keys/`, then routed to the relevant model (or to the orchestrator for cross-pane verbs). Grows as panes migrate. |
 | **Effect** | The cache-invalidation receipt emitted by mutations. Narrow vocabulary — `Effect` names a semantic event (`WorkflowStateChanged`, `SearchQueryChanged`, …), not a cache to invalidate. The cache layer translates each event into the right invalidations. |
 | **Paper** | A `FeedItem` from arXiv as seen *inside the reader*. Reserved term for reader-side rendering. Outside the reader, the term is **FeedItem**. |
+| **ReaderInstanceModel** | One embedded reader pane (primary or secondary), owning its tabs + active-tab index. Each `ReaderTab` wraps a `tread::Reader`. Introduced by slice 2 (`ADR-002`). |
+| **ReaderPaneModel** | The composition-root model for the reader pane *as a region of the layout* — owns a primary `ReaderInstanceModel`, an optional secondary one, and the split/dual/focus state. |
+| **ReaderPopupModel** | The floating popup reader (`Ldr+Enter`), a sibling Model to `ReaderPaneModel`. Lifecycle is async-load + dismissible; deliberately distinct from `ReaderInstanceModel`. |
+| **ReaderContext** | The per-frame read-only context for reader renders (analogue of `FeedContext`). Carries `&Workspace`, the active theme, `Viewport`, and any pre-computed data the orchestrator owes the renderer. |
+| **ReaderTarget** | Discriminator on `Action::OpenInReader` naming which reader surface receives an item: `Primary`, `Secondary`, `Popup`. |
 
 ### Term hygiene
 
@@ -74,11 +79,12 @@ The refactor is incremental. Lazy rollout — a pane is refactored when a featur
 
 | Pane | Status | Trigger / next step |
 |------|--------|---------------------|
-| **Feed** | Slice 1 in progress | See ADR-001. 6 PRs. Foundations (PR 1) ships the empty `FeedModel` + `Viewport`. |
-| **Reader** | Pending (slice 2) | Triggered when image rendering needs to land. Expected ~4 PRs. Will introduce `ReaderPaneModel` (primary + optional secondary), `ReaderInstanceModel`, `VoiceModel`. |
-| **Voice** | Pending | Lands alongside or shortly after slice 2. Separate `VoiceModel` on `App`. |
+| **Feed** | Slice 1 accepted (2026-05-16) | PRs 1, 2, 3, 4a, 4b, 4c, 6 landed. PR 5 (`Action::OpenInReader`) deferred to slice 2 where it's actually used. See ADR-001. |
+| **Reader** | Slice 2 in progress | ADR-002. 6 PRs. Medium scope: `ReaderPaneModel` (primary + optional secondary) **plus** `ReaderPopupModel` (audit C4). Trigger: proactive cleanup (deliberate departure from ADR-001 D2; rationale in ADR-002). |
+| **Popup reader** | Slice 2 in progress | Folded into ADR-002 as `ReaderPopupModel`. |
+| **Voice** | Pending | Separate slice after slice 2. `VoiceModel` on `App`. Trigger: ElevenLabs credits + feature ask. |
+| **Notes** | Legacy | Audit candidate C5. Lazy. Notes dock alongside reader and have to know `focused_reader` state — likely the trigger for slice 3. |
 | **Chat** | Legacy | Lazy. No pressure to refactor. |
-| **Notes** | Legacy | Lazy. May ride along with reader slice since notes dock alongside the reader. |
 | **Repo Viewer** | Legacy | Lazy. |
 | **Settings overlay** | Legacy | Lazy. Already partly migrated to `Action::DismissTopModal` / `Action::OpenSettings`. |
 | **Title bar / search row** | Stateless | No model needed. Reads from app counters. |
@@ -87,6 +93,7 @@ The refactor is incremental. Lazy rollout — a pane is refactored when a featur
 
 ## Related
 
-- `docs/adr/ADR-001-render-purification.md` — the decision and rationale behind the per-pane refactor.
+- `docs/adr/ADR-001-render-purification.md` — the parent per-pane refactor decision (slice 1, feed).
+- `docs/adr/ADR-002-reader-slice.md` — slice 2 reader-pane extension.
 - `docs/audits/` — periodic architectural audits with letter-graded scorecards. Latest: `2026-05-16-architectural-audit.md`. Run `/improve-codebase-architecture` to produce a new one.
 - `CLAUDE.md` — project-wide rules. CONTEXT.md is the *language* layer above those.
