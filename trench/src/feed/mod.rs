@@ -204,6 +204,83 @@ impl FeedModel {
     }
   }
 
+  // ── W3 hybrid: state-local gestures ───────────────────────────────────
+  // Per ADR-001 D5: model methods take `&mut Workspace` directly and emit
+  // `Vec<Effect>`. The caller routes effects to the cache observer and
+  // persists to disk. Borrow conflicts at the call site are resolved by
+  // split borrow on `App` (different fields: feed, workspace, config).
+
+  /// The URL of the item the user's cursor currently points to in the
+  /// active tab, or `None` if the visible list is empty / cursor is past
+  /// the end. Used by single-item workflow gestures to resolve the
+  /// target before mutation.
+  pub fn selected_url(
+    &self,
+    workspace: &crate::data::workspace_store::Workspace,
+    config: &crate::config::Config,
+  ) -> Option<String> {
+    let visible = visible_indices_for(workspace, self, config);
+    let selected = self.active_list().selected();
+    let idx = *visible.get(selected)?;
+    let items = items_for_tab(workspace, self);
+    items.get(idx).map(|item| item.url.clone())
+  }
+
+  /// Set the workflow state of the item with the given URL, wherever it
+  /// lives (workspace.items for Inbox/Library, self.discovery.items for
+  /// Discoveries). Updates `workspace.persisted_states` and returns the
+  /// `Effect::WorkflowStateChanged` event for the caller to route.
+  ///
+  /// Empty Vec when the URL doesn't match any item (no-op, no event).
+  pub fn set_workflow_state_for_url(
+    &mut self,
+    workspace: &mut crate::data::workspace_store::Workspace,
+    url: &str,
+    state: crate::models::WorkflowState,
+  ) -> Vec<crate::effect::Effect> {
+    let mut found = false;
+    for item in workspace.items.iter_mut() {
+      if item.url == url {
+        item.workflow_state = state;
+        found = true;
+        break;
+      }
+    }
+    if !found {
+      for item in self.discovery.items.iter_mut() {
+        if item.url == url {
+          item.workflow_state = state;
+          found = true;
+          break;
+        }
+      }
+    }
+    if found {
+      workspace.persisted_states.insert(url.to_string(), state);
+      vec![crate::effect::Effect::WorkflowStateChanged {
+        url: url.to_string(),
+        state,
+      }]
+    } else {
+      Vec::new()
+    }
+  }
+
+  /// Set the workflow state of the cursor-pointed item. Combines
+  /// `selected_url` + `set_workflow_state_for_url`. No-op (empty Vec)
+  /// when the cursor isn't over a visible item.
+  pub fn set_workflow_state_at_cursor(
+    &mut self,
+    workspace: &mut crate::data::workspace_store::Workspace,
+    config: &crate::config::Config,
+    state: crate::models::WorkflowState,
+  ) -> Vec<crate::effect::Effect> {
+    let Some(url) = self.selected_url(workspace, config) else {
+      return Vec::new();
+    };
+    self.set_workflow_state_for_url(workspace, &url, state)
+  }
+
   /// Variable-height variant of [`pre_draw`](Self::pre_draw) for the
   /// narrow-feed list-cell (drawer used by the reader's secondary pane).
   ///
@@ -668,6 +745,109 @@ mod tests {
     m.pre_draw_narrow_feed(Viewport::new(40, 10), 0, &[]);
     assert_eq!(m.inbox_list.offset(), 0);
     assert_eq!(m.inbox_list.selected(), 0);
+  }
+
+  // ── W3 hybrid: workflow-state gestures ────────────────────────────────
+
+  fn mock_item(url: &str, state: crate::models::WorkflowState) -> crate::models::FeedItem {
+    crate::models::FeedItem {
+      id: url.to_string(),
+      title: "T".to_string(),
+      source_platform: crate::models::SourcePlatform::ArXiv,
+      content_type: crate::models::ContentType::Paper,
+      domain_tags: Vec::new(),
+      signal: crate::models::SignalLevel::Primary,
+      published_at: "2026-01-01".to_string(),
+      authors: Vec::new(),
+      summary_short: String::new(),
+      workflow_state: state,
+      url: url.to_string(),
+      upvote_count: 0,
+      github_repo: None,
+      github_owner: None,
+      github_repo_name: None,
+      benchmark_results: Vec::new(),
+      full_content: None,
+      source_name: "test".to_string(),
+      title_lower: "t".to_string(),
+      authors_lower: Vec::new(),
+    }
+  }
+
+  #[test]
+  fn set_workflow_state_for_url_mutates_workspace_and_emits_effect() {
+    use crate::data::workspace_store::Workspace;
+    use crate::effect::Effect;
+    use crate::models::WorkflowState;
+
+    let mut workspace = Workspace::default();
+    workspace.items.push(mock_item("https://a", WorkflowState::Inbox));
+    workspace.items.push(mock_item("https://b", WorkflowState::Inbox));
+    let mut model = FeedModel::default();
+
+    let effects = model.set_workflow_state_for_url(
+      &mut workspace,
+      "https://b",
+      WorkflowState::DeepRead,
+    );
+
+    // Item mutated in-place.
+    assert_eq!(workspace.items[1].workflow_state, WorkflowState::DeepRead);
+    // Persisted-state side table updated.
+    assert_eq!(
+      workspace.persisted_states.get("https://b"),
+      Some(&WorkflowState::DeepRead),
+    );
+    // Exactly one Effect emitted, naming the cache-invalidation event.
+    assert_eq!(effects.len(), 1);
+    assert!(matches!(
+      &effects[0],
+      Effect::WorkflowStateChanged { url, state }
+        if url == "https://b" && *state == WorkflowState::DeepRead
+    ));
+  }
+
+  #[test]
+  fn set_workflow_state_for_url_falls_through_to_discovery() {
+    use crate::data::workspace_store::Workspace;
+    use crate::models::WorkflowState;
+
+    let mut workspace = Workspace::default();
+    let mut model = FeedModel::default();
+    // Item only exists in discovery, not workspace.
+    model.discovery.items.push(mock_item("https://d", WorkflowState::Inbox));
+
+    let effects = model.set_workflow_state_for_url(
+      &mut workspace,
+      "https://d",
+      WorkflowState::Queued,
+    );
+
+    assert_eq!(effects.len(), 1);
+    assert_eq!(model.discovery.items[0].workflow_state, WorkflowState::Queued);
+    // Persistence is keyed by URL regardless of where the item lived.
+    assert!(workspace.persisted_states.contains_key("https://d"));
+  }
+
+  #[test]
+  fn set_workflow_state_for_url_unknown_url_is_noop() {
+    use crate::data::workspace_store::Workspace;
+    use crate::models::WorkflowState;
+
+    let mut workspace = Workspace::default();
+    workspace.items.push(mock_item("https://a", WorkflowState::Inbox));
+    let mut model = FeedModel::default();
+
+    let effects = model.set_workflow_state_for_url(
+      &mut workspace,
+      "https://ghost",
+      WorkflowState::DeepRead,
+    );
+
+    // Empty Vec means no event; no mutation; no persistence write.
+    assert!(effects.is_empty());
+    assert_eq!(workspace.items[0].workflow_state, WorkflowState::Inbox);
+    assert!(workspace.persisted_states.is_empty());
   }
 
   #[test]

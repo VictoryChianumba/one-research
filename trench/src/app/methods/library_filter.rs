@@ -272,11 +272,15 @@ impl App {
   }
 
   pub fn set_workflow_state(&mut self, state: WorkflowState) {
-    let url = self
-      .visible_get(self.active_selected_index())
-      .map(|item| item.url.clone());
-    if let Some(url) = url {
-      self.set_workflow_state_for_url(&url, state);
+    // W3 hybrid (ADR-001 D5): delegate to the FeedModel gesture, which
+    // owns the lookup + mutation and emits the cache-invalidation event.
+    let effects = self.feed.set_workflow_state_at_cursor(
+      &mut self.workspace,
+      &self.config,
+      state,
+    );
+    if !effects.is_empty() {
+      self.route_effects(&effects);
       crate::store::save(&self.workspace.persisted_states);
     }
   }

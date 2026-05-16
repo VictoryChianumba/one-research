@@ -152,29 +152,17 @@ impl App {
     url: &str,
     state: WorkflowState,
   ) -> bool {
-    let mut found = false;
-    for item in self.workspace.items.iter_mut() {
-      if item.url == url {
-        item.workflow_state = state;
-        found = true;
-        break;
-      }
-    }
-    if !found {
-      for item in self.feed.discovery.items.iter_mut() {
-        if item.url == url {
-          item.workflow_state = state;
-          found = true;
-          break;
-        }
-      }
-    }
+    // Delegate to the W3-hybrid model method (ADR-001 D5). Split borrow
+    // on disjoint fields: `feed` (mutates discovery.items) and
+    // `workspace` (mutates items + persisted_states).
+    let effects = self.feed.set_workflow_state_for_url(
+      &mut self.workspace,
+      url,
+      state,
+    );
+    let found = !effects.is_empty();
     if found {
-      self.workspace.persisted_states.insert(url.to_string(), state);
-      self.route_effects(&[Effect::WorkflowStateChanged {
-        url: url.to_string(),
-        state,
-      }]);
+      self.route_effects(&effects);
     }
     found
   }
