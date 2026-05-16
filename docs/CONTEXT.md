@@ -80,8 +80,8 @@ The refactor is incremental. Lazy rollout — a pane is refactored when a featur
 | Pane | Status | Trigger / next step |
 |------|--------|---------------------|
 | **Feed** | Slice 1 accepted (2026-05-16) | PRs 1, 2, 3, 4a, 4b, 4c, 6 landed. PR 5 (`Action::OpenInReader`) deferred to slice 2 where it's actually used. See ADR-001. |
-| **Reader** | Slice 2 in progress | ADR-002. 6 PRs. Medium scope: `ReaderPaneModel` (primary + optional secondary) **plus** `ReaderPopupModel` (audit C4). Trigger: proactive cleanup (deliberate departure from ADR-001 D2; rationale in ADR-002). |
-| **Popup reader** | Slice 2 in progress | Folded into ADR-002 as `ReaderPopupModel`. |
+| **Reader** | Slice 2 accepted (2026-05-16) | ADR-002. 6 PRs landed. PR 5 scoped down from "full signature flip" to "pre_draw landing" to avoid the per-frame allocation regression slice 1 PR 4c introduced — full flip remains available if a testability driver forces it. |
+| **Popup reader** | Slice 2 accepted | Folded into ADR-002 as `ReaderPopupModel`. |
 | **Voice** | Pending | Separate slice after slice 2. `VoiceModel` on `App`. Trigger: ElevenLabs credits + feature ask. |
 | **Notes** | Legacy | Audit candidate C5. Lazy. Notes dock alongside reader and have to know `focused_reader` state — likely the trigger for slice 3. |
 | **Chat** | Legacy | Lazy. No pressure to refactor. |

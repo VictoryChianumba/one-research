@@ -1,6 +1,6 @@
 # ADR-002 — Reader-pane slice (Slice 2 of render purification)
 
-- **Status:** Proposed (Slice 2, PR 1 of 6). Becomes Accepted when Slice 2 PR 6 lands.
+- **Status:** Accepted (2026-05-16). All six slice-2 PRs landed (PR 1 foundations, PR 2 state migration, PR 3 gesture methods, PR 4 `Action::OpenInReader`, PR 5 `pre_draw` for the layout-derived resize, PR 6 tripwire + this status flip). PR 5 was scoped down from "full render-signature flip" to "pre_draw landing" — see §S6 cadence note for the reasoning.
 - **Date:** 2026-05-16
 - **Owner:** Victory Chianumba
 - **Supersedes:** none
@@ -121,8 +121,17 @@ This means **some reader gestures will not be testable at the Model boundary** b
 | 2 | State migration: move 13 reader+popup fields from `App` into `App.reader: ReaderPaneModel` and `App.reader_popup: ReaderPopupModel`. Mechanical. | None |
 | 3 | Gesture methods: tab cycling, focus toggle, dual/split state machine, popup open/close — all become Model methods. | None |
 | 4 | Cross-pane `Action::OpenInReader { target: ReaderTarget }` actually wired (was Slice 1 PR 5). | None visible |
-| 5 | `pre_draw` + render flip: `ReaderInstanceModel::pre_draw` owns last_resize + image_state + burst advance. Renders flip to `&Model + &Context`. **The load-bearing PR.** | None visible |
-| 6 | Lock the door: extended tripwire covers reader.rs + reader render paths in `main_row.rs`; App-field-count check enforces no `reader_*` / `reader_popup_*` at App top level. ADR-002 → Accepted. | None |
+| 5 | `pre_draw` landing: `ReaderInstanceModel::pre_draw` + `ReaderPopupModel::pre_draw` own the once-per-frame `tread::Reader::resize` call. The inline `last_resize != Some(new_size)` blocks come out of 5 render sites. **Scoped down from the original "full render-signature flip" — see cadence note below.** | None visible |
+| 6 | Lock the door: extended `scripts/check-render-purification.sh` covers (I4) 13 migrated fields gone from App top level, (I5) `App.reader` + `App.reader_popup` present, (I6) ADR-002 cadence table complete, (I7) no inline `last_resize` checks in reader render paths. ADR-002 → Accepted. | None |
+
+### Cadence note (2026-05-16, post-mortem)
+
+PR 5 originally specified the full `&Model + &Context` render-signature flip (mirror of ADR-001 PR 4c).  In practice the flip was deliberately scoped down to "pre_draw landing only" for two reasons:
+
+1.  **The audit's honest assessment.**  Slice 1 PR 4c introduced per-frame `Vec` allocations (visible_indices, filtered_history, ItemCounts clone) as the price of strict `&Model` render purity.  Reader renders are hotter than feed renders (they call `tread::draw` + `tread::after_draw_guarded` against a heavy editor state), and a strict flip would multiply that cost.
+2.  **The user explicitly flagged perf as the next priority** after slice 2.  Doing the full flip would have introduced exactly the kind of regression the perf work is meant to fix.
+
+The pre_draw landing captures the real architectural win — layout-derived mutation lives in one named place, no longer scattered across 5 render sites — without the per-frame regression.  A full signature flip remains *available* as a follow-up if a testability driver forces it (per ADR-002 §S5, model-boundary tests would require `tread::Reader` construction which is currently deferred).
 
 Feature freeze for the slice. Bug fixes and trivial UI tweaks are fine; no new reader surfaces.
 
