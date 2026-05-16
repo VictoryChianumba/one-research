@@ -30,6 +30,43 @@ impl ReaderInstanceModel {
   pub fn is_loaded(&self) -> bool {
     !self.tabs.is_empty()
   }
+
+  /// Advance the active tab one position, wrapping at the end.  No-op
+  /// when no tabs are open.  Side effects on the editor (stopping voice,
+  /// resetting scroll) are caller-responsibility — this is the pure
+  /// cursor move.
+  pub fn next_tab(&mut self) {
+    let n = self.tabs.len();
+    if n > 0 {
+      self.active_tab = (self.active_tab + 1) % n;
+    }
+  }
+
+  /// Walk back one tab, wrapping at zero.  Mirror of [`next_tab`].
+  pub fn prev_tab(&mut self) {
+    let n = self.tabs.len();
+    if n > 0 {
+      self.active_tab = (self.active_tab + n - 1) % n;
+    }
+  }
+
+  /// Remove the active tab.  Returns `true` if the instance is now
+  /// empty (callers may want to dismiss the pane).  Re-anchors
+  /// `active_tab` to the previous index so the cursor stays on a real
+  /// tab unless the list is now empty.
+  pub fn close_active_tab(&mut self) -> bool {
+    if self.tabs.is_empty() {
+      return true;
+    }
+    let idx = self.active_tab.min(self.tabs.len() - 1);
+    self.tabs.remove(idx);
+    if self.tabs.is_empty() {
+      self.active_tab = 0;
+      return true;
+    }
+    self.active_tab = idx.min(self.tabs.len() - 1);
+    false
+  }
 }
 
 /// Composition-root model for the reader pane as a region of the
@@ -64,6 +101,39 @@ pub struct ReaderPaneModel {
 impl ReaderPaneModel {
   pub fn new() -> Self {
     Self::default()
+  }
+
+  /// Reference to whichever instance currently has focus.
+  pub fn focused_instance(&self) -> &ReaderInstanceModel {
+    match self.focused {
+      FocusedReader::Primary => &self.primary,
+      FocusedReader::Secondary => &self.secondary,
+    }
+  }
+
+  /// Mutable variant of [`focused_instance`].
+  pub fn focused_instance_mut(&mut self) -> &mut ReaderInstanceModel {
+    match self.focused {
+      FocusedReader::Primary => &mut self.primary,
+      FocusedReader::Secondary => &mut self.secondary,
+    }
+  }
+
+  /// Set focus to `target`.  Returns the previous focus so callers can
+  /// branch on "actually changed" without re-reading.
+  pub fn set_focus(&mut self, target: FocusedReader) -> FocusedReader {
+    let prev = self.focused;
+    self.focused = target;
+    prev
+  }
+
+  /// Swap focus between primary and secondary.  Returns the new focus.
+  pub fn toggle_focus(&mut self) -> FocusedReader {
+    self.focused = match self.focused {
+      FocusedReader::Primary => FocusedReader::Secondary,
+      FocusedReader::Secondary => FocusedReader::Primary,
+    };
+    self.focused
   }
 }
 
@@ -155,6 +225,33 @@ mod tests {
     assert!(!m.active);
     assert!(m.editor.is_none());
     assert!(m.rx.is_none());
+  }
+
+  #[test]
+  fn toggle_focus_swaps_primary_and_secondary() {
+    let mut m = ReaderPaneModel::default();
+    assert!(matches!(m.focused, FocusedReader::Primary));
+    let new_focus = m.toggle_focus();
+    assert!(matches!(new_focus, FocusedReader::Secondary));
+    assert!(matches!(m.focused, FocusedReader::Secondary));
+    m.toggle_focus();
+    assert!(matches!(m.focused, FocusedReader::Primary));
+  }
+
+  #[test]
+  fn set_focus_returns_previous_value() {
+    let mut m = ReaderPaneModel::default();
+    let prev = m.set_focus(FocusedReader::Secondary);
+    assert!(matches!(prev, FocusedReader::Primary));
+    assert!(matches!(m.focused, FocusedReader::Secondary));
+  }
+
+  #[test]
+  fn next_prev_tab_on_empty_is_noop() {
+    let mut inst = ReaderInstanceModel::default();
+    inst.next_tab();
+    inst.prev_tab();
+    assert_eq!(inst.active_tab, 0);
   }
 
   #[test]

@@ -162,87 +162,45 @@ impl App {
 
   /// Close the active primary tab. Returns true if the pane is now empty.
   pub fn reader_close_active_tab(&mut self) -> bool {
-    if self.reader.primary.tabs.is_empty() {
-      return true;
-    }
-    // Stop voice + clear image cache before drop so audio doesn't
-    // outlive the source it was reading and pixel placements the
-    // terminal still has cached for this tab's kitty_ids are deleted
-    // — otherwise they linger as ghost overlays on whichever tab
-    // takes its slot.
-    if let Some(tab) = self.reader.primary.tabs.get_mut(self.reader.primary.active_tab) {
+    // Pre-close cleanup: stop voice + clear image cache before drop so
+    // audio doesn't outlive the source and pixel placements the
+    // terminal still has cached for this tab's kitty_ids are deleted.
+    // tread side effects stay here at the App level — they're external
+    // to the Model's pure-state contract.
+    if let Some(tab) =
+      self.reader.primary.tabs.get_mut(self.reader.primary.active_tab)
+    {
       tab.reader.exit_voice_mode();
       tread::clear_images(&mut tab.image_state);
     }
-    self.reader.primary.tabs.remove(self.reader.primary.active_tab);
-    if self.reader.primary.tabs.is_empty() {
-      self.reader.primary.active_tab = 0;
+    let now_empty = self.reader.primary.close_active_tab();
+    if now_empty {
       self.reader.active = false;
-      return true;
     }
-    self.reader.primary.active_tab = self.reader.primary.active_tab.saturating_sub(1);
-    false
+    now_empty
   }
 
   /// Close the active secondary tab. Returns true if the pane is now empty.
   pub fn reader_secondary_close_active_tab(&mut self) -> bool {
-    if self.reader.secondary.tabs.is_empty() {
-      return true;
-    }
     if let Some(tab) =
       self.reader.secondary.tabs.get_mut(self.reader.secondary.active_tab)
     {
       tab.reader.exit_voice_mode();
       tread::clear_images(&mut tab.image_state);
     }
-    self.reader.secondary.tabs.remove(self.reader.secondary.active_tab);
-    if self.reader.secondary.tabs.is_empty() {
-      self.reader.secondary.active_tab = 0;
-      return true;
-    }
-    self.reader.secondary.active_tab =
-      self.reader.secondary.active_tab.saturating_sub(1);
-    false
+    self.reader.secondary.close_active_tab()
   }
 
   pub fn reader_prev_tab(&mut self) {
-    // Voice is tied to the source you were reading.  Switching to a
+    // Voice is tied to the source you were reading. Switching to a
     // different tab means you're not in that source anymore — stop
     // playback so audio doesn't keep going in the background.
     self.stop_all_reader_voice();
-    match self.reader.focused {
-      FocusedReader::Primary => {
-        let n = self.reader.primary.tabs.len();
-        if n > 0 {
-          self.reader.primary.active_tab = (self.reader.primary.active_tab + n - 1) % n;
-        }
-      }
-      FocusedReader::Secondary => {
-        let n = self.reader.secondary.tabs.len();
-        if n > 0 {
-          self.reader.secondary.active_tab =
-            (self.reader.secondary.active_tab + n - 1) % n;
-        }
-      }
-    }
+    self.reader.focused_instance_mut().prev_tab();
   }
 
   pub fn reader_next_tab(&mut self) {
     self.stop_all_reader_voice();
-    match self.reader.focused {
-      FocusedReader::Primary => {
-        let n = self.reader.primary.tabs.len();
-        if n > 0 {
-          self.reader.primary.active_tab = (self.reader.primary.active_tab + 1) % n;
-        }
-      }
-      FocusedReader::Secondary => {
-        let n = self.reader.secondary.tabs.len();
-        if n > 0 {
-          self.reader.secondary.active_tab =
-            (self.reader.secondary.active_tab + 1) % n;
-        }
-      }
-    }
+    self.reader.focused_instance_mut().next_tab();
   }
 }
