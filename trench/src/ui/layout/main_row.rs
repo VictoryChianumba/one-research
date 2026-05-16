@@ -5,6 +5,7 @@ use ratatui::{
   widgets::Paragraph,
 };
 
+use super::RIGHT_COL_WIDTH;
 use super::details::draw_details_panel;
 use super::feed::draw_feed_pane;
 use super::filter::draw_filter_panel;
@@ -14,7 +15,6 @@ use super::reader::{
   draw_reader_workspace_header, reader_workspace_split,
 };
 use super::widgets::{draw_horiz_split_box, draw_vert_split_box};
-use super::RIGHT_COL_WIDTH;
 use crate::app::{App, FocusedReader};
 
 /// Orchestrator helper: builds a `FeedContext` snapshot from `App` and
@@ -71,8 +71,11 @@ fn split_reader_note_dock(area: Rect) -> (Rect, Rect) {
   (rows[0], rows[1])
 }
 
-
-pub fn draw_main_row(frame: &mut Frame, app: &mut App, area: Rect) -> MainRowRects {
+pub fn draw_main_row(
+  frame: &mut Frame,
+  app: &mut App,
+  area: Rect,
+) -> MainRowRects {
   let theme = app.theme();
   let t = theme;
   // Tread's `Theme` is a sibling type from a separate `ui_theme` crate

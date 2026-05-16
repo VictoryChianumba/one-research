@@ -198,8 +198,7 @@ impl FeedModel {
       && selected >= offset + items_fitting_in_viewport.saturating_sub(2)
       && offset + items_fitting_in_viewport < total_items
     {
-      let new_offset =
-        (selected + 2).saturating_sub(items_fitting_in_viewport);
+      let new_offset = (selected + 2).saturating_sub(items_fitting_in_viewport);
       list.set_offset(new_offset);
     }
   }
@@ -441,13 +440,12 @@ pub fn visible_indices_for(
         }
         _ => {}
       }
-      let key = if item.source_platform
-        == crate::models::SourcePlatform::HuggingFace
-      {
-        "huggingface"
-      } else {
-        &item.source_name
-      };
+      let key =
+        if item.source_platform == crate::models::SourcePlatform::HuggingFace {
+          "huggingface"
+        } else {
+          &item.source_name
+        };
       if let Some(&enabled) = config.sources.enabled_sources.get(key) {
         if !enabled {
           return false;
@@ -628,7 +626,11 @@ mod tests {
     // After pre_draw the cursor must lie within the viewport.
     let offset = m.inbox_list.offset();
     assert!(offset <= 50, "offset {offset} should not exceed selected 50");
-    assert!(offset + 20 > 50, "viewport [{offset}..{}) must cover 50", offset + 20);
+    assert!(
+      offset + 20 > 50,
+      "viewport [{offset}..{}) must cover 50",
+      offset + 20
+    );
   }
 
   #[test]
@@ -749,7 +751,10 @@ mod tests {
 
   // ── W3 hybrid: workflow-state gestures ────────────────────────────────
 
-  fn mock_item(url: &str, state: crate::models::WorkflowState) -> crate::models::FeedItem {
+  fn mock_item(
+    url: &str,
+    state: crate::models::WorkflowState,
+  ) -> crate::models::FeedItem {
     crate::models::FeedItem {
       id: url.to_string(),
       title: "T".to_string(),

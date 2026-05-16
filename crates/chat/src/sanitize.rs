@@ -33,10 +33,7 @@ pub(crate) fn is_safe_id(s: &str) -> bool {
 /// no truncation is needed. Mirrors `trench::sanitize::truncate_chars` —
 /// see that doc for the threat model. Local copy here to avoid a chat →
 /// trench dependency edge.
-pub(crate) fn truncate_chars(
-  s: &str,
-  max: usize,
-) -> std::borrow::Cow<'_, str> {
+pub(crate) fn truncate_chars(s: &str, max: usize) -> std::borrow::Cow<'_, str> {
   if s.chars().count() <= max {
     std::borrow::Cow::Borrowed(s)
   } else {
@@ -147,7 +144,6 @@ mod tests {
     assert!(!is_safe_id("foo\nbar"));
   }
 
-
   #[test]
   fn truncate_chars_borrows_short() {
     let out = truncate_chars("hi", 10);
@@ -173,7 +169,6 @@ mod tests {
   fn truncate_chars_zero() {
     assert_eq!(truncate_chars("hello", 0), "");
   }
-
 
   #[test]
   fn strips_csi_and_osc_in_assistant_response() {

@@ -246,7 +246,9 @@ fn details_subject<'a>(
           .map(|&i| &app.workspace.items[i])
           .or_else(|| {
             app
-              .feed.discovery.url_index
+              .feed
+              .discovery
+              .url_index
               .get(&entry.key)
               .map(|&i| &app.feed.discovery.items[i])
           });
@@ -418,9 +420,10 @@ fn render_feed_item_details<'a>(
       )));
     }
   }
-  let notif = app.notification.message.as_deref().filter(|_| {
-    app.notification.item_id.as_deref() == Some(item.url.as_str())
-  });
+  let notif =
+    app.notification.message.as_deref().filter(|_| {
+      app.notification.item_id.as_deref() == Some(item.url.as_str())
+    });
   let footer_lines =
     3 + usize::from(
       item.github_owner.is_some() && item.github_repo_name.is_some(),

@@ -165,15 +165,17 @@ impl FuzzFindPopup<'_> {
       KeyCode::Esc => return FuzzFindReturn::Close,
       KeyCode::Char('c') if has_control => return FuzzFindReturn::Close,
       KeyCode::Enter => {
-        let id = self.list_state.selected().and_then(|idx| {
-          self.filtered_entries.get(idx).map(|e| e.id.clone())
-        });
+        let id = self
+          .list_state
+          .selected()
+          .and_then(|idx| self.filtered_entries.get(idx).map(|e| e.id.clone()));
         return FuzzFindReturn::SelectEntry(id);
       }
       KeyCode::Char('m') if has_control => {
-        let id = self.list_state.selected().and_then(|idx| {
-          self.filtered_entries.get(idx).map(|e| e.id.clone())
-        });
+        let id = self
+          .list_state
+          .selected()
+          .and_then(|idx| self.filtered_entries.get(idx).map(|e| e.id.clone()));
         return FuzzFindReturn::SelectEntry(id);
       }
       KeyCode::Up => self.cycle_prev_entry(),

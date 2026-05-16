@@ -1,17 +1,19 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::sync::mpsc;
 
-use super::remember_fulltext_paper_context;
 use super::super::{
   do_refresh, kbd_scroll_ok, open_url, spawn_ai_discovery,
   spawn_fulltext_fetch, spawn_repo_open, truncate_for_notif,
 };
+use super::remember_fulltext_paper_context;
 use crate::app::{App, AppView, FeedTab, PaneId, RepoContext, RepoPane};
 use crate::models::WorkflowState;
 
 pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
   // Discoveries tab — search bar input (when focused).
-  if app.feed.feed_tab == FeedTab::Discoveries && app.feed.discovery.search_focused {
+  if app.feed.feed_tab == FeedTab::Discoveries
+    && app.feed.discovery.search_focused
+  {
     let palette_active = app.feed.discovery.query.starts_with('/');
     match key.code {
       KeyCode::Esc => {
@@ -546,7 +548,9 @@ fn handle_history_tab(key: KeyEvent, app: &mut App) -> bool {
       true
     }
     KeyCode::Enter => {
-      let Some(entry) = app.history_get(app.feed.history_list.selected()).cloned() else {
+      let Some(entry) =
+        app.history_get(app.feed.history_list.selected()).cloned()
+      else {
         return true;
       };
       match entry.kind {
@@ -588,10 +592,7 @@ fn discovery_palette_filtered(
 ) -> Vec<&'static chat::ChatSlashCommandSpec> {
   let all = crate::commands::registry::discovery_slash_specs();
   let q = query.to_lowercase();
-  all
-    .iter()
-    .filter(|s| q == "/" || s.command.starts_with(q.as_str()))
-    .collect()
+  all.iter().filter(|s| q == "/" || s.command.starts_with(q.as_str())).collect()
 }
 
 fn discovery_palette_count(query: &str) -> usize {

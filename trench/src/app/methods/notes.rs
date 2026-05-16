@@ -39,5 +39,4 @@ impl App {
       FocusedReader::Secondary => self.secondary_notes_context = context,
     }
   }
-
 }

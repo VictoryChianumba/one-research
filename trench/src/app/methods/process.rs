@@ -64,7 +64,8 @@ impl App {
         FetchMessage::Items(new_items) => {
           for mut item in new_items {
             // Apply any persisted workflow state.
-            if let Some(state) = self.workspace.persisted_states.get(&item.url) {
+            if let Some(state) = self.workspace.persisted_states.get(&item.url)
+            {
               item.workflow_state = *state;
             }
 
@@ -107,7 +108,8 @@ impl App {
         }
         FetchMessage::EnrichedItems(new_items) => {
           for mut item in new_items {
-            if let Some(state) = self.workspace.persisted_states.get(&item.url) {
+            if let Some(state) = self.workspace.persisted_states.get(&item.url)
+            {
               item.workflow_state = *state;
             }
 
@@ -122,17 +124,21 @@ impl App {
             if let Some(aid) = arxiv_id_from_url(&item.url) {
               if let Some(&pos) = self.workspace.arxiv_id_index.get(aid) {
                 let workflow_state = self.workspace.items[pos].workflow_state;
-                if self.workspace.items[pos].source_platform == SourcePlatform::ArXiv
+                if self.workspace.items[pos].source_platform
+                  == SourcePlatform::ArXiv
                   && item.source_platform != SourcePlatform::ArXiv
                 {
                   if self.workspace.items[pos].github_repo.is_none() {
-                    self.workspace.items[pos].github_repo = item.github_repo.take();
-                    self.workspace.items[pos].github_owner = item.github_owner.take();
+                    self.workspace.items[pos].github_repo =
+                      item.github_repo.take();
+                    self.workspace.items[pos].github_owner =
+                      item.github_owner.take();
                     self.workspace.items[pos].github_repo_name =
                       item.github_repo_name.take();
                   }
                   if self.workspace.items[pos].full_content.is_none() {
-                    self.workspace.items[pos].full_content = item.full_content.take();
+                    self.workspace.items[pos].full_content =
+                      item.full_content.take();
                   }
                   had_enriched_updates = true;
                   continue;
@@ -246,7 +252,9 @@ impl App {
           let topic = self.feed.discovery.session.initial_query.clone();
           if !topic.is_empty() {
             let titles: String = self
-              .feed.discovery.items
+              .feed
+              .discovery
+              .items
               .iter()
               .take(3)
               .map(|i| format!("• {}", i.title))
@@ -316,7 +324,11 @@ impl App {
       }
       self.feed.discovery.items.push(item);
     }
-    self.feed.discovery.items.sort_by(|a, b| b.published_at.cmp(&a.published_at));
+    self
+      .feed
+      .discovery
+      .items
+      .sort_by(|a, b| b.published_at.cmp(&a.published_at));
     // Sort invalidated positions; rebuild for correctness.
     self.rebuild_discovery_indices();
     self.route_effects(&[crate::effect::Effect::ItemsChanged]);

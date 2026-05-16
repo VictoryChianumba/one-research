@@ -128,12 +128,8 @@ impl NotePopup<'_> {
       .horizontal_margin(4)
       .vertical_margin(2)
       .constraints(
-        [
-          Constraint::Length(3),
-          Constraint::Length(3),
-          Constraint::Min(1),
-        ]
-        .as_ref(),
+        [Constraint::Length(3), Constraint::Length(3), Constraint::Min(1)]
+          .as_ref(),
       )
       .split(area);
 
@@ -231,11 +227,8 @@ impl NotePopup<'_> {
   }
 
   fn validate_title(&mut self) {
-    let empty = self
-      .title_txt
-      .lines()
-      .first()
-      .is_none_or(|line| line.is_empty());
+    let empty =
+      self.title_txt.lines().first().is_none_or(|line| line.is_empty());
     if empty {
       self.title_err_msg = "Title can't be empty".into();
     } else {
@@ -284,12 +277,8 @@ impl NotePopup<'_> {
       KeyCode::Char(' ') | KeyCode::Char('t') if has_ctrl => {
         debug_assert!(self.tags_popup.is_none());
 
-        let tags_text = self
-          .tags_txt
-          .lines()
-          .first()
-          .map(|s| s.as_str())
-          .unwrap_or("");
+        let tags_text =
+          self.tags_txt.lines().first().map(|s| s.as_str()).unwrap_or("");
 
         self.tags_popup = Some(TagsPopup::new(tags_text, Vec::new()));
 
@@ -335,8 +324,7 @@ impl NotePopup<'_> {
       return NotePopupReturn::KeepPopup;
     }
 
-    let title =
-      self.title_txt.lines().first().cloned().unwrap_or_default();
+    let title = self.title_txt.lines().first().cloned().unwrap_or_default();
     let tags = text_to_tags(
       self.tags_txt.lines().first().map(|s| s.as_str()).unwrap_or(""),
     );

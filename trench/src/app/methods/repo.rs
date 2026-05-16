@@ -67,9 +67,8 @@ impl App {
         ctx.status_message = None;
       }
       Err(e) => {
-        ctx.status_message = Some(crate::sanitize::sanitize_terminal_text(
-          &format!("Error: {e}"),
-        ));
+        ctx.status_message =
+          Some(crate::sanitize::sanitize_terminal_text(&format!("Error: {e}")));
       }
     }
   }
@@ -112,9 +111,8 @@ impl App {
         ctx.status_message = None;
       }
       Err(e) => {
-        ctx.status_message = Some(crate::sanitize::sanitize_terminal_text(
-          &format!("Error: {e}"),
-        ));
+        ctx.status_message =
+          Some(crate::sanitize::sanitize_terminal_text(&format!("Error: {e}")));
       }
     }
   }
@@ -351,5 +349,4 @@ impl App {
       ctx.status_message.clone().or_else(|| Some("ready".to_string()))
     }
   }
-
 }

@@ -156,9 +156,8 @@ pub struct App {
   /// render path sets max appropriately for its mode.
   pub reader_bottom_scroll: crate::primitives::ScrollState,
   pub narrow_feed_details_open: bool, // State 2: description popup over reader
-  pub abstract_popup_active: bool, // Space: quick abstract view
+  pub abstract_popup_active: bool,    // Space: quick abstract view
   pub reader_feed_popup_selected: usize, // selected item in bottom feed list
-
 
   // Last opened paper (shown in dashboard "Continue Reading")
   pub last_read: Option<String>,
@@ -391,7 +390,6 @@ impl App {
 
   // ── Pane registry ──────────────────────────────────────────────────────────
 
-
   /// Set the redraw flag. Cheap — call from any code path that mutates
   /// state visible to the user. Mirrors `cli-text-reader::Editor::mark_dirty`
   /// so the embedded reader and trench's outer UI use identical semantics.
@@ -555,8 +553,12 @@ impl App {
           return false;
         }
         if !self.feed.active_filters.tags.is_empty() {
-          let item_tags = crate::tags::for_url(&self.workspace.item_tags, &item.url);
-          if !item_tags.iter().any(|t| self.feed.active_filters.tags.contains(t)) {
+          let item_tags =
+            crate::tags::for_url(&self.workspace.item_tags, &item.url);
+          if !item_tags
+            .iter()
+            .any(|t| self.feed.active_filters.tags.contains(t))
+          {
             return false;
           }
         }
@@ -564,7 +566,8 @@ impl App {
       })
       .map(|(i, _)| i)
       .collect();
-    *self.visible_cache.borrow_mut() = Some((self.feed.feed_tab, indices.clone()));
+    *self.visible_cache.borrow_mut() =
+      Some((self.feed.feed_tab, indices.clone()));
     indices.iter().map(|&i| &items[i]).collect()
   }
 
@@ -791,7 +794,6 @@ impl App {
     self.clear_notification();
   }
 
-
   /// Mutator chokepoint for `search_query`. Invokes `f` on the query, then
   /// auto-syncs `search_query_lower` and invalidates every cache that depends
   /// on the query (`visible_cache`, `filtered_history_cache`). All search
@@ -808,21 +810,21 @@ impl App {
   /// `library_extend_selection` for incremental update.
 
   pub fn show_quit_popup(&mut self) {
-    let kind = if self.focus.focused_pane == PaneId::Reader && self.reader_active {
-      QuitPopupKind::LeaveReader
-    } else if self.feed.discovery.loading || self.is_loading {
-      QuitPopupKind::QuitWithProgress
-    } else if self.chat.active
-      && self.chat.ui.as_ref().map_or(false, |c| !c.input.trim().is_empty())
-    {
-      QuitPopupKind::QuitWithChat
-    } else {
-      QuitPopupKind::QuitApp
-    };
+    let kind =
+      if self.focus.focused_pane == PaneId::Reader && self.reader_active {
+        QuitPopupKind::LeaveReader
+      } else if self.feed.discovery.loading || self.is_loading {
+        QuitPopupKind::QuitWithProgress
+      } else if self.chat.active
+        && self.chat.ui.as_ref().map_or(false, |c| !c.input.trim().is_empty())
+      {
+        QuitPopupKind::QuitWithChat
+      } else {
+        QuitPopupKind::QuitApp
+      };
     self.quit_popup.active = true;
     self.quit_popup.kind = kind;
   }
-
 
   pub fn handle_slash_command(&mut self, cmd: String) {
     let parsed = crate::commands::parser::parse_slash_command(&cmd);
@@ -876,9 +878,6 @@ impl App {
   }
 
   // ── Repo viewer ────────────────────────────────────────────────────────
-
-
-
 }
 
 pub(super) fn encode_repo_url_path(path: &str) -> String {
@@ -899,7 +898,10 @@ pub(super) fn encode_repo_url_path(path: &str) -> String {
 // Helpers
 // ---------------------------------------------------------------------------
 
-pub(super) fn toggle_set<T: Eq + std::hash::Hash>(set: &mut HashSet<T>, value: T) {
+pub(super) fn toggle_set<T: Eq + std::hash::Hash>(
+  set: &mut HashSet<T>,
+  value: T,
+) {
   if !set.remove(&value) {
     set.insert(value);
   }
@@ -1119,12 +1121,18 @@ mod tests {
     let mut app = App::new();
     app.workspace.items = mock_items();
     app.rebuild_indices();
-    assert!(!app.workspace.url_index.is_empty(), "fixture must populate url_index");
+    assert!(
+      !app.workspace.url_index.is_empty(),
+      "fixture must populate url_index"
+    );
 
     app.reset_items();
 
     assert!(app.workspace.items.is_empty());
-    assert!(app.workspace.url_index.is_empty(), "url_index must be cleared in lockstep");
+    assert!(
+      app.workspace.url_index.is_empty(),
+      "url_index must be cleared in lockstep"
+    );
     assert!(
       app.workspace.arxiv_id_index.is_empty(),
       "arxiv_id_index must be cleared in lockstep"
@@ -1538,7 +1546,10 @@ mod tests {
 
 // ── Reader tab accessors ──────────────────────────────────────────────────────
 
-pub(super) fn classify_repo_file_kind(name: &str, content: &str) -> RepoFileKind {
+pub(super) fn classify_repo_file_kind(
+  name: &str,
+  content: &str,
+) -> RepoFileKind {
   let lower = name.to_ascii_lowercase();
   if lower.ends_with(".md")
     || lower.ends_with(".markdown")

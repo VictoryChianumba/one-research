@@ -91,9 +91,9 @@ pub fn fetch_tree_dir(
 /// with `branch = "main&token=..."` could inject parameters into our calls.
 fn is_safe_branch(branch: &str) -> bool {
   !branch.is_empty()
-    && branch.chars().all(|c| {
-      c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '/' | '-')
-    })
+    && branch
+      .chars()
+      .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '/' | '-'))
 }
 
 fn encode_url_path(path: &str) -> Result<String, String> {

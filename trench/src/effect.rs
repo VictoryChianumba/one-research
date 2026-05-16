@@ -21,10 +21,7 @@ pub enum Effect {
 
   /// An item's workflow state transitioned (Inbox → Read, etc.).
   /// Observer invalidates: visible_cache, counts_cache.
-  WorkflowStateChanged {
-    url: String,
-    state: WorkflowState,
-  },
+  WorkflowStateChanged { url: String, state: WorkflowState },
 
   /// History was mutated — entry added, removed, or modified in place.
   /// Observer invalidates: filtered_history_cache.

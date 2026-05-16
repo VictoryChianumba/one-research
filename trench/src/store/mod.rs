@@ -187,7 +187,10 @@ pub fn save(state: &HashMap<String, WorkflowState>) {
 
   if let Ok(json) = serde_json::to_vec(state) {
     if let Err(e) = atomic_write(&path, &json) {
-      log::error!("trench/state: atomic_write failed at {}: {e}", path.display());
+      log::error!(
+        "trench/state: atomic_write failed at {}: {e}",
+        path.display()
+      );
     }
     set_private(&path);
   }

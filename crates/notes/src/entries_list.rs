@@ -50,8 +50,8 @@ impl EntriesList {
     let items: Vec<ListItem> = notes
       .iter()
       .map(|note| {
-        let highlight_selected = self.multi_select_mode
-          && self.selected_notes.contains(&note.note_id);
+        let highlight_selected =
+          self.multi_select_mode && self.selected_notes.contains(&note.note_id);
 
         // *** Title ***
         let mut title = note.title.to_string();
@@ -70,9 +70,9 @@ impl EntriesList {
         lines_count += title_lines.len();
 
         let title_style = match (self.is_active, highlight_selected) {
-          (_, true) => {
-            Style::default().fg(theme::current().accent).add_modifier(Modifier::BOLD)
-          }
+          (_, true) => Style::default()
+            .fg(theme::current().accent)
+            .add_modifier(Modifier::BOLD),
           (true, _) => Style::default().add_modifier(Modifier::BOLD),
           (false, _) => Style::reset(),
         };
@@ -142,7 +142,9 @@ impl EntriesList {
     let highlight_style = if self.is_active {
       Style::default().add_modifier(Modifier::REVERSED)
     } else {
-      Style::default().add_modifier(Modifier::REVERSED).fg(theme::current().text_dim)
+      Style::default()
+        .add_modifier(Modifier::REVERSED)
+        .fg(theme::current().text_dim)
     };
 
     let list =

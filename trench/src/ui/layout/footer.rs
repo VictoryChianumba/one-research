@@ -8,8 +8,7 @@ use ratatui::{
 
 use crate::app::{App, FeedTab, FocusedReader, NotesMode, PaneId};
 
-const SPINNER: &[&str] =
-  &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const SPINNER: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 pub fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
   let t = app.theme();
@@ -31,7 +30,11 @@ pub fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
     let sources = app.loading_sources.join(", ");
     let prefix = if app.is_refreshing { "↻ refreshing" } else { "fetching" };
     Some(Line::from(Span::styled(
-      format!("{spin} {prefix}: {}  │  {} items", sources, app.workspace.items.len()),
+      format!(
+        "{spin} {prefix}: {}  │  {} items",
+        sources,
+        app.workspace.items.len()
+      ),
       Style::default().fg(t.warning),
     )))
   } else {
@@ -55,7 +58,8 @@ fn footer_command_line(app: &App) -> Line<'static> {
   let repo_style = Style::default().fg(t.success);
   let visible = app.visible_count();
   let total = app.items_for_tab().len();
-  let filtered = !app.feed.search_query.is_empty() || !app.feed.active_filters.is_empty();
+  let filtered =
+    !app.feed.search_query.is_empty() || !app.feed.active_filters.is_empty();
   let repo_available = !app.reader_active
     && !app.chat.fullscreen
     && app.focus.focused_pane == PaneId::Feed

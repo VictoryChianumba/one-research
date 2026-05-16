@@ -1,8 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent};
 
-use crate::app::{
-  App, AppView, CustomThemeEditorMode, CustomThemeEditorState,
-};
+use crate::app::{App, AppView, CustomThemeEditorMode, CustomThemeEditorState};
 use crate::config::{self, CUSTOM_THEME_ROLES, CustomThemeConfig};
 use ui_theme::ThemeId;
 

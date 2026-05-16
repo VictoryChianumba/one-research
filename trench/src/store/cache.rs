@@ -64,7 +64,10 @@ pub fn save(items: &[FeedItem]) {
 
   if let Ok(json) = serde_json::to_vec(items) {
     if let Err(e) = super::atomic_write(&path, &json) {
-      log::error!("trench/cache: atomic_write failed at {}: {e}", path.display());
+      log::error!(
+        "trench/cache: atomic_write failed at {}: {e}",
+        path.display()
+      );
     }
     crate::store::set_private(&path);
   }
@@ -89,9 +92,10 @@ fn writer_handle() -> &'static Sender<WriterMsg> {
         // silently. Without this, a panicking writer leaves WRITER_TX
         // holding a stale Sender — every subsequent queue_save returns
         // Ok but the saves vanish.
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
-          move || writer_loop(rx),
-        ));
+        let result =
+          std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+            writer_loop(rx)
+          }));
         if let Err(payload) = result {
           let msg = if let Some(s) = payload.downcast_ref::<&'static str>() {
             (*s).to_string()

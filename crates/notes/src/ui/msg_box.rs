@@ -60,7 +60,9 @@ impl MsgBox {
 
     let (title, text_color, text) = match &self.msg_type {
       MsgBoxType::Error(text) => ("─── Error ───", Color::Red, text),
-      MsgBoxType::Warning(text) => ("─── Warning ───", theme::current().warning, text),
+      MsgBoxType::Warning(text) => {
+        ("─── Warning ───", theme::current().warning, text)
+      }
       MsgBoxType::Info(text) => ("─── Info ───", theme::current().accent, text),
       MsgBoxType::Question(text) => ("─── ? ───", theme::current().text, text),
     };

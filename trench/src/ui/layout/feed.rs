@@ -10,9 +10,7 @@ use ratatui::{
 };
 
 use super::reader::{drawer_feed_header_line, drawer_feed_row_line};
-use super::widgets::{
-  pane_inset, safe_truncate_chars, truncate, truncate_str,
-};
+use super::widgets::{pane_inset, safe_truncate_chars, truncate, truncate_str};
 use crate::app::FeedTab;
 use crate::models::SourcePlatform;
 
@@ -167,7 +165,8 @@ fn draw_discovery_palette(
   ctx: &crate::feed::FeedContext,
   list_area: Rect,
 ) {
-  if !model.discovery.search_focused || !model.discovery.query.starts_with('/') {
+  if !model.discovery.search_focused || !model.discovery.query.starts_with('/')
+  {
     return;
   }
 
@@ -175,9 +174,7 @@ fn draw_discovery_palette(
   let query_lower = model.discovery.query_lower.as_str();
   let suggestions: Vec<_> = all_specs
     .iter()
-    .filter(|s| {
-      query_lower == "/" || s.command.starts_with(query_lower)
-    })
+    .filter(|s| query_lower == "/" || s.command.starts_with(query_lower))
     .collect();
 
   if suggestions.is_empty() || list_area.height == 0 {
@@ -523,7 +520,8 @@ fn draw_history_tab(
         .map(|&idx| &ctx.workspace.items[idx])
         .or_else(|| {
           model
-            .discovery.url_index
+            .discovery
+            .url_index
             .get(&entry.key)
             .map(|&idx| &model.discovery.items[idx])
         });
@@ -563,11 +561,8 @@ fn draw_history_tab(
         feed_cell(&source, source_style),
         feed_cell(&kind, dim_style),
         Cell::from(Text::from({
-          let title_style = if is_selected {
-            selected_text_style
-          } else {
-            Style::default()
-          };
+          let title_style =
+            if is_selected { selected_text_style } else { Style::default() };
           let lines: Vec<Line<'static>> = title_lines
             .iter()
             .map(|s| Line::from(Span::styled(s.clone(), title_style)))
@@ -576,10 +571,7 @@ fn draw_history_tab(
           lines
         })),
         feed_cell(date, dim_style),
-        feed_cell(
-          &crate::history::format_ago(entry.opened_at, now),
-          dim_style,
-        ),
+        feed_cell(&crate::history::format_ago(entry.opened_at, now), dim_style),
       ])
       .style(row_style)
       .height((content_height + 1).max(3))
@@ -612,7 +604,9 @@ fn draw_history_tab(
   }
 }
 
-pub(super) fn history_source_label(entry: &crate::history::HistoryEntry) -> String {
+pub(super) fn history_source_label(
+  entry: &crate::history::HistoryEntry,
+) -> String {
   match entry.paper_meta.as_ref().map(|meta| &meta.source_platform) {
     Some(SourcePlatform::HuggingFace) => "hf".to_string(),
     Some(SourcePlatform::ArXiv) => "arxiv".to_string(),
@@ -651,8 +645,7 @@ pub fn draw_narrow_feed(
   let row_heights: Vec<usize> = if total > 0 {
     let upper = selected.saturating_add(1).min(total);
     let items = crate::feed::items_for_tab(ctx.workspace, &*model);
-    ctx
-      .visible_indices[..upper]
+    ctx.visible_indices[..upper]
       .iter()
       .map(|&i| reader_feed_row_height(&items[i], title_w))
       .collect()
@@ -823,7 +816,6 @@ fn reader_feed_row_lines_with_wrapped(
     .collect()
 }
 
-
 pub fn draw_item_table(
   frame: &mut Frame,
   model: &mut crate::feed::FeedModel,
@@ -931,7 +923,8 @@ pub fn draw_item_table(
 
   // ── Build rows for visible window only ────────────────────────────────────
   let t_rows = std::time::Instant::now();
-  let visual_mode = model.feed_tab == FeedTab::Library && model.library_visual_mode;
+  let visual_mode =
+    model.feed_tab == FeedTab::Library && model.library_visual_mode;
   let selected_idx = model.active_list().selected();
   let rows: Vec<Row> = window
     .iter()
@@ -972,11 +965,8 @@ pub fn draw_item_table(
           if is_selected { selected_text_style } else { signal_style },
         ),
         Cell::from(Text::from({
-          let title_style = if is_selected {
-            selected_text_style
-          } else {
-            Style::default()
-          };
+          let title_style =
+            if is_selected { selected_text_style } else { Style::default() };
           let lines: Vec<Line<'static>> = title_lines
             .iter()
             .map(|s| Line::from(Span::styled(s.clone(), title_style)))
@@ -1005,11 +995,7 @@ pub fn draw_item_table(
 
   let table = Table::new(
     rows,
-    [
-      Constraint::Length(1),
-      Constraint::Min(0),
-      Constraint::Length(10),
-    ],
+    [Constraint::Length(1), Constraint::Min(0), Constraint::Length(10)],
   )
   .header(header)
   .column_spacing(2)
@@ -1030,7 +1016,11 @@ pub fn draw_item_table(
     let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
       .begin_symbol(None)
       .end_symbol(None);
-    frame.render_stateful_widget(scrollbar, scrollbar_rect, &mut scrollbar_state);
+    frame.render_stateful_widget(
+      scrollbar,
+      scrollbar_rect,
+      &mut scrollbar_state,
+    );
   }
   log::debug!(
     "draw_item_table total: {}ms ({} total items, {} in window)",
@@ -1058,7 +1048,6 @@ fn feed_cell(value: &str, style: Style) -> Cell<'static> {
     Line::from(""),
   ]))
 }
-
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 

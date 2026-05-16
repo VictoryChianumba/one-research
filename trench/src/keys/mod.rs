@@ -187,10 +187,15 @@ pub fn dispatch(key: KeyEvent, app: &mut App) {
 /// a hotkey — search bar, sources popup input, settings field editing,
 /// discovery palette, focused chat/notes panes, custom theme editor.
 fn is_text_entry_context(app: &App) -> bool {
-  if app.feed.search_active || app.sources_popup.input.is_focused() || app.settings.editing {
+  if app.feed.search_active
+    || app.sources_popup.input.is_focused()
+    || app.settings.editing
+  {
     return true;
   }
-  if app.feed.feed_tab == FeedTab::Discoveries && app.feed.discovery.search_focused {
+  if app.feed.feed_tab == FeedTab::Discoveries
+    && app.feed.discovery.search_focused
+  {
     return true;
   }
   if app.chat.active && app.focus.focused_pane == PaneId::Chat {
@@ -199,7 +204,9 @@ fn is_text_entry_context(app: &App) -> bool {
   if app.notes_active && app.focus.focused_pane == PaneId::Notes {
     return true;
   }
-  if app.secondary_notes_active && app.focus.focused_pane == PaneId::SecondaryNotes {
+  if app.secondary_notes_active
+    && app.focus.focused_pane == PaneId::SecondaryNotes
+  {
     return true;
   }
   app.theme_picker.custom_editor.as_ref().is_some_and(|editor| {
@@ -711,8 +718,7 @@ fn ensure_chat(app: &mut App) {
     registry.register("openai", Box::new(chat::OpenAiProvider::new(k.clone())));
   }
   let default_provider = app.config.default_chat_provider.clone();
-  let slash_commands =
-    crate::commands::registry::chat_slash_specs().to_vec();
+  let slash_commands = crate::commands::registry::chat_slash_specs().to_vec();
   app.chat.ui =
     Some(chat::ChatUi::new(registry, default_provider, slash_commands));
 }
@@ -756,26 +762,38 @@ fn find_item_by_url<'a>(
   app: &'a App,
   url: &str,
 ) -> Option<&'a crate::models::FeedItem> {
-  app.workspace.url_index.get(url).and_then(|&idx| app.workspace.items.get(idx)).or_else(|| {
-    app
-      .feed.discovery.url_index
-      .get(url)
-      .and_then(|&idx| app.feed.discovery.items.get(idx))
-  })
+  app
+    .workspace
+    .url_index
+    .get(url)
+    .and_then(|&idx| app.workspace.items.get(idx))
+    .or_else(|| {
+      app
+        .feed
+        .discovery
+        .url_index
+        .get(url)
+        .and_then(|&idx| app.feed.discovery.items.get(idx))
+    })
 }
 
 fn find_item_by_arxiv_id<'a>(
   app: &'a App,
   arxiv_id: &str,
 ) -> Option<&'a crate::models::FeedItem> {
-  app.workspace.arxiv_id_index.get(arxiv_id).and_then(|&idx| app.workspace.items.get(idx)).or_else(
-    || {
+  app
+    .workspace
+    .arxiv_id_index
+    .get(arxiv_id)
+    .and_then(|&idx| app.workspace.items.get(idx))
+    .or_else(|| {
       app
-        .feed.discovery.arxiv_id_index
+        .feed
+        .discovery
+        .arxiv_id_index
         .get(arxiv_id)
         .and_then(|&idx| app.feed.discovery.items.get(idx))
-    },
-  )
+    })
 }
 
 fn notes_context_from_history_entry(
@@ -1437,6 +1455,4 @@ fn handle_notes_pane(key: KeyEvent, app: &mut App) -> bool {
   true
 }
 
-
 // ── View handlers ─────────────────────────────────────────────────────────────
-

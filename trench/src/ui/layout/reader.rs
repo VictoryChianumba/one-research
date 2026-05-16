@@ -468,7 +468,12 @@ fn draw_bottom_pane_feed(frame: &mut Frame, app: &mut App, area: Rect) {
       let is_selected = i == sel;
       let row_y = list_area.y + rel_i as u16;
       let row_rect = Rect::new(list_area.x, row_y, list_area.width, 1);
-      let row = drawer_history_row_line(entry, list_area.width as usize, is_selected, &t);
+      let row = drawer_history_row_line(
+        entry,
+        list_area.width as usize,
+        is_selected,
+        &t,
+      );
       if is_selected {
         frame.render_widget(
           Paragraph::new(row).style(t.style_selection()),

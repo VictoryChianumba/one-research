@@ -18,10 +18,7 @@ use crate::discovery;
 use crate::is_safe_url_scheme;
 use crate::panic_msg;
 
-pub(crate) fn spawn_discovery(
-  url: String,
-  tx: mpsc::Sender<DiscoverResult>,
-) {
+pub(crate) fn spawn_discovery(url: String, tx: mpsc::Sender<DiscoverResult>) {
   std::thread::spawn(move || {
     let tx_panic = tx.clone();
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -125,8 +122,7 @@ fn extract_rss_link(html: &str, base_url: &str) -> Option<String> {
       // any joining with base_url. Anything with a `:` before the first
       // path/query/fragment delimiter is a scheme: javascript:, file:,
       // data:, mailto:, etc.
-      let scheme_end =
-        href.find(|c: char| c == '/' || c == '?' || c == '#');
+      let scheme_end = href.find(|c: char| c == '/' || c == '?' || c == '#');
       let pre = scheme_end.map(|i| &href[..i]).unwrap_or(&href[..]);
       if pre.contains(':') && !is_safe_url_scheme(&href) {
         search = &search[pos + needle.len()..];
@@ -202,8 +198,9 @@ pub(crate) fn spawn_ai_discovery(
     .map(|k| !k.trim().is_empty())
     .unwrap_or(false);
 
-  let is_refinement =
-    !app.feed.discovery.session.is_empty() && !app.feed.discovery.force_new && has_claude;
+  let is_refinement = !app.feed.discovery.session.is_empty()
+    && !app.feed.discovery.force_new
+    && has_claude;
 
   let prior_history = if is_refinement {
     Some(app.feed.discovery.session.messages.clone())
@@ -273,7 +270,8 @@ mod extract_rss_link_tests {
 
   #[test]
   fn accepts_relative_href_with_safe_base() {
-    let html = r#"<link rel="alternate" type="application/rss+xml" href="/feed.xml">"#;
+    let html =
+      r#"<link rel="alternate" type="application/rss+xml" href="/feed.xml">"#;
     assert_eq!(
       extract_rss_link(html, "https://example.com"),
       Some("https://example.com/feed.xml".to_string())

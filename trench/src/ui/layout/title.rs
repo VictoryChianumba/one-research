@@ -14,8 +14,7 @@ use crate::models::{ContentType, SignalLevel, WorkflowState};
 
 const VERSION: &str = "v0.1.0";
 
-const SPINNER: &[&str] =
-  &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const SPINNER: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 pub fn title_bar_height(_width: u16) -> u16 {
   5
@@ -47,8 +46,11 @@ fn draw_compact_title_bar(frame: &mut Frame, app: &App, area: Rect) {
   let total = counts.total;
   let active_style = Style::default().fg(t.text).add_modifier(Modifier::BOLD);
   let inactive_style = Style::default().fg(t.text_dim);
-  let inbox_style =
-    if app.feed.feed_tab == FeedTab::Inbox { active_style } else { inactive_style };
+  let inbox_style = if app.feed.feed_tab == FeedTab::Inbox {
+    active_style
+  } else {
+    inactive_style
+  };
   let library_style = if app.feed.feed_tab == FeedTab::Library {
     active_style
   } else {
@@ -136,11 +138,12 @@ pub fn draw_search_row(frame: &mut Frame, app: &App, area: Rect) {
     .constraints([Constraint::Min(0), Constraint::Length(RIGHT_COL_WIDTH)])
     .split(content_area);
 
-  let search_text = if app.feed.search_active || !app.feed.search_query.is_empty() {
-    format!(" / {}", app.feed.search_query)
-  } else {
-    " / Search items...".to_string()
-  };
+  let search_text =
+    if app.feed.search_active || !app.feed.search_query.is_empty() {
+      format!(" / {}", app.feed.search_query)
+    } else {
+      " / Search items...".to_string()
+    };
   let search_style = if app.feed.search_active {
     Style::default().fg(t.text)
   } else {

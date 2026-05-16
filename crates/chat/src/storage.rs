@@ -36,11 +36,7 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 /// suffix prevents same-second collisions; rename failure is logged
 /// loudly so the user knows the recovery copy will be overwritten on the
 /// next save.
-fn quarantine_corrupted(
-  path: &Path,
-  label: &str,
-  err: &dyn std::fmt::Display,
-) {
+fn quarantine_corrupted(path: &Path, label: &str, err: &dyn std::fmt::Display) {
   use std::sync::atomic::{AtomicU64, Ordering};
   static COUNTER: AtomicU64 = AtomicU64::new(0);
   let ts_nanos = std::time::SystemTime::now()
@@ -102,9 +98,7 @@ fn session_path(id: &str) -> PathBuf {
 /// outside `chats_dir()`.
 fn validate_id(id: &str) -> Result<(), anyhow::Error> {
   if !crate::sanitize::is_safe_id(id) {
-    return Err(anyhow::anyhow!(
-      "rejected unsafe chat session id: {id:?}"
-    ));
+    return Err(anyhow::anyhow!("rejected unsafe chat session id: {id:?}"));
   }
   Ok(())
 }
@@ -148,10 +142,7 @@ pub fn load_index() -> ChatIndex {
     Ok(v) => v,
     Err(e) => {
       quarantine_corrupted(&path, "trench/chat/index", &e);
-      ChatIndex {
-        sessions: Vec::new(),
-        default_provider: "claude".to_string(),
-      }
+      ChatIndex { sessions: Vec::new(), default_provider: "claude".to_string() }
     }
   }
 }

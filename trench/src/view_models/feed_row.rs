@@ -117,10 +117,7 @@ mod tests {
 
   #[test]
   fn rss_with_source_name_truncates_to_seven() {
-    let vm = FeedRowVm::from_item(&mock_item(
-      SourcePlatform::Rss,
-      "import_ai",
-    ));
+    let vm = FeedRowVm::from_item(&mock_item(SourcePlatform::Rss, "import_ai"));
     // "import_a…" (7 chars + ellipsis is 8 visible, but truncate's max=7
     // means up to 6 chars + ellipsis)
     assert!(vm.source_label.starts_with("import"));
@@ -129,8 +126,7 @@ mod tests {
 
   #[test]
   fn author_truncates_to_thirteen() {
-    let mut item =
-      mock_item(SourcePlatform::ArXiv, "");
+    let mut item = mock_item(SourcePlatform::ArXiv, "");
     item.authors = vec!["Aaron Aardvark Anderson".to_string()];
     let vm = FeedRowVm::from_item(&item);
     // "Aaron Aardvar…" is 13 visible chars + ellipsis

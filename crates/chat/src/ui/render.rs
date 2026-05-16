@@ -505,11 +505,7 @@ pub(super) fn sanitize_content(content: &str) -> String {
     || lower.contains("invalid_api_key")
     || lower.contains("rate_limit")
     || (content.trim_start().starts_with('{') && lower.contains("\"error\""));
-  if looks_like_error {
-    parse_api_error(content)
-  } else {
-    content.to_string()
-  }
+  if looks_like_error { parse_api_error(content) } else { content.to_string() }
 }
 
 /// Inject newlines before structural markdown markers that the model often
@@ -608,11 +604,7 @@ pub(super) fn step_cursor_back(s: &str, cursor: usize) -> usize {
   if cursor == 0 {
     return 0;
   }
-  s[..cursor]
-    .char_indices()
-    .next_back()
-    .map(|(i, _)| i)
-    .unwrap_or(0)
+  s[..cursor].char_indices().next_back().map(|(i, _)| i).unwrap_or(0)
 }
 
 /// Step a cursor byte offset forward by one char in `s`. Returns the new
@@ -621,11 +613,7 @@ pub(super) fn step_cursor_forward(s: &str, cursor: usize) -> usize {
   if cursor >= s.len() {
     return s.len();
   }
-  s[cursor..]
-    .char_indices()
-    .nth(1)
-    .map(|(i, _)| cursor + i)
-    .unwrap_or(s.len())
+  s[cursor..].char_indices().nth(1).map(|(i, _)| cursor + i).unwrap_or(s.len())
 }
 
 /// Delete the char immediately before `cursor` from `s` and return the new
@@ -874,12 +862,9 @@ mod tests {
     assert_eq!(rendered_width(lines.last().unwrap()), 20);
     assert_eq!(rendered_width(&lines[1]), 20);
     assert!(lines[0].spans.iter().all(|span| span.style.bg.is_some()));
-    assert!(lines
-      .last()
-      .unwrap()
-      .spans
-      .iter()
-      .all(|span| span.style.bg.is_some()));
+    assert!(
+      lines.last().unwrap().spans.iter().all(|span| span.style.bg.is_some())
+    );
   }
 
   #[test]

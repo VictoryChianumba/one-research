@@ -48,10 +48,7 @@ impl App {
       let mut out = Vec::new();
       if new_lo > old_lo {
         out.extend(
-          self
-            .visible_window(old_lo, new_lo)
-            .iter()
-            .map(|it| it.url.clone()),
+          self.visible_window(old_lo, new_lo).iter().map(|it| it.url.clone()),
         );
       }
       if new_hi < old_hi {
@@ -68,10 +65,7 @@ impl App {
       let mut out = Vec::new();
       if new_lo < old_lo {
         out.extend(
-          self
-            .visible_window(new_lo, old_lo)
-            .iter()
-            .map(|it| it.url.clone()),
+          self.visible_window(new_lo, old_lo).iter().map(|it| it.url.clone()),
         );
       }
       if new_hi > old_hi {
@@ -154,7 +148,9 @@ impl App {
     }
     let urls = self.tag_picker.target_urls.clone();
     let any_missing = urls.iter().any(|url| {
-      !crate::tags::for_url(&self.workspace.item_tags, url).iter().any(|t| t == &tag)
+      !crate::tags::for_url(&self.workspace.item_tags, url)
+        .iter()
+        .any(|t| t == &tag)
     });
     for url in &urls {
       if any_missing {

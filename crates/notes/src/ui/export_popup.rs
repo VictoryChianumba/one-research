@@ -154,7 +154,9 @@ impl ExportPopup<'_> {
 
     if self.path_err_msg.is_empty() {
       let block_style = Style::default().fg(theme::current().accent);
-      let cursor_style = Style::default().fg(theme::current().accent).bg(theme::current().accent);
+      let cursor_style = Style::default()
+        .fg(theme::current().accent)
+        .bg(theme::current().accent);
       self.path_txt.set_style(block_style);
       self.path_txt.set_cursor_style(cursor_style);
       self.path_txt.set_block(

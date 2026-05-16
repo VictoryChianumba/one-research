@@ -1,4 +1,7 @@
+# wrap_comments was previously set to true but is nightly-only and
+# produced identical output to stable rustfmt across this codebase
+# (verified 2026-05-16). Removed to silence the unstable-feature
+# warning and keep stable + nightly `cargo fmt` interchangeable.
 use_small_heuristics = "Max"
 max_width = 80
-wrap_comments = true
 tab_spaces = 2

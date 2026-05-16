@@ -25,7 +25,9 @@ pub fn draw_tag_picker(frame: &mut Frame, app: &App) {
     .iter()
     .filter(|tag| {
       app.tag_picker.target_urls.iter().all(|url| {
-        crate::tags::for_url(&app.workspace.item_tags, url).iter().any(|t| t == *tag)
+        crate::tags::for_url(&app.workspace.item_tags, url)
+          .iter()
+          .any(|t| t == *tag)
       })
     })
     .cloned()

@@ -153,19 +153,26 @@ impl App {
       }
     }
     self
-      .feed.discovery
+      .feed
+      .discovery
       .url_index
       .get(&entry.key)
       .and_then(|&idx| self.feed.discovery.items.get(idx))
       .cloned()
-      .or_else(|| entry.paper_meta.as_ref().map(|m| reconstruct_history_feed_item(entry, m)))
+      .or_else(|| {
+        entry
+          .paper_meta
+          .as_ref()
+          .map(|m| reconstruct_history_feed_item(entry, m))
+      })
   }
 
   pub fn activate_history_item_target(
     &mut self,
     entry: &crate::history::HistoryEntry,
   ) -> bool {
-    let Some((tab, workflow_state, url)) = self.history_item_target(entry) else {
+    let Some((tab, workflow_state, url)) = self.history_item_target(entry)
+    else {
       return false;
     };
 
@@ -180,7 +187,8 @@ impl App {
     }
     self.invalidate_visible_cache();
 
-    if let Some(pos) = self.visible_items().iter().position(|item| item.url == url)
+    if let Some(pos) =
+      self.visible_items().iter().position(|item| item.url == url)
     {
       self.set_active_selected_index(pos);
     } else {
@@ -233,11 +241,16 @@ impl App {
       }
       if let Some(&idx) = self.feed.discovery.arxiv_id_index.get(arxiv_id) {
         let item = self.feed.discovery.items.get(idx)?;
-        return Some((FeedTab::Discoveries, item.workflow_state, item.url.clone()));
+        return Some((
+          FeedTab::Discoveries,
+          item.workflow_state,
+          item.url.clone(),
+        ));
       }
     }
     self
-      .feed.discovery
+      .feed
+      .discovery
       .url_index
       .get(&entry.key)
       .and_then(|&idx| self.feed.discovery.items.get(idx))
@@ -248,9 +261,9 @@ impl App {
 fn workspace_feed_tab(state: WorkflowState) -> FeedTab {
   match state {
     WorkflowState::Inbox => FeedTab::Inbox,
-    WorkflowState::Queued | WorkflowState::DeepRead | WorkflowState::Archived => {
-      FeedTab::Library
-    }
+    WorkflowState::Queued
+    | WorkflowState::DeepRead
+    | WorkflowState::Archived => FeedTab::Library,
   }
 }
 

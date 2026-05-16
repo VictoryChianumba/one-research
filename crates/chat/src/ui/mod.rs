@@ -4,30 +4,31 @@ use std::sync::mpsc;
 use chrono::Utc;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
+  Frame,
   layout::{Alignment, Constraint, Direction, Layout, Rect},
   style::{Modifier, Style},
   text::{Line, Span, Text},
   widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph},
-  Frame,
 };
 use ui_theme::Theme;
 
 use crate::{
+  ChatIndex, ChatMessage, ChatSession, ChatSessionMeta, Role,
   provider::ProviderResponse,
-  provider_registry::{parse_provider_prefix, ProviderRegistry},
+  provider_registry::{ProviderRegistry, parse_provider_prefix},
   storage::{
     create_session, delete_session, load_index, load_session, save_index,
     save_session,
   },
-  ChatIndex, ChatMessage, ChatSession, ChatSessionMeta, Role,
 };
 
 mod render;
 use render::{
-  append_stream_chunk, backspace_at_cursor, centered_rect, compute_cost_and_ctx,
-  fmt_tokens, message_gap_needed, parse_api_error, render_assistant_message,
-  render_user_message, sanitize_content, split_stream_chunks, step_cursor_back,
-  step_cursor_forward, truncate_for_width,
+  append_stream_chunk, backspace_at_cursor, centered_rect,
+  compute_cost_and_ctx, fmt_tokens, message_gap_needed, parse_api_error,
+  render_assistant_message, render_user_message, sanitize_content,
+  split_stream_chunks, step_cursor_back, step_cursor_forward,
+  truncate_for_width,
 };
 
 // ── Public types ─────────────────────────────────────────────────────────────
@@ -1439,4 +1440,3 @@ impl ChatUi {
     let _ = save_index(&index);
   }
 }
-

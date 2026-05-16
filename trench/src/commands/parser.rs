@@ -42,31 +42,31 @@ pub fn parse_slash_command(raw: &str) -> SlashCommandInvocation {
         category: arg_after(trimmed, "/add"),
       }
     }
-    Some(CommandId::AddFeed) => SlashCommandInvocation::AddFeed {
-      url: arg_after(trimmed, "/add-feed"),
-    },
-    Some(CommandId::Sota) => SlashCommandInvocation::Sota {
-      topic: arg_after(trimmed, "/sota"),
-    },
+    Some(CommandId::AddFeed) => {
+      SlashCommandInvocation::AddFeed { url: arg_after(trimmed, "/add-feed") }
+    }
+    Some(CommandId::Sota) => {
+      SlashCommandInvocation::Sota { topic: arg_after(trimmed, "/sota") }
+    }
     Some(CommandId::ReadingList) => SlashCommandInvocation::ReadingList {
       topic: arg_after(trimmed, "/reading-list"),
     },
-    Some(CommandId::Code) => SlashCommandInvocation::Code {
-      topic: arg_after(trimmed, "/code"),
-    },
-    Some(CommandId::Compare) => SlashCommandInvocation::Compare {
-      topic: arg_after(trimmed, "/compare"),
-    },
+    Some(CommandId::Code) => {
+      SlashCommandInvocation::Code { topic: arg_after(trimmed, "/code") }
+    }
+    Some(CommandId::Compare) => {
+      SlashCommandInvocation::Compare { topic: arg_after(trimmed, "/compare") }
+    }
     Some(CommandId::Digest) => SlashCommandInvocation::Digest,
-    Some(CommandId::Author) => SlashCommandInvocation::Author {
-      name: arg_after(trimmed, "/author"),
-    },
+    Some(CommandId::Author) => {
+      SlashCommandInvocation::Author { name: arg_after(trimmed, "/author") }
+    }
     Some(CommandId::Trending) => SlashCommandInvocation::Trending {
       topic: arg_after(trimmed, "/trending"),
     },
-    Some(CommandId::Watch) => SlashCommandInvocation::Watch {
-      topic: arg_after(trimmed, "/watch"),
-    },
+    Some(CommandId::Watch) => {
+      SlashCommandInvocation::Watch { topic: arg_after(trimmed, "/watch") }
+    }
     Some(CommandId::ExportHistory) => SlashCommandInvocation::ExportHistory {
       format: arg_after(trimmed, "/export-history"),
     },

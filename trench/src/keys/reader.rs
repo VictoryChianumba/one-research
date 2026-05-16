@@ -1,9 +1,11 @@
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use std::sync::mpsc;
 
-use crate::app::{App, FeedTab, FocusedReader, PaneId};
+use super::super::{
+  spawn_ai_discovery, spawn_fulltext_fetch, truncate_for_notif,
+};
 use super::remember_fulltext_paper_context;
-use super::super::{spawn_ai_discovery, spawn_fulltext_fetch, truncate_for_notif};
+use crate::app::{App, FeedTab, FocusedReader, PaneId};
 
 pub(super) fn reader_pane_focused(app: &App) -> bool {
   if app.reader_popup_active {
@@ -20,11 +22,19 @@ pub(super) fn reader_pane_focused(app: &App) -> bool {
 /// `M`/`L`, `{`/`}`) fire once per keystroke and don't need marking.
 pub(super) fn is_scroll_key(key: KeyEvent) -> bool {
   match key.code {
-    KeyCode::Char('j') | KeyCode::Char('k')
-    | KeyCode::Char('h') | KeyCode::Char('l')
-    | KeyCode::Char('w') | KeyCode::Char('b') | KeyCode::Char('e')
-    | KeyCode::Down | KeyCode::Up | KeyCode::Left | KeyCode::Right
-    | KeyCode::PageDown | KeyCode::PageUp => true,
+    KeyCode::Char('j')
+    | KeyCode::Char('k')
+    | KeyCode::Char('h')
+    | KeyCode::Char('l')
+    | KeyCode::Char('w')
+    | KeyCode::Char('b')
+    | KeyCode::Char('e')
+    | KeyCode::Down
+    | KeyCode::Up
+    | KeyCode::Left
+    | KeyCode::Right
+    | KeyCode::PageDown
+    | KeyCode::PageUp => true,
     KeyCode::Char('d') | KeyCode::Char('u') => {
       key.modifiers.contains(KeyModifiers::CONTROL)
     }
@@ -203,7 +213,8 @@ fn reader_feed_count(app: &App) -> usize {
 
 pub(super) fn handle_reader_pane(key: KeyEvent, app: &mut App) -> bool {
   // Secondary reader (State 3, right pane).
-  if app.reader_dual_active && app.focus.focused_pane == PaneId::SecondaryReader {
+  if app.reader_dual_active && app.focus.focused_pane == PaneId::SecondaryReader
+  {
     log::debug!("routing to secondary reader pane");
     if key.code == KeyCode::Tab {
       if app.reader_bottom_open {
@@ -310,7 +321,6 @@ pub(super) fn handle_reader_pane(key: KeyEvent, app: &mut App) -> bool {
   }
   true
 }
-
 
 pub(super) fn reader_back(app: &mut App, side: FocusedReader) -> bool {
   if app.reader_bottom_open {

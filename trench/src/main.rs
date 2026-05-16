@@ -70,7 +70,8 @@ static SAVED_STDERR_FD: std::sync::atomic::AtomicI32 =
 #[cfg(unix)]
 fn redirect_stderr_to_devnull() {
   use std::os::fd::AsRawFd;
-  let Ok(null) = std::fs::OpenOptions::new().write(true).open("/dev/null") else {
+  let Ok(null) = std::fs::OpenOptions::new().write(true).open("/dev/null")
+  else {
     return;
   };
   let saved = unsafe { libc::dup(libc::STDERR_FILENO) };
@@ -256,7 +257,6 @@ pub(crate) fn truncate_for_notif(s: &str, max: usize) -> String {
   out
 }
 
-
 // ── Refresh helper ────────────────────────────────────────────────────────
 
 /// Built-in source names that produce loading_sources entries on every
@@ -301,7 +301,6 @@ pub(crate) fn do_refresh(app: &mut App) {
   app.is_refreshing = true;
   spawn_fetch(tx, app.config.clone());
 }
-
 
 /// Like do_refresh, but always runs — reloads config from disk, abandons any
 /// in-flight fetch, clears the item cache, then starts a fresh fetch.
@@ -516,7 +515,6 @@ fn handle_mouse(
   }
 }
 
-
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// `0` = primary pane (Reader if active, else Feed).
@@ -691,7 +689,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   // the host terminal; over iTerm2 that path is broken and the figure
   // pane stays blank — but trench has no other way to tell the user
   // that's not a trench bug.  Mirrors the standalone tread warning.
-  if tread::in_zellij() && tread::is_iterm2() && tread::detect_kitty_supported() {
+  if tread::in_zellij() && tread::is_iterm2() && tread::detect_kitty_supported()
+  {
     eprintln!(
       "trench: zellij over iTerm2 detected. figure-preview panes may\n  \
        stay empty because Zellij's Kitty-graphics re-render path is\n  \
@@ -858,347 +857,349 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   let mut first_draw_logged = false;
   let run_result: std::io::Result<()> = (|| -> std::io::Result<()> {
     loop {
-    // Drain any pending fetch results before drawing. process_incoming +
-    // process_incoming_discovery internally call mark_dirty when state
-    // changes; the spinner increment is now gated on is_loading.
-    app.process_incoming();
+      // Drain any pending fetch results before drawing. process_incoming +
+      // process_incoming_discovery internally call mark_dirty when state
+      // changes; the spinner increment is now gated on is_loading.
+      app.process_incoming();
 
-    // Tick the embedded reader(s) each frame so voice playback state
-    // (active-word highlight, paragraph advance during continuous
-    // reading) animates without waiting for a key event.  tread::tick
-    // returns true when user-visible state changed; we OR that into
-    // trench's dirty flag so the next frame redraws.
-    if let Some(editor) = app.reader_editor_mut() {
-      if editor.tick() {
+      // Tick the embedded reader(s) each frame so voice playback state
+      // (active-word highlight, paragraph advance during continuous
+      // reading) animates without waiting for a key event.  tread::tick
+      // returns true when user-visible state changed; we OR that into
+      // trench's dirty flag so the next frame redraws.
+      if let Some(editor) = app.reader_editor_mut() {
+        if editor.tick() {
+          app.mark_dirty();
+        }
+      }
+      if let Some(editor) = app.reader_secondary_editor_mut() {
+        if editor.tick() {
+          app.mark_dirty();
+        }
+      }
+      if let Some(editor) = app.reader_popup_editor.as_mut() {
+        if editor.tick() {
+          app.mark_dirty();
+        }
+      }
+
+      // Tick chat UI each frame (spinner + pending response channel + word-by-
+      // word streaming reveal). When chat is streaming we want the next frame
+      // to render — capture is_streaming BEFORE tick so the FINAL word still
+      // triggers a redraw even though tick clears the flag on completion.
+      if let Some(chat_ui) = app.chat.ui.as_mut() {
+        let was_streaming = chat_ui.is_streaming;
+        chat_ui.tick();
+        if was_streaming || chat_ui.is_streaming {
+          app.mark_dirty();
+        }
+      }
+
+      // Tick repo viewer momentum scroll. If any repo context is decaying its
+      // velocity, mark dirty so the next frame renders the new scroll offset.
+      let was_repo_animating = app
+        .repo_context
+        .as_ref()
+        .map(|c| c.scroll_velocity.abs() >= 0.5)
+        .unwrap_or(false);
+      app.repo_tick();
+      if was_repo_animating {
         app.mark_dirty();
       }
-    }
-    if let Some(editor) = app.reader_secondary_editor_mut() {
-      if editor.tick() {
-        app.mark_dirty();
-      }
-    }
-    if let Some(editor) = app.reader_popup_editor.as_mut() {
-      if editor.tick() {
-        app.mark_dirty();
-      }
-    }
 
-    // Tick chat UI each frame (spinner + pending response channel + word-by-
-    // word streaming reveal). When chat is streaming we want the next frame
-    // to render — capture is_streaming BEFORE tick so the FINAL word still
-    // triggers a redraw even though tick clears the flag on completion.
-    if let Some(chat_ui) = app.chat.ui.as_mut() {
-      let was_streaming = chat_ui.is_streaming;
-      chat_ui.tick();
-      if was_streaming || chat_ui.is_streaming {
-        app.mark_dirty();
-      }
-    }
-
-    // Tick repo viewer momentum scroll. If any repo context is decaying its
-    // velocity, mark dirty so the next frame renders the new scroll offset.
-    let was_repo_animating = app
-      .repo_context
-      .as_ref()
-      .map(|c| c.scroll_velocity.abs() >= 0.5)
-      .unwrap_or(false);
-    app.repo_tick();
-    if was_repo_animating {
-      app.mark_dirty();
-    }
-
-    // ── Drain background fetch results ────────────────────────────────
-    if let Some(rx) = app.fulltext_rx.as_ref() {
-      let t = std::time::Instant::now();
-      match rx.try_recv() {
-        Ok(result) => {
-          log::debug!(
-            "fulltext drain: received result, took {}µs to recv",
-            t.elapsed().as_micros()
-          );
-          app.fulltext_rx = None;
-          app.fulltext_loading = false;
-          match result {
-            Ok(fetched_paper) => {
-              log::debug!(
-                "reader_open: {} blocks from fetcher",
-                fetched_paper.blocks.len()
-              );
-              // arxiv URLs get the rich LaTeX path via fetch_paper —
-              // structured math, tables, figures.  ~2s blocking; v2
-              // can background on a worker.  Non-arxiv keeps the
-              // PaperData the fetcher already produced (HTML walked
-              // by from_html, or summary plain-text).  Inline figure
-              // support follows the host terminal capability.
-              let notes_context = app.pending_fulltext_context.take();
-              let title = app.last_read.clone().unwrap_or_default();
-              let detected_arxiv_id = notes_context
-                .as_ref()
-                .and_then(|ctx| tread::extract_arxiv_id(&ctx.paper.url));
-              let kitty_supported = app.kitty_supported;
-              let (arxiv_id, paper) = if let Some(id) = detected_arxiv_id {
-                match tread::fetch_paper(&id, kitty_supported) {
-                  Ok(p) => (Some(id), p),
-                  Err(e) => {
-                    log::warn!(
-                      "tread::fetch_paper failed for {id}, using fetcher result: {e}"
+      // ── Drain background fetch results ────────────────────────────────
+      if let Some(rx) = app.fulltext_rx.as_ref() {
+        let t = std::time::Instant::now();
+        match rx.try_recv() {
+          Ok(result) => {
+            log::debug!(
+              "fulltext drain: received result, took {}µs to recv",
+              t.elapsed().as_micros()
+            );
+            app.fulltext_rx = None;
+            app.fulltext_loading = false;
+            match result {
+              Ok(fetched_paper) => {
+                log::debug!(
+                  "reader_open: {} blocks from fetcher",
+                  fetched_paper.blocks.len()
+                );
+                // arxiv URLs get the rich LaTeX path via fetch_paper —
+                // structured math, tables, figures.  ~2s blocking; v2
+                // can background on a worker.  Non-arxiv keeps the
+                // PaperData the fetcher already produced (HTML walked
+                // by from_html, or summary plain-text).  Inline figure
+                // support follows the host terminal capability.
+                let notes_context = app.pending_fulltext_context.take();
+                let title = app.last_read.clone().unwrap_or_default();
+                let detected_arxiv_id = notes_context
+                  .as_ref()
+                  .and_then(|ctx| tread::extract_arxiv_id(&ctx.paper.url));
+                let kitty_supported = app.kitty_supported;
+                let (arxiv_id, paper) = if let Some(id) = detected_arxiv_id {
+                  match tread::fetch_paper(&id, kitty_supported) {
+                    Ok(p) => (Some(id), p),
+                    Err(e) => {
+                      log::warn!(
+                        "tread::fetch_paper failed for {id}, using fetcher result: {e}"
+                      );
+                      (
+                        notes_context.as_ref().map(|ctx| ctx.paper.id.clone()),
+                        fetched_paper,
+                      )
+                    }
+                  }
+                } else {
+                  (
+                    notes_context.as_ref().map(|ctx| ctx.paper.id.clone()),
+                    fetched_paper,
+                  )
+                };
+                let reader = tread::Reader::init(
+                  paper,
+                  None,
+                  arxiv_id.clone(),
+                  80,
+                  24,
+                  kitty_supported,
+                  Some(app.voice_controller.clone()),
+                );
+                if app.fulltext_for_secondary {
+                  if app.fulltext_new_tab {
+                    app.reader_secondary_push_tab(
+                      title,
+                      arxiv_id,
+                      notes_context,
+                      reader,
                     );
-                    (
-                      notes_context.as_ref().map(|ctx| ctx.paper.id.clone()),
-                      fetched_paper,
-                    )
+                  } else {
+                    app.reader_secondary_replace_active_tab(
+                      title,
+                      arxiv_id,
+                      notes_context,
+                      reader,
+                    );
+                  }
+                  app.focused_reader = FocusedReader::Secondary;
+                  app.focus.focused_pane = PaneId::SecondaryReader;
+                  app.fulltext_for_secondary = false;
+                } else {
+                  if app.fulltext_new_tab {
+                    app.reader_push_tab(title, arxiv_id, notes_context, reader);
+                  } else {
+                    app.reader_replace_active_tab(
+                      title,
+                      arxiv_id,
+                      notes_context,
+                      reader,
+                    );
+                  }
+                  app.focus.focused_pane = PaneId::Reader;
+                }
+                app.fulltext_new_tab = false;
+                app.clear_notification();
+              }
+              Err(e) => {
+                app.pending_fulltext_context = None;
+                app.set_notification(format!("Failed to fetch content: {e}"));
+              }
+            }
+            app.mark_dirty();
+          }
+          Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+            log::debug!("fulltext drain: channel disconnected");
+            app.fulltext_rx = None;
+            app.fulltext_loading = false;
+            app.fulltext_for_secondary = false;
+            app.fulltext_new_tab = false;
+            app.pending_fulltext_context = None;
+            app
+              .set_notification("Fetch error: thread disconnected".to_string());
+            app.mark_dirty();
+          }
+          Err(std::sync::mpsc::TryRecvError::Empty) => {}
+        }
+      }
+
+      // ── Drain reader popup fetch ──────────────────────────────────────
+      if let Some(rx) = app.reader_popup_rx.as_ref() {
+        match rx.try_recv() {
+          Ok(result) => {
+            app.reader_popup_rx = None;
+            app.fulltext_loading = false;
+            app.pending_fulltext_context = None;
+            match result {
+              Ok(paper) => {
+                let reader = tread::Reader::init(
+                  paper,
+                  None,
+                  None,
+                  80,
+                  24,
+                  false,
+                  Some(app.voice_controller.clone()),
+                );
+                app.reader_popup_editor = Some(reader);
+                // Reset the popup's image cache and burst tracker — the
+                // previous occupant (if any) had different kitty_ids, and
+                // a stale burst would suppress the first frame's render.
+                app.reader_popup_image_state = tread::ImageState::default();
+                app.reader_popup_burst = tread::BurstTracker::default();
+                app.reader_popup_active = true;
+                app.clear_notification();
+              }
+              Err(e) => {
+                app.set_notification(format!("Failed to fetch content: {e}"));
+              }
+            }
+            app.mark_dirty();
+          }
+          Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+            app.reader_popup_rx = None;
+            app.fulltext_loading = false;
+            app.pending_fulltext_context = None;
+            app
+              .set_notification("Fetch error: thread disconnected".to_string());
+            app.mark_dirty();
+          }
+          Err(std::sync::mpsc::TryRecvError::Empty) => {}
+        }
+      }
+
+      if let Some(rx) = app.repo_fetch_rx.as_ref() {
+        let t = std::time::Instant::now();
+        match rx.try_recv() {
+          Ok(result) => {
+            log::debug!(
+              "repo_fetch drain: received result, took {}µs to recv",
+              t.elapsed().as_micros()
+            );
+            app.repo_fetch_rx = None;
+            match result {
+              RepoFetchResult::RepoOpened { branch, tree } => match tree {
+                Ok(nodes) => {
+                  if let Some(ctx) = app.repo_context.as_mut() {
+                    ctx.default_branch = branch;
+                    ctx.tree_nodes = nodes;
+                    ctx.status_message = None;
                   }
                 }
-              } else {
-                (
-                  notes_context.as_ref().map(|ctx| ctx.paper.id.clone()),
-                  fetched_paper,
-                )
-              };
-              let reader = tread::Reader::init(
-                paper,
-                None,
-                arxiv_id.clone(),
-                80,
-                24,
-                kitty_supported,
-                Some(app.voice_controller.clone()),
-              );
-              if app.fulltext_for_secondary {
-                if app.fulltext_new_tab {
-                  app.reader_secondary_push_tab(
-                    title,
-                    arxiv_id,
-                    notes_context,
-                    reader,
-                  );
-                } else {
-                  app.reader_secondary_replace_active_tab(
-                    title,
-                    arxiv_id,
-                    notes_context,
-                    reader,
-                  );
-                }
-                app.focused_reader = FocusedReader::Secondary;
-                app.focus.focused_pane = PaneId::SecondaryReader;
-                app.fulltext_for_secondary = false;
-              } else {
-                if app.fulltext_new_tab {
-                  app.reader_push_tab(title, arxiv_id, notes_context, reader);
-                } else {
-                  app.reader_replace_active_tab(
-                    title,
-                    arxiv_id,
-                    notes_context,
-                    reader,
-                  );
-                }
-                app.focus.focused_pane = PaneId::Reader;
+                Err(e) => app.set_repo_status(format!("Error: {e}")),
+              },
+              RepoFetchResult::DirLoaded { path, result } => {
+                app.repo_apply_dir(path, result);
               }
-              app.fulltext_new_tab = false;
-              app.clear_notification();
-            }
-            Err(e) => {
-              app.pending_fulltext_context = None;
-              app.set_notification(format!("Failed to fetch content: {e}"));
-            }
-          }
-          app.mark_dirty();
-        }
-        Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-          log::debug!("fulltext drain: channel disconnected");
-          app.fulltext_rx = None;
-          app.fulltext_loading = false;
-          app.fulltext_for_secondary = false;
-          app.fulltext_new_tab = false;
-          app.pending_fulltext_context = None;
-          app.set_notification("Fetch error: thread disconnected".to_string());
-          app.mark_dirty();
-        }
-        Err(std::sync::mpsc::TryRecvError::Empty) => {}
-      }
-    }
-
-    // ── Drain reader popup fetch ──────────────────────────────────────
-    if let Some(rx) = app.reader_popup_rx.as_ref() {
-      match rx.try_recv() {
-        Ok(result) => {
-          app.reader_popup_rx = None;
-          app.fulltext_loading = false;
-          app.pending_fulltext_context = None;
-          match result {
-            Ok(paper) => {
-              let reader = tread::Reader::init(
-                paper,
-                None,
-                None,
-                80,
-                24,
-                false,
-                Some(app.voice_controller.clone()),
-              );
-              app.reader_popup_editor = Some(reader);
-              // Reset the popup's image cache and burst tracker — the
-              // previous occupant (if any) had different kitty_ids, and
-              // a stale burst would suppress the first frame's render.
-              app.reader_popup_image_state = tread::ImageState::default();
-              app.reader_popup_burst = tread::BurstTracker::default();
-              app.reader_popup_active = true;
-              app.clear_notification();
-            }
-            Err(e) => {
-              app.set_notification(format!("Failed to fetch content: {e}"));
-            }
-          }
-          app.mark_dirty();
-        }
-        Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-          app.reader_popup_rx = None;
-          app.fulltext_loading = false;
-          app.pending_fulltext_context = None;
-          app.set_notification("Fetch error: thread disconnected".to_string());
-          app.mark_dirty();
-        }
-        Err(std::sync::mpsc::TryRecvError::Empty) => {}
-      }
-    }
-
-    if let Some(rx) = app.repo_fetch_rx.as_ref() {
-      let t = std::time::Instant::now();
-      match rx.try_recv() {
-        Ok(result) => {
-          log::debug!(
-            "repo_fetch drain: received result, took {}µs to recv",
-            t.elapsed().as_micros()
-          );
-          app.repo_fetch_rx = None;
-          match result {
-            RepoFetchResult::RepoOpened { branch, tree } => match tree {
-              Ok(nodes) => {
-                if let Some(ctx) = app.repo_context.as_mut() {
-                  ctx.default_branch = branch;
-                  ctx.tree_nodes = nodes;
-                  ctx.status_message = None;
-                }
+              RepoFetchResult::FileLoaded { path, name, result } => {
+                app.repo_apply_file(path, name, result);
               }
-              Err(e) => app.set_repo_status(format!("Error: {e}")),
-            },
-            RepoFetchResult::DirLoaded { path, result } => {
-              app.repo_apply_dir(path, result);
             }
-            RepoFetchResult::FileLoaded { path, name, result } => {
-              app.repo_apply_file(path, name, result);
-            }
+            app.mark_dirty();
           }
-          app.mark_dirty();
-        }
-        Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-          log::debug!("repo_fetch drain: channel disconnected");
-          app.repo_fetch_rx = None;
-          app.set_repo_status("Fetch error: thread disconnected");
-          app.mark_dirty();
-        }
-        Err(std::sync::mpsc::TryRecvError::Empty) => {}
-      }
-    }
-
-    // Gate the draw on the dirty flag. `check_needs_redraw` reads-and-clears
-    // in one call (cli-text-reader pattern). Idle frames cost ~0 work since
-    // every per-frame allocation lives inside `ui::draw`.
-    if app.check_needs_redraw() {
-      let t_draw = std::time::Instant::now();
-      terminal.draw(|frame| ui::draw(frame, &mut app))?;
-      let draw_ms = t_draw.elapsed().as_millis();
-      if !first_draw_logged {
-        log::debug!(
-          "startup: first frame ready in {}ms",
-          startup_t0.elapsed().as_millis()
-        );
-        first_draw_logged = true;
-      }
-      if draw_ms > 16 {
-        log::debug!("terminal.draw took {}ms (slow frame)", draw_ms);
-      }
-    }
-
-    // Cadence: 16ms when something is animating or already dirty (so we
-    // process events at 60Hz during interaction), 250ms when truly idle (so
-    // CPU drops to near-zero and battery is preserved). Mirrors
-    // cli-text-reader/src/editor/display_loop.rs:233.
-    let timeout = if app.needs_redraw || app.has_active_animation() {
-      std::time::Duration::from_millis(16)
-    } else {
-      std::time::Duration::from_millis(250)
-    };
-
-    if event::poll(timeout)? {
-      match event::read()? {
-        Event::Key(key) => {
-          if key.kind != KeyEventKind::Press {
-            continue;
+          Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+            log::debug!("repo_fetch drain: channel disconnected");
+            app.repo_fetch_rx = None;
+            app.set_repo_status("Fetch error: thread disconnected");
+            app.mark_dirty();
           }
+          Err(std::sync::mpsc::TryRecvError::Empty) => {}
+        }
+      }
 
+      // Gate the draw on the dirty flag. `check_needs_redraw` reads-and-clears
+      // in one call (cli-text-reader pattern). Idle frames cost ~0 work since
+      // every per-frame allocation lives inside `ui::draw`.
+      if app.check_needs_redraw() {
+        let t_draw = std::time::Instant::now();
+        terminal.draw(|frame| ui::draw(frame, &mut app))?;
+        let draw_ms = t_draw.elapsed().as_millis();
+        if !first_draw_logged {
           log::debug!(
-            "key event: {:?} leader_active={} focused_pane={:?}",
-            key.code,
-            app.leader_active,
-            app.focus.focused_pane
+            "startup: first frame ready in {}ms",
+            startup_t0.elapsed().as_millis()
           );
-          keys::dispatch(key, &mut app);
-          app.mark_dirty();
+          first_draw_logged = true;
         }
-        Event::Mouse(mouse) => {
-          handle_mouse(mouse, &mut app, &terminal);
-          app.mark_dirty();
+        if draw_ms > 16 {
+          log::debug!("terminal.draw took {}ms (slow frame)", draw_ms);
         }
-        Event::Resize(_, _) => {
-          // Pane reflow moves every image's placement coords;
-          // clear the cached placements so the next draw re-emits
-          // at the new positions instead of stacking ghosts.
-          app.clear_all_reader_image_state();
-          app.mark_dirty();
-        }
-        Event::FocusLost => {
-          // tmux pane switch: kitty placements painted at absolute
-          // screen coords would otherwise bleed into whatever pane
-          // is on top.  Delete them; FocusGained re-emits via the
-          // next draw cycle.
-          app.clear_all_reader_image_state();
-        }
-        _ => {}
       }
-    }
 
-    // Dispatch any stale events that arrived during the draw call. Previous
-    // behaviour silently discarded these via `let _ = event::read()`, which
-    // dropped user input on slow frames; now they go through the same path
-    // as the primary dispatch above.
-    while event::poll(std::time::Duration::from_millis(0))? {
-      match event::read()? {
-        Event::Key(key) if key.kind == KeyEventKind::Press => {
-          keys::dispatch(key, &mut app);
-          app.mark_dirty();
+      // Cadence: 16ms when something is animating or already dirty (so we
+      // process events at 60Hz during interaction), 250ms when truly idle (so
+      // CPU drops to near-zero and battery is preserved). Mirrors
+      // cli-text-reader/src/editor/display_loop.rs:233.
+      let timeout = if app.needs_redraw || app.has_active_animation() {
+        std::time::Duration::from_millis(16)
+      } else {
+        std::time::Duration::from_millis(250)
+      };
+
+      if event::poll(timeout)? {
+        match event::read()? {
+          Event::Key(key) => {
+            if key.kind != KeyEventKind::Press {
+              continue;
+            }
+
+            log::debug!(
+              "key event: {:?} leader_active={} focused_pane={:?}",
+              key.code,
+              app.leader_active,
+              app.focus.focused_pane
+            );
+            keys::dispatch(key, &mut app);
+            app.mark_dirty();
+          }
+          Event::Mouse(mouse) => {
+            handle_mouse(mouse, &mut app, &terminal);
+            app.mark_dirty();
+          }
+          Event::Resize(_, _) => {
+            // Pane reflow moves every image's placement coords;
+            // clear the cached placements so the next draw re-emits
+            // at the new positions instead of stacking ghosts.
+            app.clear_all_reader_image_state();
+            app.mark_dirty();
+          }
+          Event::FocusLost => {
+            // tmux pane switch: kitty placements painted at absolute
+            // screen coords would otherwise bleed into whatever pane
+            // is on top.  Delete them; FocusGained re-emits via the
+            // next draw cycle.
+            app.clear_all_reader_image_state();
+          }
+          _ => {}
         }
-        Event::Mouse(mouse) => {
-          handle_mouse(mouse, &mut app, &terminal);
-          app.mark_dirty();
-        }
-        Event::Resize(_, _) => {
-          app.clear_all_reader_image_state();
-          app.mark_dirty();
-        }
-        Event::FocusLost => {
-          app.clear_all_reader_image_state();
-        }
-        _ => {}
       }
-    }
 
-    if app.should_quit {
-      break;
-    }
+      // Dispatch any stale events that arrived during the draw call. Previous
+      // behaviour silently discarded these via `let _ = event::read()`, which
+      // dropped user input on slow frames; now they go through the same path
+      // as the primary dispatch above.
+      while event::poll(std::time::Duration::from_millis(0))? {
+        match event::read()? {
+          Event::Key(key) if key.kind == KeyEventKind::Press => {
+            keys::dispatch(key, &mut app);
+            app.mark_dirty();
+          }
+          Event::Mouse(mouse) => {
+            handle_mouse(mouse, &mut app, &terminal);
+            app.mark_dirty();
+          }
+          Event::Resize(_, _) => {
+            app.clear_all_reader_image_state();
+            app.mark_dirty();
+          }
+          Event::FocusLost => {
+            app.clear_all_reader_image_state();
+          }
+          _ => {}
+        }
+      }
+
+      if app.should_quit {
+        break;
+      }
     }
     Ok(())
   })();

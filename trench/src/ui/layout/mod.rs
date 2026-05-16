@@ -18,10 +18,10 @@ mod reader;
 mod title;
 mod widgets;
 
-pub use popups::HELP_SECTION_COUNT;
 use footer::draw_footer;
 use main_row::draw_main_row;
 use modals::{draw_settings, draw_sources_popup, draw_theme_picker};
+pub use popups::HELP_SECTION_COUNT;
 use popups::{
   draw_abstract_popup, draw_help_overlay, draw_quit_popup, draw_tag_picker,
 };
@@ -221,7 +221,4 @@ fn draw_feed(frame: &mut Frame, app: &mut App) {
   }
 }
 
-
 // ── Title bar ──────────────────────────────────────────────────────────────
-
-

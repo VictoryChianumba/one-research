@@ -420,9 +420,11 @@ impl<'a> NoteEditor<'a> {
     self.text_area.set_cursor_style(cursor_style);
     self.text_area.set_cursor_line_style(Style::reset());
     self.text_area.set_style(Style::reset());
-    self
-      .text_area
-      .set_selection_style(Style::default().bg(theme::current().accent).fg(theme::current().text_on_accent));
+    self.text_area.set_selection_style(
+      Style::default()
+        .bg(theme::current().accent)
+        .fg(theme::current().text_on_accent),
+    );
 
     frame.render_widget(&self.text_area, text_rect);
 

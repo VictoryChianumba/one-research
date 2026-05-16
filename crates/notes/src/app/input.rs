@@ -282,11 +282,9 @@ impl App {
               .get_current_note()
               .map(|n| n.linked_papers.clone())
               .unwrap_or_default();
-            if let Err(e) = self.update_current_note_attributes(
-              data.title,
-              linked,
-              data.tags,
-            ) {
+            if let Err(e) =
+              self.update_current_note_attributes(data.title, linked, data.tags)
+            {
               self.show_err_msg(format!("Failed to update note: {e}"));
             } else {
               // Refresh editor title from updated note.

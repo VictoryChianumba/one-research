@@ -142,7 +142,9 @@ impl SortPopup {
       .collect();
 
     let block_style = match self.active_control {
-      SortControl::AvailableList => Style::default().fg(theme::current().accent),
+      SortControl::AvailableList => {
+        Style::default().fg(theme::current().accent)
+      }
       _ => Style::default(),
     };
 
@@ -171,7 +173,9 @@ impl SortPopup {
 
     let block_style = match (self.is_valid, self.active_control) {
       (false, _) => Style::default().fg(Color::Red),
-      (true, SortControl::AppliedList) => Style::default().fg(theme::current().accent),
+      (true, SortControl::AppliedList) => {
+        Style::default().fg(theme::current().accent)
+      }
       _ => Style::default(),
     };
 

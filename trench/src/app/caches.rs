@@ -155,11 +155,8 @@ impl App {
     // Delegate to the W3-hybrid model method (ADR-001 D5). Split borrow
     // on disjoint fields: `feed` (mutates discovery.items) and
     // `workspace` (mutates items + persisted_states).
-    let effects = self.feed.set_workflow_state_for_url(
-      &mut self.workspace,
-      url,
-      state,
-    );
+    let effects =
+      self.feed.set_workflow_state_for_url(&mut self.workspace, url, state);
     let found = !effects.is_empty();
     if found {
       self.route_effects(&effects);

@@ -1,8 +1,8 @@
 use crossterm::event::{KeyCode, KeyEvent};
 use std::sync::mpsc;
 
-use crate::app::{App, AppView, RepoPane};
 use super::super::{open_url, spawn_repo_dir, spawn_repo_file};
+use crate::app::{App, AppView, RepoPane};
 
 pub(super) fn handle_repo_viewer(key: KeyEvent, app: &mut App) -> bool {
   if app.view != AppView::RepoViewer {

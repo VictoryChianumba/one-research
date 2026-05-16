@@ -18,7 +18,7 @@ pub use discovery::DiscoveryState;
 pub use feed::{AppView, FeedTab, FilterState, ItemCounts, NavDirection};
 pub use help::HelpState;
 pub use notes::{NotesContext, NotesMode, NotesTab};
-pub use panes::{FocusedReader, PaneId, PaneInfo, PANE_COUNT};
+pub use panes::{FocusedReader, PANE_COUNT, PaneId, PaneInfo};
 pub use popups::{
   DiscoverResult, QuitPopupKind, QuitPopupState, TagPickerState,
 };

@@ -153,7 +153,8 @@ impl App {
 
   /// Returns note_ids whose linked_papers contains this paper_id.
   pub fn find_notes_for_paper(&self, paper_id: &str) -> Vec<String> {
-    self.notes
+    self
+      .notes
       .iter()
       .filter(|n| n.linked_papers.iter().any(|p| p.id == paper_id))
       .map(|n| n.note_id.clone())
@@ -429,10 +430,7 @@ impl App {
 
   /// Notes that pass the current filter (or all notes when there is no filter).
   pub fn get_active_notes(&self) -> impl DoubleEndedIterator<Item = &Note> {
-    self
-      .notes
-      .iter()
-      .filter(|n| !self.filtered_out_notes.contains(&n.note_id))
+    self.notes.iter().filter(|n| !self.filtered_out_notes.contains(&n.note_id))
   }
 
   pub fn get_note(&self, id: &str) -> Option<&Note> {
@@ -611,7 +609,13 @@ impl App {
       log::warn!("update_current_note_attributes called with no selected note");
       return Ok(());
     };
-    self.update_note_attributes(&id, title, linked_papers, tags, HistoryStack::Undo)
+    self.update_note_attributes(
+      &id,
+      title,
+      linked_papers,
+      tags,
+      HistoryStack::Undo,
+    )
   }
 
   fn update_note_attributes(
@@ -629,9 +633,7 @@ impl App {
     // Was an `.expect("note must exist...")` panic over a raw-mode terminal
     // — bounded by the panic hook but a real risk surface. (Audit Rel
     // MED #33.)
-    let Some(note) =
-      self.notes.iter_mut().find(|n| n.note_id == id)
-    else {
+    let Some(note) = self.notes.iter_mut().find(|n| n.note_id == id) else {
       log::warn!(
         "notes::update_note_attributes: id {id:?} missing — ignoring update"
       );
@@ -675,9 +677,7 @@ impl App {
     log::trace!("Updating note content for id: {id}");
 
     // Graceful no-op on missing-id.
-    let Some(note) =
-      self.notes.iter_mut().find(|n| n.note_id == id)
-    else {
+    let Some(note) = self.notes.iter_mut().find(|n| n.note_id == id) else {
       log::warn!(
         "notes::update_note_content: id {id:?} missing — ignoring update"
       );

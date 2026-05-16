@@ -129,13 +129,19 @@ mod tests {
   #[test]
   fn rejects_file_scheme() {
     let err = fetch_with_readability("file:///etc/passwd").unwrap_err();
-    assert!(err.starts_with("unsafe scheme"), "expected scheme error, got {err}");
+    assert!(
+      err.starts_with("unsafe scheme"),
+      "expected scheme error, got {err}"
+    );
   }
 
   #[test]
   fn rejects_javascript_scheme() {
     let err = fetch_with_readability("javascript:alert(1)").unwrap_err();
-    assert!(err.starts_with("unsafe scheme"), "expected scheme error, got {err}");
+    assert!(
+      err.starts_with("unsafe scheme"),
+      "expected scheme error, got {err}"
+    );
   }
 }
 
