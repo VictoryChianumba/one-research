@@ -211,12 +211,12 @@ fn draw_feed(frame: &mut Frame, app: &mut App) {
   }
 
   // A1 — floating reader popup (Ldr+Enter).
-  if app.reader_popup_active {
+  if app.reader_popup.active {
     draw_reader_popup(frame, app, area);
   }
 
   // A2 State 3 — bottom pane visible only when summoned (Ldr+f).
-  if app.reader_dual_active && app.reader_bottom_open {
+  if app.reader.dual_active && app.reader_bottom_open {
     draw_reader_bottom_pane(frame, app, area);
   }
 }

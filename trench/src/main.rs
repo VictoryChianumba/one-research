@@ -478,7 +478,7 @@ fn handle_mouse(
         app.focus.focused_pane = pane;
         match pane {
           PaneId::Reader | PaneId::Notes => {
-            app.focused_reader = FocusedReader::Primary;
+            app.reader.focused = FocusedReader::Primary;
             if pane == PaneId::Notes {
               if let Some(note_id) = app
                 .notes_tabs
@@ -492,7 +492,7 @@ fn handle_mouse(
             }
           }
           PaneId::SecondaryReader | PaneId::SecondaryNotes => {
-            app.focused_reader = FocusedReader::Secondary;
+            app.reader.focused = FocusedReader::Secondary;
             if pane == PaneId::SecondaryNotes {
               if let Some(note_id) = app
                 .secondary_notes_tabs
@@ -522,10 +522,10 @@ fn handle_mouse(
 /// `1`/`2`/`3` = secondary open panes sorted top-to-bottom, left-to-right.
 pub(crate) fn get_pane_by_number(n: u8, app: &App) -> Option<PaneId> {
   match n {
-    0 => Some(if app.reader_active { PaneId::Reader } else { PaneId::Feed }),
+    0 => Some(if app.reader.active { PaneId::Reader } else { PaneId::Feed }),
     1..=3 => app
       .focus
-      .secondary_panes_sorted(app.reader_active)
+      .secondary_panes_sorted(app.reader.active)
       .into_iter()
       .nth((n - 1) as usize),
     _ => None,
@@ -878,7 +878,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
           app.mark_dirty();
         }
       }
-      if let Some(editor) = app.reader_popup_editor.as_mut() {
+      if let Some(editor) = app.reader_popup.editor.as_mut() {
         if editor.tick() {
           app.mark_dirty();
         }
@@ -981,7 +981,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                       reader,
                     );
                   }
-                  app.focused_reader = FocusedReader::Secondary;
+                  app.reader.focused = FocusedReader::Secondary;
                   app.focus.focused_pane = PaneId::SecondaryReader;
                   app.fulltext_for_secondary = false;
                 } else {
@@ -1023,10 +1023,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
       }
 
       // ── Drain reader popup fetch ──────────────────────────────────────
-      if let Some(rx) = app.reader_popup_rx.as_ref() {
+      if let Some(rx) = app.reader_popup.rx.as_ref() {
         match rx.try_recv() {
           Ok(result) => {
-            app.reader_popup_rx = None;
+            app.reader_popup.rx = None;
             app.fulltext_loading = false;
             app.pending_fulltext_context = None;
             match result {
@@ -1040,13 +1040,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                   false,
                   Some(app.voice_controller.clone()),
                 );
-                app.reader_popup_editor = Some(reader);
+                app.reader_popup.editor = Some(reader);
                 // Reset the popup's image cache and burst tracker — the
                 // previous occupant (if any) had different kitty_ids, and
                 // a stale burst would suppress the first frame's render.
-                app.reader_popup_image_state = tread::ImageState::default();
-                app.reader_popup_burst = tread::BurstTracker::default();
-                app.reader_popup_active = true;
+                app.reader_popup.image_state = tread::ImageState::default();
+                app.reader_popup.burst = tread::BurstTracker::default();
+                app.reader_popup.active = true;
                 app.clear_notification();
               }
               Err(e) => {
@@ -1056,7 +1056,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             app.mark_dirty();
           }
           Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-            app.reader_popup_rx = None;
+            app.reader_popup.rx = None;
             app.fulltext_loading = false;
             app.pending_fulltext_context = None;
             app

@@ -8,11 +8,11 @@ use super::remember_fulltext_paper_context;
 use crate::app::{App, FeedTab, FocusedReader, PaneId};
 
 pub(super) fn reader_pane_focused(app: &App) -> bool {
-  if app.reader_popup_active {
+  if app.reader_popup.active {
     return true;
   }
   matches!(app.focus.focused_pane, PaneId::Reader | PaneId::SecondaryReader)
-    && app.reader_active
+    && app.reader.active
 }
 
 /// Keys that typically arrive in rapid succession via OS key-repeat
@@ -127,7 +127,7 @@ pub(super) fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
                   app.fulltext_rx = Some(rx);
                   app.fulltext_loading = true;
                   app.fulltext_for_secondary =
-                    app.focused_reader == FocusedReader::Secondary;
+                    app.reader.focused == FocusedReader::Secondary;
                   app.fulltext_new_tab = false;
                   remember_fulltext_paper_context(app, &item);
                   app.set_notification(format!(
@@ -154,7 +154,7 @@ pub(super) fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
           app.fulltext_rx = Some(rx);
           app.fulltext_loading = true;
           app.fulltext_for_secondary =
-            app.focused_reader == FocusedReader::Secondary;
+            app.reader.focused == FocusedReader::Secondary;
           app.fulltext_new_tab = false;
           remember_fulltext_paper_context(app, &item);
           app.set_notification(format!(
@@ -213,7 +213,7 @@ fn reader_feed_count(app: &App) -> usize {
 
 pub(super) fn handle_reader_pane(key: KeyEvent, app: &mut App) -> bool {
   // Secondary reader (State 3, right pane).
-  if app.reader_dual_active && app.focus.focused_pane == PaneId::SecondaryReader
+  if app.reader.dual_active && app.focus.focused_pane == PaneId::SecondaryReader
   {
     log::debug!("routing to secondary reader pane");
     if key.code == KeyCode::Tab {
@@ -244,11 +244,11 @@ pub(super) fn handle_reader_pane(key: KeyEvent, app: &mut App) -> bool {
       if matches!(action, tread::ReaderAction::Quit) {
         let pane_empty = app.reader_secondary_close_active_tab();
         if pane_empty {
-          app.reader_dual_active = false;
+          app.reader.dual_active = false;
           app.reader_bottom_open = false;
           app.reader_bottom_focused = false;
           app.secondary_notes_active = false;
-          app.focused_reader = FocusedReader::Primary;
+          app.reader.focused = FocusedReader::Primary;
           app.focus.focused_pane = PaneId::Reader;
         }
       }
@@ -256,16 +256,16 @@ pub(super) fn handle_reader_pane(key: KeyEvent, app: &mut App) -> bool {
     return true;
   }
 
-  if !(app.reader_active && app.focus.focused_pane == PaneId::Reader) {
+  if !(app.reader.active && app.focus.focused_pane == PaneId::Reader) {
     return false;
   }
   log::debug!("routing to reader pane");
 
   // Tab in primary reader during State 3 → focus secondary reader.
-  if app.reader_dual_active && key.code == KeyCode::Tab {
-    if !app.reader_secondary_tabs.is_empty() {
+  if app.reader.dual_active && key.code == KeyCode::Tab {
+    if !app.reader.secondary.tabs.is_empty() {
       app.focus.focused_pane = PaneId::SecondaryReader;
-      app.focused_reader = FocusedReader::Secondary;
+      app.reader.focused = FocusedReader::Secondary;
     }
     return true;
   }
@@ -293,13 +293,13 @@ pub(super) fn handle_reader_pane(key: KeyEvent, app: &mut App) -> bool {
     if matches!(action, tread::ReaderAction::Quit) {
       let pane_empty = app.reader_close_active_tab();
       if pane_empty {
-        if app.reader_dual_active {
+        if app.reader.dual_active {
           // Primary ran out of tabs: promote secondary tabs to primary.
-          app.reader_tabs = std::mem::take(&mut app.reader_secondary_tabs);
-          app.reader_active_tab = app.reader_secondary_active_tab;
-          app.reader_secondary_active_tab = 0;
-          app.reader_active = !app.reader_tabs.is_empty();
-          app.reader_dual_active = false;
+          app.reader.primary.tabs = std::mem::take(&mut app.reader.secondary.tabs);
+          app.reader.primary.active_tab = app.reader.secondary.active_tab;
+          app.reader.secondary.active_tab = 0;
+          app.reader.active = !app.reader.primary.tabs.is_empty();
+          app.reader.dual_active = false;
           app.reader_bottom_open = false;
           app.reader_bottom_focused = false;
           app.notes_active = app.secondary_notes_active;
@@ -307,11 +307,11 @@ pub(super) fn handle_reader_pane(key: KeyEvent, app: &mut App) -> bool {
           app.notes_active_tab = app.secondary_notes_active_tab;
           app.secondary_notes_active = false;
           app.secondary_notes_active_tab = 0;
-          app.focused_reader = FocusedReader::Primary;
+          app.reader.focused = FocusedReader::Primary;
           app.focus.focused_pane =
-            if app.reader_active { PaneId::Reader } else { PaneId::Feed };
-        } else if app.reader_split_active {
-          app.reader_split_active = false;
+            if app.reader.active { PaneId::Reader } else { PaneId::Feed };
+        } else if app.reader.split_active {
+          app.reader.split_active = false;
           app.focus.focused_pane = PaneId::Feed;
         } else {
           app.focus.focused_pane = PaneId::Feed;
@@ -329,12 +329,12 @@ pub(super) fn reader_back(app: &mut App, side: FocusedReader) -> bool {
     app.reader_bottom_details = false;
     app.focus.focused_pane = match side {
       FocusedReader::Primary => PaneId::Reader,
-      FocusedReader::Secondary if app.reader_dual_active => {
+      FocusedReader::Secondary if app.reader.dual_active => {
         PaneId::SecondaryReader
       }
       FocusedReader::Secondary => PaneId::Reader,
     };
-    app.focused_reader = side;
+    app.reader.focused = side;
     return true;
   }
 
@@ -343,31 +343,31 @@ pub(super) fn reader_back(app: &mut App, side: FocusedReader) -> bool {
     return true;
   }
 
-  if app.reader_split_active {
-    app.reader_split_active = false;
+  if app.reader.split_active {
+    app.reader.split_active = false;
     app.focus.focused_pane = PaneId::Reader;
-    app.focused_reader = FocusedReader::Primary;
+    app.reader.focused = FocusedReader::Primary;
     return true;
   }
 
-  if app.reader_dual_active {
+  if app.reader.dual_active {
     match side {
       FocusedReader::Secondary => {
-        app.reader_dual_active = false;
-        app.reader_secondary_tabs.clear();
-        app.reader_secondary_active_tab = 0;
+        app.reader.dual_active = false;
+        app.reader.secondary.tabs.clear();
+        app.reader.secondary.active_tab = 0;
         app.secondary_notes_active = false;
         app.reader_bottom_open = false;
         app.reader_bottom_focused = false;
-        app.focused_reader = FocusedReader::Primary;
+        app.reader.focused = FocusedReader::Primary;
         app.focus.focused_pane = PaneId::Reader;
       }
       FocusedReader::Primary => {
-        app.reader_tabs = std::mem::take(&mut app.reader_secondary_tabs);
-        app.reader_active_tab = app.reader_secondary_active_tab;
-        app.reader_secondary_active_tab = 0;
-        app.reader_active = !app.reader_tabs.is_empty();
-        app.reader_dual_active = false;
+        app.reader.primary.tabs = std::mem::take(&mut app.reader.secondary.tabs);
+        app.reader.primary.active_tab = app.reader.secondary.active_tab;
+        app.reader.secondary.active_tab = 0;
+        app.reader.active = !app.reader.primary.tabs.is_empty();
+        app.reader.dual_active = false;
         app.reader_bottom_open = false;
         app.reader_bottom_focused = false;
         app.notes_active = app.secondary_notes_active;
@@ -375,9 +375,9 @@ pub(super) fn reader_back(app: &mut App, side: FocusedReader) -> bool {
         app.notes_active_tab = app.secondary_notes_active_tab;
         app.secondary_notes_active = false;
         app.secondary_notes_active_tab = 0;
-        app.focused_reader = FocusedReader::Primary;
+        app.reader.focused = FocusedReader::Primary;
         app.focus.focused_pane =
-          if app.reader_active { PaneId::Reader } else { PaneId::Feed };
+          if app.reader.active { PaneId::Reader } else { PaneId::Feed };
       }
     }
     return true;
@@ -394,17 +394,17 @@ pub(super) fn close_all_readers(app: &mut App) {
   // ghost image placements would otherwise sit over the feed.
   app.stop_all_reader_voice();
   app.clear_all_reader_image_state();
-  app.reader_active = false;
-  app.reader_dual_active = false;
-  app.reader_split_active = false;
+  app.reader.active = false;
+  app.reader.dual_active = false;
+  app.reader.split_active = false;
   app.reader_bottom_open = false;
   app.reader_bottom_focused = false;
-  app.reader_tabs.clear();
-  app.reader_active_tab = 0;
-  app.reader_secondary_tabs.clear();
-  app.reader_secondary_active_tab = 0;
+  app.reader.primary.tabs.clear();
+  app.reader.primary.active_tab = 0;
+  app.reader.secondary.tabs.clear();
+  app.reader.secondary.active_tab = 0;
   app.notes_active = false;
   app.secondary_notes_active = false;
-  app.focused_reader = FocusedReader::Primary;
+  app.reader.focused = FocusedReader::Primary;
   app.focus.focused_pane = PaneId::Feed;
 }

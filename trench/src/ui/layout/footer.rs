@@ -60,7 +60,7 @@ fn footer_command_line(app: &App) -> Line<'static> {
   let total = app.items_for_tab().len();
   let filtered =
     !app.feed.search_query.is_empty() || !app.feed.active_filters.is_empty();
-  let repo_available = !app.reader_active
+  let repo_available = !app.reader.active
     && !app.chat.fullscreen
     && app.focus.focused_pane == PaneId::Feed
     && app.selected_item().is_some_and(|item| {
@@ -78,7 +78,7 @@ fn footer_command_line(app: &App) -> Line<'static> {
     return Line::from(spans);
   }
 
-  if app.reader_dual_active
+  if app.reader.dual_active
     && app.reader_bottom_open
     && app.reader_bottom_focused
   {

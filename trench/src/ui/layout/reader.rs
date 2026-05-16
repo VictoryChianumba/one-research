@@ -12,14 +12,14 @@ use super::widgets::{
 use crate::app::{App, FeedTab, FocusedReader, ReaderTab};
 
 pub(super) fn chat_context_line(app: &App) -> Option<String> {
-  if app.reader_active {
-    let title = match app.focused_reader {
-      FocusedReader::Secondary if app.reader_dual_active => app
-        .reader_secondary_tabs
-        .get(app.reader_secondary_active_tab)
+  if app.reader.active {
+    let title = match app.reader.focused {
+      FocusedReader::Secondary if app.reader.dual_active => app
+        .reader.secondary.tabs
+        .get(app.reader.secondary.active_tab)
         .map(|tab| tab.title.as_str()),
       _ => {
-        app.reader_tabs.get(app.reader_active_tab).map(|tab| tab.title.as_str())
+        app.reader.primary.tabs.get(app.reader.primary.active_tab).map(|tab| tab.title.as_str())
       }
     };
     if let Some(title) = title.filter(|title| !title.trim().is_empty()) {
@@ -64,7 +64,7 @@ pub(super) fn draw_reader_workspace_header(
     return;
   }
   let t = app.theme();
-  let primary = reader_tab_title(&app.reader_tabs, app.reader_active_tab);
+  let primary = reader_tab_title(&app.reader.primary.tabs, app.reader.primary.active_tab);
   let context = primary.to_string();
   let label_style =
     Style::default().fg(t.accent).bg(t.bg_panel).add_modifier(Modifier::BOLD);
@@ -113,7 +113,7 @@ fn draw_dual_reader_workspace_header(frame: &mut Frame, app: &App, area: Rect) {
     frame,
     halves[0],
     "primary",
-    reader_tab_title(&app.reader_tabs, app.reader_active_tab),
+    reader_tab_title(&app.reader.primary.tabs, app.reader.primary.active_tab),
     &t,
   );
   draw_reader_header_title(
@@ -121,8 +121,8 @@ fn draw_dual_reader_workspace_header(frame: &mut Frame, app: &App, area: Rect) {
     halves[1],
     "secondary",
     reader_tab_title(
-      &app.reader_secondary_tabs,
-      app.reader_secondary_active_tab,
+      &app.reader.secondary.tabs,
+      app.reader.secondary.active_tab,
     ),
     &t,
   );
@@ -206,23 +206,18 @@ pub fn draw_reader_popup(frame: &mut Frame, app: &mut App, area: Rect) {
 
   let tread_theme = app.theme_for_tread();
   let kitty = app.kitty_supported;
-  // Split-borrow so the reader, its image state, and its burst tracker
-  // can all be borrowed — they live on different App fields.
-  let App {
-    reader_popup_editor,
-    reader_popup_image_state,
-    reader_popup_burst,
-    ..
-  } = app;
-  if let Some(editor) = reader_popup_editor.as_mut() {
+  // The three popup fields now live behind a single struct, so a single
+  // `&mut app.reader_popup` borrow gives access to all of them.
+  let popup = &mut app.reader_popup;
+  if let Some(editor) = popup.editor.as_mut() {
     editor.resize(inner.width, inner.height);
     tread::draw(frame, inner, editor, &tread_theme);
     tread::after_draw_guarded(
       editor,
-      reader_popup_image_state,
+      &mut popup.image_state,
       inner,
       kitty,
-      reader_popup_burst.in_burst(),
+      popup.burst.in_burst(),
     );
   }
 }

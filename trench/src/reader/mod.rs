@@ -36,11 +36,23 @@ impl ReaderInstanceModel {
 /// layout.  Owns the primary instance, an optional secondary, and the
 /// dual/split/focus state machine.
 ///
-/// The historical `reader_active` boolean is derived (`primary.is_loaded()
-/// && focus is on reader`), not stored.
+/// Note: `active` is *view-state* — "the user is currently in reader
+/// mode" — not the same as `primary.is_loaded()`. ADR-002 originally
+/// proposed collapsing them; PR 2 found the semantics differ (the
+/// user navigates into reader before any paper loads, and back to feed
+/// without unloading tabs). The two flags stay separate; future work
+/// may reconsider once usage is clearer.
 pub struct ReaderPaneModel {
   pub primary: ReaderInstanceModel,
-  pub secondary: Option<ReaderInstanceModel>,
+  /// Secondary reader instance.  Always present; "the secondary is
+  /// active" is encoded by `split_active || dual_active`, not by
+  /// `Option`-presence.  ADR-002 originally proposed `Option<...>`
+  /// here, but PR 2 found the mechanical migration cheaper with an
+  /// always-present field — tabs being empty is the no-content signal
+  /// the layout already uses.
+  pub secondary: ReaderInstanceModel,
+  /// View-state: the user is currently inside reader mode.
+  pub active: bool,
   /// State 2 of the three-state layout cycle (feed + reader split 40/60).
   pub split_active: bool,
   /// State 3 (dual reader 50/50, primary | secondary).
@@ -62,7 +74,8 @@ impl Default for ReaderPaneModel {
   fn default() -> Self {
     Self {
       primary: ReaderInstanceModel::default(),
-      secondary: None,
+      secondary: ReaderInstanceModel::default(),
+      active: false,
       split_active: false,
       dual_active: false,
       focused: FocusedReader::Primary,
@@ -119,7 +132,8 @@ mod tests {
   fn pane_model_defaults_empty_and_unfocused() {
     let m = ReaderPaneModel::default();
     assert!(!m.primary.is_loaded());
-    assert!(m.secondary.is_none());
+    assert!(!m.secondary.is_loaded());
+    assert!(!m.active);
     assert!(!m.split_active);
     assert!(!m.dual_active);
     assert!(matches!(m.focused, FocusedReader::Primary));

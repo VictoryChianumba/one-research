@@ -107,21 +107,18 @@ pub struct App {
   // Embedded chat pane
   pub chat: ChatState,
 
-  // Embedded reader (hygg-reader) — tabbed
-  pub reader_tabs: Vec<ReaderTab>,
-  pub reader_active_tab: usize,
-  pub reader_active: bool,
+  /// Slice 2 composition root (ADR-002): owns primary + optional
+  /// secondary reader instances plus the split/dual/focus state. The
+  /// three-state layout cycle (Ldr+f) reads `reader.active`,
+  /// `reader.split_active`, `reader.dual_active`.
+  pub reader: crate::reader::ReaderPaneModel,
 
-  // Floating reader popup (A1 — Ldr+Enter) — not tabbed, separate slot
-  pub reader_popup_active: bool,
-  pub reader_popup_rx: Option<Receiver<Result<tread::PaperData, String>>>,
-  pub reader_popup_editor: Option<tread::Reader>,
-  /// Image cache for the popup reader.  Mirrors the per-tab field on
-  /// `ReaderTab`; needed because tread's image escapes are emitted
-  /// post-draw, outside ratatui's frame buffer, against host-owned state.
-  pub reader_popup_image_state: tread::ImageState,
-  /// Burst gate for the popup reader.  Same role as `ReaderTab.burst`.
-  pub reader_popup_burst: tread::BurstTracker,
+  /// Slice 2 sibling Model: the floating popup reader (Ldr+Enter).
+  /// Lifecycle is async-load (`rx`) + dismissible (`active`) +
+  /// editor state; collapsed from the 5 reader_popup_* fields that
+  /// used to live at App top level.
+  pub reader_popup: crate::reader::ReaderPopupModel,
+
   /// Shared TTS playback controller.  Cloned into each `ReaderTab`'s
   /// Reader so all open papers use one audio thread / one rodio sink.
   /// Cross-tab preemption (only one paper speaks at a time) is handled
@@ -133,16 +130,6 @@ pub struct App {
   /// escapes only on graphics-capable terminals; on others, the
   /// hook is a no-op and tread's text-fallback caption renders.
   pub kitty_supported: bool,
-
-  // Secondary split view (A2 — Ldr+f cycles three reader/feed states)
-  // State 1: normal feed (reader_split_active=false, reader_dual_active=false)
-  // State 2: feed 40% | reader 60%  (reader_split_active=true)
-  // State 3: reader 50% | reader 50% + persistent bottom pane (reader_dual_active=true)
-  pub reader_split_active: bool,
-  pub reader_dual_active: bool,
-  pub reader_secondary_tabs: Vec<ReaderTab>,
-  pub reader_secondary_active_tab: usize,
-  pub focused_reader: FocusedReader,
   pub fulltext_for_secondary: bool,
   pub fulltext_new_tab: bool,
   // True while waiting for [1]/[2] to choose which reader window gets a new tab.
@@ -258,21 +245,10 @@ impl App {
       secondary_notes_mode: NotesMode::Library,
       secondary_notes_context: None,
       chat: ChatState::default(),
-      reader_tabs: Vec::new(),
-      reader_active_tab: 0,
-      reader_active: false,
-      reader_popup_active: false,
-      reader_popup_rx: None,
-      reader_popup_editor: None,
-      reader_popup_image_state: tread::ImageState::default(),
-      reader_popup_burst: tread::BurstTracker::default(),
+      reader: crate::reader::ReaderPaneModel::new(),
+      reader_popup: crate::reader::ReaderPopupModel::new(),
       voice_controller: tread::build_voice_controller(),
       kitty_supported: tread::detect_kitty_supported(),
-      reader_split_active: false,
-      reader_dual_active: false,
-      reader_secondary_tabs: Vec::new(),
-      reader_secondary_active_tab: 0,
-      focused_reader: FocusedReader::Primary,
       fulltext_for_secondary: false,
       fulltext_new_tab: false,
       tab_window_prompt_active: false,
@@ -792,7 +768,7 @@ impl App {
 
   pub fn show_quit_popup(&mut self) {
     let kind =
-      if self.focus.focused_pane == PaneId::Reader && self.reader_active {
+      if self.focus.focused_pane == PaneId::Reader && self.reader.active {
         QuitPopupKind::LeaveReader
       } else if self.feed.discovery.loading || self.is_loading {
         QuitPopupKind::QuitWithProgress

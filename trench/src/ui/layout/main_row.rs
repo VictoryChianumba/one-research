@@ -80,7 +80,7 @@ pub fn draw_main_row(
   // — we can't pass `&t` directly.  Convert once per draw cycle.
   let tread_theme = app.theme_for_tread();
   // ── A2 State 3: dual-reader (left 50% | right 50%) ──────────────────────
-  if app.reader_dual_active && app.reader_active {
+  if app.reader.dual_active && app.reader.active {
     let (workspace_area, body_area) = reader_workspace_split(area);
     draw_reader_workspace_header(frame, app, workspace_area, "Dual Reader");
     let inner_w = body_area.width.saturating_sub(2);
@@ -108,12 +108,12 @@ pub fn draw_main_row(
     {
       let rows = Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
         .split(left_reader_rect);
-      let focused = app.focused_reader == FocusedReader::Primary;
+      let focused = app.reader.focused == FocusedReader::Primary;
       draw_reader_tab_bar(
         frame,
         rows[0],
-        &app.reader_tabs,
-        app.reader_active_tab,
+        &app.reader.primary.tabs,
+        app.reader.primary.active_tab,
         focused,
         &t,
       );
@@ -138,12 +138,12 @@ pub fn draw_main_row(
     {
       let rows = Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
         .split(right_reader_rect);
-      let focused = app.focused_reader == FocusedReader::Secondary;
+      let focused = app.reader.focused == FocusedReader::Secondary;
       draw_reader_tab_bar(
         frame,
         rows[0],
-        &app.reader_secondary_tabs,
-        app.reader_secondary_active_tab,
+        &app.reader.secondary.tabs,
+        app.reader.secondary.active_tab,
         focused,
         &t,
       );
@@ -189,7 +189,7 @@ pub fn draw_main_row(
   }
 
   // ── A2 State 2: feed (40%) | reader (60%) ────────────────────────────────
-  if app.reader_split_active && app.reader_active {
+  if app.reader.split_active && app.reader.active {
     let (workspace_area, body_area) = reader_workspace_split(area);
     draw_reader_workspace_header(frame, app, workspace_area, "Reader + Feed");
     let inner_w = body_area.width.saturating_sub(2);
@@ -209,8 +209,8 @@ pub fn draw_main_row(
       draw_reader_tab_bar(
         frame,
         rows[0],
-        &app.reader_tabs,
-        app.reader_active_tab,
+        &app.reader.primary.tabs,
+        app.reader.primary.active_tab,
         true,
         &t,
       );
@@ -246,7 +246,7 @@ pub fn draw_main_row(
   }
 
   // ── Reader: always full-width or 60/40 split, regardless of terminal width ─
-  if app.reader_active && !app.notes_active {
+  if app.reader.active && !app.notes_active {
     let (workspace_area, body_area) = reader_workspace_split(area);
     draw_reader_workspace_header(frame, app, workspace_area, "Reader");
     let rows = Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
@@ -254,8 +254,8 @@ pub fn draw_main_row(
     draw_reader_tab_bar(
       frame,
       rows[0],
-      &app.reader_tabs,
-      app.reader_active_tab,
+      &app.reader.primary.tabs,
+      app.reader.primary.active_tab,
       true,
       &t,
     );
@@ -291,7 +291,7 @@ pub fn draw_main_row(
     };
   }
 
-  if app.reader_active {
+  if app.reader.active {
     let (workspace_area, body_area) = reader_workspace_split(area);
     draw_reader_workspace_header(frame, app, workspace_area, "Reader + Notes");
     let (reader_rect, notes_rect) = split_reader_note_dock(body_area);
@@ -301,8 +301,8 @@ pub fn draw_main_row(
       draw_reader_tab_bar(
         frame,
         rows[0],
-        &app.reader_tabs,
-        app.reader_active_tab,
+        &app.reader.primary.tabs,
+        app.reader.primary.active_tab,
         true,
         &t,
       );

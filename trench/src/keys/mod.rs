@@ -46,15 +46,15 @@ pub fn dispatch(key: KeyEvent, app: &mut App) {
           QuitPopupKind::LeaveReader => {
             let pane_empty = app.reader_close_active_tab();
             if pane_empty {
-              if app.reader_dual_active {
-                app.reader_dual_active = false;
+              if app.reader.dual_active {
+                app.reader.dual_active = false;
                 app.reader_bottom_open = false;
                 app.reader_bottom_focused = false;
-                app.reader_secondary_tabs.clear();
-                app.reader_secondary_active_tab = 0;
+                app.reader.secondary.tabs.clear();
+                app.reader.secondary.active_tab = 0;
                 app.secondary_notes_active = false;
-              } else if app.reader_split_active {
-                app.reader_split_active = false;
+              } else if app.reader.split_active {
+                app.reader.split_active = false;
               }
               app.focus.focused_pane = PaneId::Feed;
             }
@@ -79,21 +79,21 @@ pub fn dispatch(key: KeyEvent, app: &mut App) {
   }
 
   // Reader popup (A1) — fully interactive; Esc or reader Quit dismisses.
-  if app.reader_popup_active {
+  if app.reader_popup.active {
     if key.code == KeyCode::Esc {
-      if let Some(reader) = app.reader_popup_editor.as_mut() {
+      if let Some(reader) = app.reader_popup.editor.as_mut() {
         reader.exit_voice_mode();
       }
-      app.reader_popup_active = false;
+      app.reader_popup.active = false;
     } else {
       if reader::is_scroll_key(key) {
-        app.reader_popup_burst.note_event();
+        app.reader_popup.burst.note_event();
       }
-      if let Some(reader) = app.reader_popup_editor.as_mut() {
+      if let Some(reader) = app.reader_popup.editor.as_mut() {
         let action = reader.handle_event(Event::Key(key));
         if matches!(action, tread::ReaderAction::Quit) {
           reader.exit_voice_mode();
-          app.reader_popup_active = false;
+          app.reader_popup.active = false;
         }
       }
     }
@@ -134,8 +134,8 @@ pub fn dispatch(key: KeyEvent, app: &mut App) {
     && !is_text_entry_context(app)
     && reader_pane_focused(app)
   {
-    let reader_action = if app.reader_popup_active {
-      app.reader_popup_editor.as_mut().map(|r| r.handle_event(Event::Key(key)))
+    let reader_action = if app.reader_popup.active {
+      app.reader_popup.editor.as_mut().map(|r| r.handle_event(Event::Key(key)))
     } else if app.focus.focused_pane == PaneId::SecondaryReader {
       app.reader_secondary_editor_mut().map(|r| r.handle_event(Event::Key(key)))
     } else {
@@ -155,7 +155,7 @@ pub fn dispatch(key: KeyEvent, app: &mut App) {
     return;
   }
   // State-3 bottom pane (A2) — handles its own key set when open and focused.
-  if app.reader_dual_active
+  if app.reader.dual_active
     && app.reader_bottom_open
     && app.reader_bottom_focused
   {
@@ -618,7 +618,7 @@ fn note_side_for_focus(app: &App) -> FocusedReader {
     PaneId::SecondaryReader | PaneId::SecondaryNotes => {
       FocusedReader::Secondary
     }
-    _ if app.reader_dual_active => app.focused_reader,
+    _ if app.reader.dual_active => app.reader.focused,
     _ => FocusedReader::Primary,
   }
 }
@@ -626,7 +626,7 @@ fn note_side_for_focus(app: &App) -> FocusedReader {
 fn note_pane_for_side(app: &App, side: FocusedReader) -> PaneId {
   match side {
     FocusedReader::Primary => PaneId::Notes,
-    FocusedReader::Secondary if app.reader_dual_active => {
+    FocusedReader::Secondary if app.reader.dual_active => {
       PaneId::SecondaryNotes
     }
     FocusedReader::Secondary => PaneId::Notes,
@@ -635,10 +635,10 @@ fn note_pane_for_side(app: &App, side: FocusedReader) -> PaneId {
 
 fn focus_fallback_after_notes(app: &App, side: FocusedReader) -> PaneId {
   match side {
-    FocusedReader::Secondary if app.reader_dual_active => {
+    FocusedReader::Secondary if app.reader.dual_active => {
       PaneId::SecondaryReader
     }
-    _ if app.reader_active => PaneId::Reader,
+    _ if app.reader.active => PaneId::Reader,
     _ => PaneId::Feed,
   }
 }
@@ -652,7 +652,7 @@ fn focused_note_side(app: &App) -> Option<FocusedReader> {
 }
 
 fn sync_notes_app_to_side(app: &mut App, side: FocusedReader) {
-  app.focused_reader = side;
+  app.reader.focused = side;
   let note_id = match side {
     FocusedReader::Primary => {
       app.notes_tabs.get(app.notes_active_tab).map(|tab| tab.note_id.clone())
@@ -672,10 +672,10 @@ fn sync_notes_app_to_side(app: &mut App, side: FocusedReader) {
 fn sync_focus_after_pane_change(app: &mut App) {
   match app.focus.focused_pane {
     PaneId::Reader | PaneId::Notes => {
-      app.focused_reader = FocusedReader::Primary
+      app.reader.focused = FocusedReader::Primary
     }
     PaneId::SecondaryReader | PaneId::SecondaryNotes => {
-      app.focused_reader = FocusedReader::Secondary;
+      app.reader.focused = FocusedReader::Secondary;
     }
     _ => {}
   }
@@ -685,17 +685,17 @@ fn sync_focus_after_pane_change(app: &mut App) {
 }
 
 fn focus_reader_bottom_from_reader(app: &mut App) -> bool {
-  if !app.reader_dual_active || !app.reader_bottom_open {
+  if !app.reader.dual_active || !app.reader_bottom_open {
     return false;
   }
   match app.focus.focused_pane {
     PaneId::Reader | PaneId::Notes => {
-      app.focused_reader = FocusedReader::Primary;
+      app.reader.focused = FocusedReader::Primary;
       app.reader_bottom_focused = true;
       true
     }
     PaneId::SecondaryReader | PaneId::SecondaryNotes => {
-      app.focused_reader = FocusedReader::Secondary;
+      app.reader.focused = FocusedReader::Secondary;
       app.reader_bottom_focused = true;
       true
     }
@@ -887,7 +887,7 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
         app.chat.active = false;
         app.chat.fullscreen = false;
         app.focus.focused_pane =
-          if app.reader_active { PaneId::Reader } else { PaneId::Feed };
+          if app.reader.active { PaneId::Reader } else { PaneId::Feed };
       } else {
         ensure_chat(app);
         app.notes_active = false;
@@ -923,10 +923,10 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
     }
     // A1 — floating reader popup
     KeyCode::Enter => {
-      if !app.fulltext_loading && !app.reader_popup_active {
+      if !app.fulltext_loading && !app.reader_popup.active {
         if let Some(item) = app.selected_item().cloned() {
           let (tx, rx) = mpsc::channel();
-          app.reader_popup_rx = Some(rx);
+          app.reader_popup.rx = Some(rx);
           app.fulltext_loading = true;
           remember_fulltext_paper_context(app, &item);
           app.set_notification(format!(
@@ -939,7 +939,7 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
     }
     // A2 — three-state reader/feed cycle.
     KeyCode::Char('f') => {
-      if app.reader_dual_active {
+      if app.reader.dual_active {
         // State 3: toggle bottom feed pane.
         if app.reader_bottom_open {
           app.reader_bottom_open = false;
@@ -954,9 +954,9 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
           app.reader_bottom_details = false;
           app.reader_feed_popup_selected = app.active_selected_index();
         }
-      } else if app.reader_split_active {
+      } else if app.reader.split_active {
         // State 2 → State 3: auto-fetch selected item into right pane
-        app.reader_dual_active = true;
+        app.reader.dual_active = true;
         app.reader_bottom_focused = false;
         app.reader_bottom_details = false;
         app.reader_bottom_scroll.reset();
@@ -975,9 +975,9 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
           }
         }
         app.focus.focused_pane = PaneId::Reader;
-      } else if app.reader_active {
+      } else if app.reader.active {
         // State 1 → State 2: show feed alongside reader
-        app.reader_split_active = true;
+        app.reader.split_active = true;
         app.focus.focused_pane = PaneId::Feed;
       }
     }
@@ -1024,7 +1024,7 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
     KeyCode::Char('k') => {
       if app.reader_bottom_focused {
         app.reader_bottom_focused = false;
-        app.focus.focused_pane = match app.focused_reader {
+        app.focus.focused_pane = match app.reader.focused {
           FocusedReader::Primary => PaneId::Reader,
           FocusedReader::Secondary => PaneId::SecondaryReader,
         };
@@ -1063,7 +1063,7 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
         app.chat.active = false;
         app.chat.fullscreen = false;
         app.focus.focused_pane =
-          if app.reader_active { PaneId::Reader } else { PaneId::Feed };
+          if app.reader.active { PaneId::Reader } else { PaneId::Feed };
       }
       PaneId::Notes | PaneId::SecondaryNotes => {
         let side = focused_note_side(app).unwrap_or(FocusedReader::Primary);
@@ -1114,13 +1114,13 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
       if app.fulltext_loading {
         return;
       }
-      if app.reader_dual_active {
+      if app.reader.dual_active {
         app.tab_window_prompt_active = true;
         app.set_notification(
           "Add to: [1] left  [2] right  Esc: cancel".to_string(),
         );
       } else {
-        app.fulltext_new_tab = !app.reader_tabs.is_empty();
+        app.fulltext_new_tab = !app.reader.primary.tabs.is_empty();
         app.fulltext_for_secondary = false;
         trigger_fulltext_new_tab(app);
       }
@@ -1131,7 +1131,7 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
         focused_note_side(app).filter(|side| notes_side_active(app, *side))
       {
         notes_prev_tab(app, side);
-      } else if app.reader_active {
+      } else if app.reader.active {
         app.reader_prev_tab();
       }
     }
@@ -1140,7 +1140,7 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
         focused_note_side(app).filter(|side| notes_side_active(app, *side))
       {
         notes_next_tab(app, side);
-      } else if app.reader_active {
+      } else if app.reader.active {
         app.reader_next_tab();
       }
     }
@@ -1153,26 +1153,26 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
       PaneId::SecondaryReader => {
         let pane_empty = app.reader_secondary_close_active_tab();
         if pane_empty {
-          app.reader_dual_active = false;
+          app.reader.dual_active = false;
           app.reader_bottom_open = false;
           app.reader_bottom_focused = false;
           app.secondary_notes_active = false;
-          app.focused_reader = FocusedReader::Primary;
+          app.reader.focused = FocusedReader::Primary;
           app.focus.focused_pane = PaneId::Reader;
         }
       }
-      PaneId::Reader if app.reader_active => {
+      PaneId::Reader if app.reader.active => {
         let pane_empty = app.reader_close_active_tab();
         if pane_empty {
-          if app.reader_dual_active {
-            app.reader_dual_active = false;
+          if app.reader.dual_active {
+            app.reader.dual_active = false;
             app.reader_bottom_open = false;
             app.reader_bottom_focused = false;
-            app.reader_secondary_tabs.clear();
-            app.reader_secondary_active_tab = 0;
+            app.reader.secondary.tabs.clear();
+            app.reader.secondary.active_tab = 0;
             app.secondary_notes_active = false;
-          } else if app.reader_split_active {
-            app.reader_split_active = false;
+          } else if app.reader.split_active {
+            app.reader.split_active = false;
           }
           app.focus.focused_pane = PaneId::Feed;
         }
@@ -1306,7 +1306,7 @@ fn handle_chat_pane(key: KeyEvent, app: &mut App) -> bool {
         app.chat.active = false;
         app.chat.fullscreen = false;
         app.focus.focused_pane =
-          if app.reader_active { PaneId::Reader } else { PaneId::Feed };
+          if app.reader.active { PaneId::Reader } else { PaneId::Feed };
       }
       chat::ChatAction::SlashCommand(cmd) => {
         app.handle_slash_command(cmd);
