@@ -80,16 +80,18 @@ Classification table for the feed pane:
 
 | # | PR | Behaviour change |
 |---|---|---|
-| 1 | Foundations (this PR): `CONTEXT.md`, `ADR-001`, empty `FeedModel`, empty `FeedContext`, `Viewport` POD, test stub, `CLAUDE.md` pointer. | None |
+| 1 | Foundations: `CONTEXT.md`, `ADR-001`, empty `FeedModel`, empty `FeedContext`, `Viewport` POD, test stub, `CLAUDE.md` pointer. | None |
 | 2 | State migration: move feed-related fields from `App` top-level into `App.feed: FeedModel`. Mechanical. | None |
-| 3 | Action vocabulary: new `Action` variants; `keys/` calls model methods. | None |
-| 4 | `pre_draw` + render flip: auto-scroll moves into `pre_draw`; render signature flips to `&FeedModel`. **The load-bearing PR.** | None visible |
+| 3 | Action vocabulary: gesture methods on `FeedModel`; `keys/feed.rs` calls model methods. | None |
+| 4a | `pre_draw` (wide feed): auto-scroll for item-table and history-tab moves into `FeedModel::pre_draw`. | None visible |
+| 4b | `pre_draw` (narrow feed): variable-row-height variant `pre_draw_narrow_feed` lands; the third deferred mutation site moves into it. | None visible |
+| 4c | Render-signature flip: `feed.rs` renders take `&mut FeedModel + &FeedContext`, no `&App`. `FeedContext` carries pre-computed `visible_indices` + `filtered_history` + counts + theme + workspace/config borrows. **The load-bearing PR.** | None visible |
 | 5 | Cross-pane via `Action::OpenInReader { item, target: ReaderTarget }` (forward-compat with Slice 2). | None visible |
-| 6 | Lock the door: grep-based check that `feed.rs` has no `&mut App`; close out exit criteria. | None |
+| 6 | Lock the door: grep-based check that `feed.rs` has no `App`; ADR-001 status flips to Accepted. | None |
 
 Feature freeze for the ~2 weeks of evening work the slice takes. Bug fixes and trivial UI tweaks are fine; no new surfaces.
 
-Render flip is PR 4. Cannot be merged with PRs 3 or 5 — it carries its own review weight.
+**Cadence note (2026-05-16):** PR 4 was originally a single PR ("pre_draw + render flip"). In practice it split into 4a + 4b + 4c — pre_draw turned out to have a wide-feed and narrow-feed variant, and the render-signature flip wanted its own review weight. The table above records the actual cadence; the original "PR 4" framing is preserved in the slice-1 commit history (`a953261` → `4f00e80`).
 
 ### D7. Tests at the Model boundary
 

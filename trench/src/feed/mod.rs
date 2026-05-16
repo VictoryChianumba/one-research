@@ -68,6 +68,19 @@ impl FeedModel {
     self.feed_tab
   }
 
+  /// The list cursor for the currently-active tab. Renders read
+  /// `.selected()` / `.offset()` through this instead of round-tripping
+  /// `App::active_selected_index()` / `App::active_list_offset()` —
+  /// keeps the render path free of `&App`.
+  pub fn active_list(&self) -> &crate::primitives::ListState {
+    match self.feed_tab {
+      FeedTab::Inbox => &self.inbox_list,
+      FeedTab::Library => &self.library_list,
+      FeedTab::Discoveries => &self.discovery.list,
+      FeedTab::History => &self.history_list,
+    }
+  }
+
   // ── Tab navigation ────────────────────────────────────────────────────
   // visible_cache is keyed by `feed_tab`, so a tab switch is a natural
   // cache miss — these methods do not emit `Effect`s. Callers (key
@@ -284,9 +297,120 @@ impl Default for FeedModel {
 }
 
 /// Per-frame, read-only context passed into feed-pane renders alongside
-/// `&FeedModel`. Lands properly in PR 4 once the render flip happens —
-/// will carry `&Workspace`, the active theme, and the current `Viewport`.
-pub struct FeedContext;
+/// `&mut FeedModel`. The caller (orchestrator) constructs this once per
+/// frame from `App`, then hands it to `draw_*` together with the model.
+///
+/// `visible_indices` is owned (no borrow) — renders pair it with
+/// [`items_for_tab`] to look up real `&FeedItem`s. The owned shape
+/// avoids the dual-source lifetime problem: workspace.items and
+/// feed.discovery.items can't both back one `Vec<&FeedItem>` without
+/// tying its lifetime to both, blocking a `&mut FeedModel` borrow at
+/// the dispatcher level (ADR-001 D4 / Rust split-borrow).
+///
+/// `filtered_history` borrows entries from `workspace.history` only —
+/// no ambiguity, so the references can ride straight in the struct.
+pub struct FeedContext<'a> {
+  pub workspace: &'a crate::data::workspace_store::Workspace,
+  pub config: &'a crate::config::Config,
+  pub theme: ui_theme::Theme,
+  pub viewport: Viewport,
+  /// Indices into [`items_for_tab`]`(workspace, feed)` after applying
+  /// search + filter + tab-scoping. Empty for the History tab.
+  pub visible_indices: Vec<usize>,
+  /// History entries after the History tab's filter, in render order.
+  pub filtered_history: Vec<&'a crate::history::HistoryEntry>,
+  pub item_counts: crate::app::ItemCounts,
+}
+
+/// The item slice the current tab is reading from.
+/// Inbox + Library read `workspace.items`; Discoveries reads
+/// `feed.discovery.items`; History reads nothing (uses
+/// `filtered_history` instead).
+pub fn items_for_tab<'a>(
+  workspace: &'a crate::data::workspace_store::Workspace,
+  feed: &'a FeedModel,
+) -> &'a [crate::models::FeedItem] {
+  match feed.feed_tab {
+    FeedTab::Inbox | FeedTab::Library => &workspace.items,
+    FeedTab::Discoveries => &feed.discovery.items,
+    FeedTab::History => &[],
+  }
+}
+
+/// Compute the filter+search-applied indices into [`items_for_tab`].
+/// Pure read; takes field-scoped borrows so the dispatcher can release
+/// them before taking `&mut FeedModel`.
+pub fn visible_indices_for(
+  workspace: &crate::data::workspace_store::Workspace,
+  feed: &FeedModel,
+  config: &crate::config::Config,
+) -> Vec<usize> {
+  let items = items_for_tab(workspace, feed);
+  let q = feed.search_query_lower.as_str();
+  items
+    .iter()
+    .enumerate()
+    .filter(|(_, item)| {
+      match feed.feed_tab {
+        FeedTab::Inbox => {
+          if item.workflow_state != crate::models::WorkflowState::Inbox {
+            return false;
+          }
+        }
+        FeedTab::Library => {
+          if !feed.library_filter.matches(item.workflow_state) {
+            return false;
+          }
+        }
+        _ => {}
+      }
+      let key = if item.source_platform
+        == crate::models::SourcePlatform::HuggingFace
+      {
+        "huggingface"
+      } else {
+        &item.source_name
+      };
+      if let Some(&enabled) = config.sources.enabled_sources.get(key) {
+        if !enabled {
+          return false;
+        }
+      }
+      if !q.is_empty()
+        && !item.title_lower.contains(q)
+        && !item.authors_lower.iter().any(|a| a.contains(q))
+      {
+        return false;
+      }
+      if !feed.active_filters.tags.is_empty() {
+        let item_tags = crate::tags::for_url(&workspace.item_tags, &item.url);
+        if !item_tags.iter().any(|t| feed.active_filters.tags.contains(t)) {
+          return false;
+        }
+      }
+      feed.active_filters.matches(item)
+    })
+    .map(|(i, _)| i)
+    .collect()
+}
+
+/// Apply the History tab's filter to `workspace.history`. Returns owned
+/// references — `'a` is the workspace lifetime, the only source.
+pub fn filtered_history_for<'a>(
+  workspace: &'a crate::data::workspace_store::Workspace,
+  feed: &FeedModel,
+) -> Vec<&'a crate::history::HistoryEntry> {
+  let now = chrono::Utc::now();
+  let q = feed.search_query_lower.as_str();
+  let src_filter = &feed.active_filters.sources;
+  workspace
+    .history
+    .iter()
+    .filter(|e| feed.history_filter.matches(e, now))
+    .filter(|e| q.is_empty() || e.title_lower.contains(q))
+    .filter(|e| src_filter.is_empty() || src_filter.contains(&e.source))
+    .collect()
+}
 
 #[cfg(test)]
 mod tests {
@@ -544,6 +668,27 @@ mod tests {
     m.pre_draw_narrow_feed(Viewport::new(40, 10), 0, &[]);
     assert_eq!(m.inbox_list.offset(), 0);
     assert_eq!(m.inbox_list.selected(), 0);
+  }
+
+  #[test]
+  fn items_for_tab_dispatches_by_tab() {
+    use crate::data::workspace_store::Workspace;
+    let workspace = Workspace::default();
+    let mut model = FeedModel::default();
+    // Inbox + Library read workspace.items
+    model.feed_tab = FeedTab::Inbox;
+    assert_eq!(items_for_tab(&workspace, &model).len(), 0);
+    model.feed_tab = FeedTab::Library;
+    assert_eq!(items_for_tab(&workspace, &model).len(), 0);
+    // Discoveries reads feed.discovery.items
+    model.feed_tab = FeedTab::Discoveries;
+    assert!(std::ptr::eq(
+      items_for_tab(&workspace, &model).as_ptr(),
+      model.discovery.items.as_ptr(),
+    ));
+    // History returns empty slice
+    model.feed_tab = FeedTab::History;
+    assert!(items_for_tab(&workspace, &model).is_empty());
   }
 
   #[test]

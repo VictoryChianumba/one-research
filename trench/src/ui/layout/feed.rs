@@ -13,50 +13,56 @@ use super::reader::{drawer_feed_header_line, drawer_feed_row_line};
 use super::widgets::{
   pane_inset, safe_truncate_chars, truncate, truncate_str,
 };
-use crate::app::{App, FeedTab};
+use crate::app::FeedTab;
 use crate::models::SourcePlatform;
 
-pub fn draw_feed_pane(frame: &mut Frame, app: &mut App, area: Rect) {
+pub fn draw_feed_pane(
+  frame: &mut Frame,
+  model: &mut crate::feed::FeedModel,
+  ctx: &crate::feed::FeedContext,
+  area: Rect,
+) {
   if area.height == 0 {
     return;
   }
   let content_area = area;
 
   // Discoveries tab: paper list always shown; persistent search bar pinned at bottom.
-  if app.feed.feed_tab == FeedTab::Discoveries {
-    draw_discoveries_with_searchbar(frame, app, content_area);
+  if model.feed_tab == FeedTab::Discoveries {
+    draw_discoveries_with_searchbar(frame, model, ctx, content_area);
     return;
   }
 
   // History tab: filter chips + activity log.
-  if app.feed.feed_tab == FeedTab::History {
-    draw_history_tab(frame, app, content_area);
+  if model.feed_tab == FeedTab::History {
+    draw_history_tab(frame, model, ctx, content_area);
     return;
   }
 
   // Library tab: workflow-state filter chips + filtered item list.
-  if app.feed.feed_tab == FeedTab::Library {
-    draw_library_tab(frame, app, content_area);
+  if model.feed_tab == FeedTab::Library {
+    draw_library_tab(frame, model, ctx, content_area);
     return;
   }
 
   // Narrow pane: switch to title-only list to avoid squished columns.
   if area.width < 70 {
-    draw_narrow_feed(frame, app, content_area);
+    draw_narrow_feed(frame, model, ctx, content_area);
   } else {
-    draw_item_table(frame, app, content_area);
+    draw_item_table(frame, model, ctx, content_area);
   }
 }
 
 /// Discoveries tab: paper list above, persistent search bar below.
 fn draw_discoveries_with_searchbar(
   frame: &mut Frame,
-  app: &mut App,
+  model: &mut crate::feed::FeedModel,
+  ctx: &crate::feed::FeedContext,
   area: Rect,
 ) {
   const FOOTER_H: u16 = 3; // separator + input + hint
   if area.height <= FOOTER_H {
-    draw_discovery_searchbar(frame, app, area);
+    draw_discovery_searchbar(frame, model, ctx, area);
     return;
   }
 
@@ -68,20 +74,25 @@ fn draw_discoveries_with_searchbar(
 
   // Paper list
   if area.width < 70 {
-    draw_narrow_feed(frame, app, list_area);
+    draw_narrow_feed(frame, model, ctx, list_area);
   } else {
-    draw_item_table(frame, app, list_area);
+    draw_item_table(frame, model, ctx, list_area);
   }
 
-  draw_discovery_searchbar(frame, app, bar_area);
-  draw_discovery_palette(frame, app, list_area);
+  draw_discovery_searchbar(frame, model, ctx, bar_area);
+  draw_discovery_palette(frame, model, ctx, list_area);
 }
 
-fn draw_discovery_searchbar(frame: &mut Frame, app: &App, area: Rect) {
-  let t = app.theme();
+fn draw_discovery_searchbar(
+  frame: &mut Frame,
+  model: &crate::feed::FeedModel,
+  ctx: &crate::feed::FeedContext,
+  area: Rect,
+) {
+  let t = ctx.theme;
   let w = area.width as usize;
-  let has_session = !app.feed.discovery.session.is_empty();
-  let intent_label = app.feed.discovery.intent.label();
+  let has_session = !model.discovery.session.is_empty();
+  let intent_label = model.discovery.intent.label();
 
   // Separator line — title shows current status inline rather than a separate row.
   let intent_badge = if intent_label != "papers" {
@@ -89,9 +100,9 @@ fn draw_discovery_searchbar(frame: &mut Frame, app: &App, area: Rect) {
   } else {
     String::new()
   };
-  let (title_text, title_style) = if app.feed.discovery.loading {
+  let (title_text, title_style) = if model.discovery.loading {
     let short =
-      app.feed.discovery.status.trim_end_matches('…').trim_end_matches("...");
+      model.discovery.status.trim_end_matches('…').trim_end_matches("...");
     (
       format!("{}…{}", short, intent_badge),
       Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
@@ -112,8 +123,8 @@ fn draw_discovery_searchbar(frame: &mut Frame, app: &App, area: Rect) {
   ]);
 
   // Input line — prompt only when focused, query dim when unfocused.
-  let cursor = if app.feed.discovery.search_focused { "█" } else { "" };
-  let (prompt, query_style) = if app.feed.discovery.search_focused {
+  let cursor = if model.discovery.search_focused { "█" } else { "" };
+  let (prompt, query_style) = if model.discovery.search_focused {
     (
       Span::styled("  ", Style::default().fg(t.accent)),
       Style::default().fg(t.text),
@@ -126,12 +137,12 @@ fn draw_discovery_searchbar(frame: &mut Frame, app: &App, area: Rect) {
   };
   let input_line = Line::from(vec![
     prompt,
-    Span::styled(format!("{}{}", app.feed.discovery.query, cursor), query_style),
+    Span::styled(format!("{}{}", model.discovery.query, cursor), query_style),
   ]);
 
   // Hint line — contextual, always rendered to avoid height jitter.
-  let hint_text = if app.feed.discovery.search_focused {
-    if app.feed.discovery.query.starts_with('/') {
+  let hint_text = if model.discovery.search_focused {
+    if model.discovery.query.starts_with('/') {
       "Tab: complete  ↑↓: navigate  Enter: run  Esc: cancel"
     } else if has_session {
       "Enter: refine  Ctrl+N: new search  Esc: unfocus"
@@ -150,13 +161,18 @@ fn draw_discovery_searchbar(frame: &mut Frame, app: &App, area: Rect) {
     .render_widget(Paragraph::new(vec![sep_line, input_line, hint_line]), area);
 }
 
-fn draw_discovery_palette(frame: &mut Frame, app: &App, list_area: Rect) {
-  if !app.feed.discovery.search_focused || !app.feed.discovery.query.starts_with('/') {
+fn draw_discovery_palette(
+  frame: &mut Frame,
+  model: &crate::feed::FeedModel,
+  ctx: &crate::feed::FeedContext,
+  list_area: Rect,
+) {
+  if !model.discovery.search_focused || !model.discovery.query.starts_with('/') {
     return;
   }
 
   let all_specs = crate::commands::registry::discovery_slash_specs();
-  let query_lower = app.feed.discovery.query_lower.as_str();
+  let query_lower = model.discovery.query_lower.as_str();
   let suggestions: Vec<_> = all_specs
     .iter()
     .filter(|s| {
@@ -168,11 +184,11 @@ fn draw_discovery_palette(frame: &mut Frame, app: &App, list_area: Rect) {
     return;
   }
 
-  let t = app.theme();
+  let t = ctx.theme;
   let w = list_area.width as usize;
   let visible = suggestions.len().min(8);
-  let selected = app.feed.discovery.palette.selected().min(suggestions.len() - 1);
-  let scroll = app.feed.discovery.palette.offset();
+  let selected = model.discovery.palette.selected().min(suggestions.len() - 1);
+  let scroll = model.discovery.palette.offset();
   let start = scroll;
   let end = (start + visible).min(suggestions.len());
 
@@ -241,8 +257,13 @@ fn draw_discovery_palette(frame: &mut Frame, app: &App, list_area: Rect) {
   );
 }
 
-pub fn draw_library_tab(frame: &mut Frame, app: &mut App, area: Rect) {
-  let t = app.theme();
+pub fn draw_library_tab(
+  frame: &mut Frame,
+  model: &mut crate::feed::FeedModel,
+  ctx: &crate::feed::FeedContext,
+  area: Rect,
+) {
+  let t = ctx.theme;
   if area.height == 0 {
     return;
   }
@@ -251,13 +272,10 @@ pub fn draw_library_tab(frame: &mut Frame, app: &mut App, area: Rect) {
   let chips_area = Rect { height: 1, ..area };
   let chips_sep_area = Rect { y: area.y + 1, height: 1, ..area };
 
-  // Per-chip count via the memoized aggregate. Extract the three workflow
-  // counts into local copies so the Ref<ItemCounts> drops immediately — the
-  // rest of the function dispatches to mutating helpers that need &mut app.
-  let (count_queued, count_deep_read, count_archived) = {
-    let counts = app.item_counts();
-    (counts.queued, counts.deep_read, counts.archived)
-  };
+  // Per-chip count from the pre-computed aggregate carried in FeedContext.
+  let count_queued = ctx.item_counts.queued;
+  let count_deep_read = ctx.item_counts.deep_read;
+  let count_archived = ctx.item_counts.archived;
   let chip_count = |filter: crate::library::LibraryFilter| -> usize {
     match filter {
       crate::library::LibraryFilter::All => count_queued + count_deep_read,
@@ -270,7 +288,7 @@ pub fn draw_library_tab(frame: &mut Frame, app: &mut App, area: Rect) {
   let mut chip_spans: Vec<Span> = vec![Span::raw("  ")];
   let mut chip_width: usize = 2;
   for (i, filter) in crate::library::LibraryFilter::ORDER.iter().enumerate() {
-    let active = *filter == app.feed.library_filter;
+    let active = *filter == model.library_filter;
     let style = if active {
       Style::default().fg(t.accent).add_modifier(Modifier::BOLD)
     } else {
@@ -284,13 +302,13 @@ pub fn draw_library_tab(frame: &mut Frame, app: &mut App, area: Rect) {
       chip_width += 2;
     }
   }
-  let hint = if app.feed.library_visual_mode {
-    let n = app.feed.library_selected_urls.len();
+  let hint = if model.library_visual_mode {
+    let n = model.library_selected_urls.len();
     format!("VISUAL · {n} selected · r read · w queue · x archive · Esc cancel")
   } else {
     "[ ] cycle  ·  v select  ·  f filter  ·  / search".to_string()
   };
-  let hint_style = if app.feed.library_visual_mode {
+  let hint_style = if model.library_visual_mode {
     Style::default().fg(t.accent).add_modifier(Modifier::BOLD)
   } else {
     Style::default().fg(t.text_dim)
@@ -320,8 +338,8 @@ pub fn draw_library_tab(frame: &mut Frame, app: &mut App, area: Rect) {
     return;
   }
 
-  if app.visible_count() == 0 {
-    let msg = if app.workspace.items.is_empty() {
+  if ctx.visible_indices.is_empty() {
+    let msg = if ctx.workspace.items.is_empty() {
       "No items yet — fetch a feed first."
     } else {
       "No items match this filter."
@@ -337,14 +355,19 @@ pub fn draw_library_tab(frame: &mut Frame, app: &mut App, area: Rect) {
   }
 
   if list_area.width < 70 {
-    draw_narrow_feed(frame, app, list_area);
+    draw_narrow_feed(frame, model, ctx, list_area);
   } else {
-    draw_item_table(frame, app, list_area);
+    draw_item_table(frame, model, ctx, list_area);
   }
 }
 
-fn draw_history_tab(frame: &mut Frame, app: &mut App, area: Rect) {
-  let t = app.theme();
+fn draw_history_tab(
+  frame: &mut Frame,
+  model: &mut crate::feed::FeedModel,
+  ctx: &crate::feed::FeedContext,
+  area: Rect,
+) {
+  let t = ctx.theme;
   if area.height == 0 {
     return;
   }
@@ -355,7 +378,7 @@ fn draw_history_tab(frame: &mut Frame, app: &mut App, area: Rect) {
   let mut chip_spans: Vec<Span> = vec![Span::styled("  ", Style::default())];
   let mut chip_width: usize = 2;
   for (i, filter) in crate::history::HistoryFilter::ORDER.iter().enumerate() {
-    let active = *filter == app.feed.history_filter;
+    let active = *filter == model.history_filter;
     let style = if active {
       Style::default().fg(t.accent).add_modifier(Modifier::BOLD)
     } else {
@@ -394,9 +417,9 @@ fn draw_history_tab(frame: &mut Frame, app: &mut App, area: Rect) {
     return;
   }
 
-  let total = app.history_count();
+  let total = ctx.filtered_history.len();
   if total == 0 {
-    let msg = if app.workspace.history.is_empty() {
+    let msg = if ctx.workspace.history.is_empty() {
       "No history yet — open a paper or run a search."
     } else {
       "No entries in this time window."
@@ -453,17 +476,16 @@ fn draw_history_tab(frame: &mut Frame, app: &mut App, area: Rect) {
   // Auto-scroll the active list to keep the cursor visible. Lives in
   // `FeedModel::pre_draw` post-PR-4 — history's items are fixed-height,
   // so `items_fitting` is just `viewport_rows`. See ADR-001 D3.
-  app.feed.pre_draw(
+  model.pre_draw(
     crate::ui::Viewport::new(inner.width, viewport_rows as u16),
     total,
     viewport_rows,
   );
-  let selected = app.feed.history_list.selected().min(total.saturating_sub(1));
-  let offset = app.feed.history_list.offset();
+  let selected = model.history_list.selected().min(total.saturating_sub(1));
+  let offset = model.history_list.offset();
 
-  let entries = app.filtered_history();
   let end = (offset + viewport_rows + 2).min(total);
-  let window = &entries[offset..end];
+  let window = &ctx.filtered_history[offset..end];
   // Store raw title strings (not Vec<Line>) — see draw_item_table's
   // window_data shape for the same rationale.
   let window_data: Vec<(u16, Vec<String>)> = window
@@ -494,16 +516,16 @@ fn draw_history_tab(frame: &mut Frame, app: &mut App, area: Rect) {
       let (content_height, title_lines) = &window_data[i];
       // O(1) hashmap lookup. Was a per-row O(items + discovery_items)
       // chain+find scan against ~3K items.
-      let cached_item = app
+      let cached_item = ctx
         .workspace
         .url_index
         .get(&entry.key)
-        .map(|&idx| &app.workspace.items[idx])
+        .map(|&idx| &ctx.workspace.items[idx])
         .or_else(|| {
-          app
-            .feed.discovery.url_index
+          model
+            .discovery.url_index
             .get(&entry.key)
-            .map(|&idx| &app.feed.discovery.items[idx])
+            .map(|&idx| &model.discovery.items[idx])
         });
       let row_style =
         if is_selected { t.style_selection() } else { Style::default() };
@@ -602,8 +624,13 @@ pub(super) fn history_source_label(entry: &crate::history::HistoryEntry) -> Stri
   }
 }
 
-pub fn draw_narrow_feed(frame: &mut Frame, app: &mut App, area: Rect) {
-  let t = app.theme();
+pub fn draw_narrow_feed(
+  frame: &mut Frame,
+  model: &mut crate::feed::FeedModel,
+  ctx: &crate::feed::FeedContext,
+  area: Rect,
+) {
+  let t = ctx.theme;
   let rows =
     Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(area);
   let header_area = rows[0];
@@ -617,23 +644,27 @@ pub fn draw_narrow_feed(frame: &mut Frame, app: &mut App, area: Rect) {
   // Layout owns the textwrap (width-dependent); FeedModel owns the
   // offset arithmetic. Heights for items [0, selected] feed the
   // variable-row reverse-walk inside `pre_draw_narrow_feed`.
-  let total = app.visible_count();
-  let selected = app.active_selected_index();
+  let total = ctx.visible_indices.len();
+  let selected = model.active_list().selected();
+  // Phase 1: compute row heights with immutable borrow of `model`,
+  // ending the borrow before `model.pre_draw_narrow_feed`.
   let row_heights: Vec<usize> = if total > 0 {
-    app
-      .visible_window(0, selected.saturating_add(1))
+    let upper = selected.saturating_add(1).min(total);
+    let items = crate::feed::items_for_tab(ctx.workspace, &*model);
+    ctx
+      .visible_indices[..upper]
       .iter()
-      .map(|item| reader_feed_row_height(item, title_w))
+      .map(|&i| reader_feed_row_height(&items[i], title_w))
       .collect()
   } else {
     Vec::new()
   };
-  app.feed.pre_draw_narrow_feed(
+  model.pre_draw_narrow_feed(
     crate::ui::Viewport::new(list_area.width, list_area.height),
     total,
     &row_heights,
   );
-  let offset = app.active_list_offset();
+  let offset = model.active_list().offset();
 
   frame.render_widget(
     Paragraph::new(drawer_feed_header_line(list_area.width as usize, &t)),
@@ -642,8 +673,14 @@ pub fn draw_narrow_feed(frame: &mut Frame, app: &mut App, area: Rect) {
 
   // Each visible row consumes at least 1 terminal row, so capping the
   // window at viewport_rows is a safe upper bound for what gets drawn.
-  let visible =
-    app.visible_window(offset, offset.saturating_add(viewport_rows));
+  let window_end =
+    offset.saturating_add(viewport_rows).min(ctx.visible_indices.len());
+  let items = crate::feed::items_for_tab(ctx.workspace, &*model);
+  let visible: Vec<&crate::models::FeedItem> = ctx.visible_indices
+    [offset..window_end]
+    .iter()
+    .map(|&i| &items[i])
+    .collect();
   // Pre-wrap titles once per item; `reader_feed_row_lines` previously
   // re-ran textwrap on each call, doubling work against the same
   // textwrap done for row-height counting.
@@ -787,8 +824,13 @@ fn reader_feed_row_lines_with_wrapped(
 }
 
 
-pub fn draw_item_table(frame: &mut Frame, app: &mut App, area: Rect) {
-  let t = app.theme();
+pub fn draw_item_table(
+  frame: &mut Frame,
+  model: &mut crate::feed::FeedModel,
+  ctx: &crate::feed::FeedContext,
+  area: Rect,
+) {
+  let t = ctx.theme;
   let t_item_table = std::time::Instant::now();
   // Header: color carries the emphasis; no bold (single-channel emphasis).
   let header_style = Style::default().fg(t.header);
@@ -826,27 +868,35 @@ pub fn draw_item_table(frame: &mut Frame, app: &mut App, area: Rect) {
   // Auto-scroll: reconcile the active list against the current viewport
   // and apply the 2-item bottom buffer. The math moved into
   // FeedModel::pre_draw in PR 4; the caller computes the layout-derived
-  // `items_fitting` (item-height-aware textwrap, depends on Workspace).
-  // See ADR-001 D3.
-  let total_items = app.visible_count();
-  let items_fitting = count_visible_items_from_app(
-    app,
-    app.active_list_offset(),
-    viewport_rows,
-    title_wrap_w,
-  );
-  app.feed.pre_draw(
+  // `items_fitting` (item-height-aware textwrap). See ADR-001 D3.
+  //
+  // Phase 1: read everything needed for pre_draw with an immutable
+  // borrow of `model`, ending the borrow before `model.pre_draw`.
+  let total_items = ctx.visible_indices.len();
+  let items_fitting = {
+    let items = crate::feed::items_for_tab(ctx.workspace, &*model);
+    count_items_fitting_from_indices(
+      &ctx.visible_indices,
+      items,
+      model.active_list().offset(),
+      viewport_rows,
+      title_wrap_w,
+    )
+  };
+  model.pre_draw(
     crate::ui::Viewport::new(inner.width, viewport_rows as u16),
     total_items,
     items_fitting,
   );
 
-  // ── Slice to visible window — trust app.list_offset as first visible item ─
+  // ── Slice to visible window — trust list offset as first visible item ─
   // Take viewport_rows + 2 extra so the last row is never clipped even when
   // an item spans 2 rows.
-  let start = app.active_list_offset().min(total_items.saturating_sub(1));
+  let start = model.active_list().offset().min(total_items.saturating_sub(1));
   let end = (start + viewport_rows + 2).min(total_items);
-  let window = app.visible_window(start, end);
+  let items = crate::feed::items_for_tab(ctx.workspace, &*model);
+  let window: Vec<&crate::models::FeedItem> =
+    ctx.visible_indices[start..end].iter().map(|&i| &items[i]).collect();
 
   // ── Single textwrap pass over visible window only ─────────────────────────
   // Produces (row_height, title_lines) together — no second wrap call needed.
@@ -881,15 +931,16 @@ pub fn draw_item_table(frame: &mut Frame, app: &mut App, area: Rect) {
 
   // ── Build rows for visible window only ────────────────────────────────────
   let t_rows = std::time::Instant::now();
-  let visual_mode = app.feed.feed_tab == FeedTab::Library && app.feed.library_visual_mode;
+  let visual_mode = model.feed_tab == FeedTab::Library && model.library_visual_mode;
+  let selected_idx = model.active_list().selected();
   let rows: Vec<Row> = window
     .iter()
     .enumerate()
     .map(|(i, item)| {
       let item_idx = start + i;
-      let is_cursor = item_idx == app.active_selected_index();
+      let is_cursor = item_idx == selected_idx;
       let in_visual =
-        visual_mode && app.feed.library_selected_urls.contains(&item.url);
+        visual_mode && model.library_selected_urls.contains(&item.url);
       let is_selected = is_cursor || in_visual;
       let (content_height, title_lines) = &window_data[i];
 
@@ -1012,17 +1063,19 @@ fn feed_cell(value: &str, style: Style) -> Cell<'static> {
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 /// Count how many items (starting from `list_offset`) fit in `viewport_rows`
-/// screen rows, including one spacer row between feed items.
-fn count_visible_items_from_app(
-  app: &App,
+/// screen rows, including one spacer row between feed items. Indexed
+/// variant — paired with `items_for_tab` to read titles.
+fn count_items_fitting_from_indices(
+  visible_indices: &[usize],
+  items: &[crate::models::FeedItem],
   list_offset: usize,
   viewport_rows: usize,
   title_wrap_w: usize,
 ) -> usize {
   let mut rows_used = 0usize;
   let mut count = 0usize;
-  for idx in list_offset..app.visible_count() {
-    let Some(item) = app.visible_get(idx) else { break };
+  for &idx in visible_indices.iter().skip(list_offset) {
+    let Some(item) = items.get(idx) else { break };
     let item_height = if item.title.len() > title_wrap_w { 3 } else { 2 };
     if rows_used + item_height > viewport_rows {
       break;

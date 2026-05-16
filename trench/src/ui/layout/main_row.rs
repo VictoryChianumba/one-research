@@ -17,6 +17,37 @@ use super::widgets::{draw_horiz_split_box, draw_vert_split_box};
 use super::RIGHT_COL_WIDTH;
 use crate::app::{App, FocusedReader};
 
+/// Orchestrator helper: builds a `FeedContext` snapshot from `App` and
+/// dispatches to the (renderer-pure) `draw_feed_pane`. Lives here at
+/// the orchestrator level because it crosses fields of `App` — `feed.rs`
+/// itself is forbidden to take `&mut App` post-PR-4c (ADR-001 D4).
+///
+/// The local owned values (`visible`, `history`, `counts`) anchor the
+/// FeedContext's lifetimes — once they're constructed the `&app` borrow
+/// from the method calls is released and `&app.workspace` / `&mut
+/// app.feed` can split-borrow cleanly.
+fn dispatch_feed_pane(frame: &mut Frame, app: &mut App, area: Rect) {
+  let theme = app.theme();
+  let counts: crate::app::ItemCounts = (*app.item_counts()).clone();
+  // Both helpers take field-scoped borrows so the resulting owned
+  // values (Vec<usize>, Vec<&HistoryEntry>) carry no live borrow on
+  // `app` beyond `app.workspace` — leaving `&mut app.feed` free below.
+  let visible_indices =
+    crate::feed::visible_indices_for(&app.workspace, &app.feed, &app.config);
+  let filtered_history =
+    crate::feed::filtered_history_for(&app.workspace, &app.feed);
+  let ctx = crate::feed::FeedContext {
+    workspace: &app.workspace,
+    config: &app.config,
+    theme,
+    viewport: crate::ui::Viewport::new(area.width, area.height),
+    visible_indices,
+    filtered_history,
+    item_counts: counts,
+  };
+  draw_feed_pane(frame, &mut app.feed, &ctx, area);
+}
+
 /// Screen rects computed by draw_main_row, passed back to app.update_pane_rects.
 pub(super) struct MainRowRects {
   pub feed: Option<Rect>,
@@ -170,7 +201,7 @@ pub fn draw_main_row(frame: &mut Frame, app: &mut App, area: Rect) -> MainRowRec
       "Reader",
       &t,
     );
-    draw_feed_pane(frame, app, feed_rect);
+    dispatch_feed_pane(frame, app, feed_rect);
     {
       let rows = Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
         .split(reader_rect);
@@ -324,7 +355,7 @@ pub fn draw_main_row(frame: &mut Frame, app: &mut App, area: Rect) -> MainRowRec
       draw_vert_split_box(frame, area, "", bottom_title, &t);
 
     let t = std::time::Instant::now();
-    draw_feed_pane(frame, app, feed_rect);
+    dispatch_feed_pane(frame, app, feed_rect);
     log::debug!("draw_item_table (narrow): {}ms", t.elapsed().as_millis());
 
     let mut details_rect: Option<Rect> = None;
@@ -387,7 +418,7 @@ pub fn draw_main_row(frame: &mut Frame, app: &mut App, area: Rect) -> MainRowRec
     draw_horiz_split_box(frame, area, right_w, "", right_title, &t);
 
   let t = std::time::Instant::now();
-  draw_feed_pane(frame, app, feed_rect);
+  dispatch_feed_pane(frame, app, feed_rect);
   log::debug!("draw_item_table: {}ms", t.elapsed().as_millis());
 
   let mut details_rect: Option<Rect> = None;
