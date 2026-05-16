@@ -612,48 +612,28 @@ pub fn draw_narrow_feed(frame: &mut Frame, app: &mut App, area: Rect) {
     return;
   }
   let viewport_rows = list_area.height as usize;
-  let selected = app.active_selected_index();
   let title_w = reader_feed_title_width(list_area.width as usize);
 
-  // Render-time mutation deferred from PR 4: the narrow-feed auto-scroll
-  // uses an item-height-aware reverse-walk over `app.visible_window`, so
-  // it depends on Workspace items + per-item wrapped heights and doesn't
-  // fit FeedModel::pre_draw's caller-supplies-the-counts contract. The
-  // simpler history + item-table sites moved into pre_draw; this one
-  // waits for either (a) a model-side reverse-walk variant, or (b) the
-  // narrow-feed list-cell to grow a fixed-height variant.
-  let mut offset = app.active_list_offset();
-  {
-    let total = app.visible_count();
-    if selected < offset {
-      offset = selected;
-    } else {
-      // Reverse-walk only needs items 0..=selected to find the offset, so
-      // grab a bounded window instead of allocating Vec<&FeedItem> for the
-      // entire visible set every redraw.
-      let visible = app.visible_window(0, selected.saturating_add(1));
-      let vc = count_reader_feed_visible_items(
-        &visible,
-        offset,
-        viewport_rows,
-        title_w,
-      );
-      if selected >= offset + vc {
-        let mut rows_used = 0usize;
-        offset = selected;
-        for i in (0..=selected).rev() {
-          let h = reader_feed_row_height(visible[i], title_w);
-          if rows_used + h > viewport_rows {
-            break;
-          }
-          rows_used += h;
-          offset = i;
-        }
-      }
-    }
-    offset = offset.min(total.saturating_sub(1));
-  }
-  app.set_active_list_offset(offset);
+  // Layout owns the textwrap (width-dependent); FeedModel owns the
+  // offset arithmetic. Heights for items [0, selected] feed the
+  // variable-row reverse-walk inside `pre_draw_narrow_feed`.
+  let total = app.visible_count();
+  let selected = app.active_selected_index();
+  let row_heights: Vec<usize> = if total > 0 {
+    app
+      .visible_window(0, selected.saturating_add(1))
+      .iter()
+      .map(|item| reader_feed_row_height(item, title_w))
+      .collect()
+  } else {
+    Vec::new()
+  };
+  app.feed.pre_draw_narrow_feed(
+    crate::ui::Viewport::new(list_area.width, list_area.height),
+    total,
+    &row_heights,
+  );
+  let offset = app.active_list_offset();
 
   frame.render_widget(
     Paragraph::new(drawer_feed_header_line(list_area.width as usize, &t)),
@@ -725,25 +705,6 @@ fn reader_feed_title_width(width: usize) -> usize {
     let gap_w = 3usize;
     width.saturating_sub(source_w + kind_w + date_w + gap_w).max(8)
   }
-}
-
-fn count_reader_feed_visible_items(
-  items: &[&crate::models::FeedItem],
-  list_offset: usize,
-  viewport_rows: usize,
-  title_w: usize,
-) -> usize {
-  let mut rows_used = 0usize;
-  let mut count = 0usize;
-  for item in items.iter().skip(list_offset) {
-    let item_height = reader_feed_row_height(item, title_w);
-    if rows_used + item_height > viewport_rows {
-      break;
-    }
-    rows_used += item_height;
-    count += 1;
-  }
-  count.max(1)
 }
 
 fn reader_feed_row_height(

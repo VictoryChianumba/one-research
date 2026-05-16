@@ -190,6 +190,72 @@ impl FeedModel {
       list.set_offset(new_offset);
     }
   }
+
+  /// Variable-height variant of [`pre_draw`](Self::pre_draw) for the
+  /// narrow-feed list-cell (drawer used by the reader's secondary pane).
+  ///
+  /// Narrow-feed rows wrap their titles at a width that only the layout
+  /// pass knows, so per-item heights live outside the model. The caller
+  /// supplies `row_heights_up_to_selected[i] = rendered row count for
+  /// item i in 0..=selected`; the model owns the resulting offset
+  /// arithmetic (the same reverse-walk that previously lived in
+  /// `draw_narrow_feed`).
+  ///
+  /// - `viewport`: rows is the available height for the list area.
+  /// - `total_items`: total count from the active tab.
+  /// - `row_heights_up_to_selected`: per-item row counts for items
+  ///   `[0, selected]`. Pass an empty slice when `total_items == 0`.
+  pub fn pre_draw_narrow_feed(
+    &mut self,
+    viewport: Viewport,
+    total_items: usize,
+    row_heights_up_to_selected: &[usize],
+  ) {
+    let viewport_rows = viewport.rows as usize;
+    let list = match self.feed_tab {
+      FeedTab::Inbox => &mut self.inbox_list,
+      FeedTab::Library => &mut self.library_list,
+      FeedTab::Discoveries => &mut self.discovery.list,
+      FeedTab::History => &mut self.history_list,
+    };
+    list.set_count(total_items);
+    list.set_viewport(viewport_rows);
+
+    if total_items == 0 || row_heights_up_to_selected.is_empty() {
+      return;
+    }
+    let selected = list.selected();
+    // After set_viewport, ensure_visible already restored selection
+    // visibility using uniform-height logic. With variable heights that
+    // estimate may pack more rows than actually fit — count fit-from-
+    // offset using real row heights, then reverse-walk if the selection
+    // ended up below the true window.
+    let mut offset = list.offset();
+    let mut rows_used = 0usize;
+    let mut vc = 0usize;
+    for &h in row_heights_up_to_selected.iter().skip(offset) {
+      if rows_used + h > viewport_rows {
+        break;
+      }
+      rows_used += h;
+      vc += 1;
+    }
+    let vc = vc.max(1);
+    if selected >= offset + vc {
+      let mut rows_used = 0usize;
+      offset = selected;
+      for i in (0..=selected).rev() {
+        let h = row_heights_up_to_selected[i];
+        if rows_used + h > viewport_rows {
+          break;
+        }
+        rows_used += h;
+        offset = i;
+      }
+    }
+    offset = offset.min(total_items.saturating_sub(1));
+    list.set_offset(offset);
+  }
 }
 
 impl Default for FeedModel {
@@ -427,6 +493,75 @@ mod tests {
 
     // Library list was reconciled; inbox_list is untouched.
     assert!(m.library_list.offset() > 0);
+    assert_eq!(m.inbox_list.offset(), 0);
+  }
+
+  // ── pre_draw_narrow_feed ───────────────────────────────────────────────
+
+  #[test]
+  fn pre_draw_narrow_feed_reverse_walks_for_tall_rows() {
+    // Viewport 10 rows; first 4 items are 3 rows tall, rest are 1 row.
+    // Uniform-height ensure_visible would think 4 items fit (= 10 / ~2);
+    // real fit from offset 0 is only 3 (3+3+3=9, 4th wouldn't fit).
+    // Selecting item 5 (row 4-5 of one-row band) must reverse-walk to
+    // land offset where the cumulative height up to selected fits.
+    let mut m = FeedModel::default();
+    m.inbox_list.set_count(20);
+    m.inbox_list.set_viewport(10);
+    m.inbox_list.set_offset(0);
+    m.inbox_list.set_selected(5);
+
+    // Heights: items 0..=3 are 3 rows; items 4..=5 are 1 row each.
+    let heights: Vec<usize> =
+      (0..=5).map(|i| if i < 4 { 3 } else { 1 }).collect();
+    m.pre_draw_narrow_feed(Viewport::new(40, 10), 20, &heights);
+
+    // Reverse walk from item 5: 1 + 1 + 3 + 3 + 3 = 11 > 10, so the walk
+    // stops; offset lands at item 2 (1+1+3+3 = 8 rows, ≤ 10).
+    assert_eq!(m.inbox_list.offset(), 2);
+  }
+
+  #[test]
+  fn pre_draw_narrow_feed_no_change_when_selection_already_fits() {
+    // Selection already on screen at a sensible offset — no adjustment.
+    let mut m = FeedModel::default();
+    m.inbox_list.set_count(20);
+    m.inbox_list.set_viewport(10);
+    m.inbox_list.set_offset(0);
+    m.inbox_list.set_selected(2);
+
+    // Three items, each 2 rows tall — fits in a 10-row window.
+    let heights = vec![2usize, 2, 2];
+    m.pre_draw_narrow_feed(Viewport::new(40, 10), 20, &heights);
+
+    assert_eq!(m.inbox_list.offset(), 0);
+    assert_eq!(m.inbox_list.selected(), 2);
+  }
+
+  #[test]
+  fn pre_draw_narrow_feed_handles_empty_list() {
+    let mut m = FeedModel::default();
+    m.pre_draw_narrow_feed(Viewport::new(40, 10), 0, &[]);
+    assert_eq!(m.inbox_list.offset(), 0);
+    assert_eq!(m.inbox_list.selected(), 0);
+  }
+
+  #[test]
+  fn pre_draw_narrow_feed_dispatches_by_feed_tab() {
+    // Library tab is active — library_list should be touched.
+    let mut m = FeedModel::default();
+    m.feed_tab = FeedTab::Library;
+    m.library_list.set_count(50);
+    m.library_list.set_viewport(8);
+    m.library_list.set_offset(0);
+    m.library_list.set_selected(6);
+
+    let heights = vec![2usize; 7]; // 7 items of 2 rows each
+    m.pre_draw_narrow_feed(Viewport::new(40, 8), 50, &heights);
+
+    // Reverse walk from item 6: 2+2+2+2 = 8 rows fits; one more (2) would
+    // overflow, so offset lands at item 3.
+    assert_eq!(m.library_list.offset(), 3);
     assert_eq!(m.inbox_list.offset(), 0);
   }
 }
