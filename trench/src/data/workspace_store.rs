@@ -46,8 +46,6 @@ pub struct Workspace {
   pub persisted_states: HashMap<String, WorkflowState>,
 }
 
-impl Workspace {
-  pub fn new() -> Self {
-    Self::default()
-  }
-}
+// Construction goes through `Workspace::default()` (derive(Default)).
+// The `new()` constructor was removed on 2026-05-16 — no caller had
+// taken it up since it landed.

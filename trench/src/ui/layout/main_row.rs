@@ -38,9 +38,7 @@ fn dispatch_feed_pane(frame: &mut Frame, app: &mut App, area: Rect) {
     crate::feed::filtered_history_for(&app.workspace, &app.feed);
   let ctx = crate::feed::FeedContext {
     workspace: &app.workspace,
-    config: &app.config,
     theme,
-    viewport: crate::ui::Viewport::new(area.width, area.height),
     visible_indices,
     filtered_history,
     item_counts: counts,

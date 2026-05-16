@@ -671,31 +671,12 @@ impl App {
     }
   }
 
-  fn items_for_tab_mut(&mut self) -> &mut Vec<FeedItem> {
-    match self.feed.feed_tab {
-      FeedTab::Inbox => &mut self.workspace.items,
-      FeedTab::Library => &mut self.workspace.items,
-      FeedTab::Discoveries => &mut self.feed.discovery.items,
-      // History doesn't use FeedItem; callers should not dispatch here for this tab.
-      FeedTab::History => &mut self.workspace.items,
-    }
-  }
-
   pub fn active_selected_index(&self) -> usize {
     match self.feed.feed_tab {
       FeedTab::Inbox => self.feed.inbox_list.selected(),
       FeedTab::Library => self.feed.library_list.selected(),
       FeedTab::Discoveries => self.feed.discovery.list.selected(),
       FeedTab::History => self.feed.history_list.selected(),
-    }
-  }
-
-  pub fn active_list_offset(&self) -> usize {
-    match self.feed.feed_tab {
-      FeedTab::Inbox => self.feed.inbox_list.offset(),
-      FeedTab::Library => self.feed.library_list.offset(),
-      FeedTab::Discoveries => self.feed.discovery.list.offset(),
-      FeedTab::History => self.feed.history_list.offset(),
     }
   }
 

@@ -31,17 +31,9 @@ impl ModalStack {
     self.stack.push(modal);
   }
 
-  pub fn pop(&mut self) -> Option<ActiveModal> {
-    self.stack.pop()
-  }
-
   /// Top of the stack — the modal that should intercept input.
   pub fn top(&self) -> Option<&ActiveModal> {
     self.stack.last()
-  }
-
-  pub fn is_empty(&self) -> bool {
-    self.stack.is_empty()
   }
 
   /// Remove a specific modal from the stack regardless of position.
@@ -60,26 +52,22 @@ mod tests {
   #[test]
   fn empty_by_default() {
     let s = ModalStack::new();
-    assert!(s.is_empty());
     assert!(s.top().is_none());
   }
 
   #[test]
-  fn push_pop_lifo() {
+  fn push_then_top_reflects_lifo() {
     let mut s = ModalStack::new();
     s.push(ActiveModal::Sources);
     assert_eq!(s.top(), Some(&ActiveModal::Sources));
-    let popped = s.pop();
-    assert_eq!(popped, Some(ActiveModal::Sources));
-    assert!(s.is_empty());
   }
 
   #[test]
-  fn remove_by_tag_preserves_others() {
+  fn remove_drops_all_matching_entries() {
     let mut s = ModalStack::new();
     s.push(ActiveModal::Sources);
     s.push(ActiveModal::Sources);
     s.remove(&ActiveModal::Sources);
-    assert!(s.is_empty());
+    assert!(s.top().is_none());
   }
 }

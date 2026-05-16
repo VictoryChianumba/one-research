@@ -90,9 +90,7 @@ impl App {
   }
 
   pub fn library_exit_visual(&mut self) {
-    self.feed.library_visual_mode = false;
-    self.feed.library_visual_anchor = 0;
-    self.feed.library_selected_urls.clear();
+    self.feed.exit_library_visual_mode();
   }
 
   /// Apply a workflow-state transition to every selected item. Returns the

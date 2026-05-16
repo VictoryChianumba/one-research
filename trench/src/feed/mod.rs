@@ -63,11 +63,6 @@ impl FeedModel {
     model
   }
 
-  /// The currently-selected feed tab.
-  pub fn feed_tab(&self) -> FeedTab {
-    self.feed_tab
-  }
-
   /// The list cursor for the currently-active tab. Renders read
   /// `.selected()` / `.offset()` through this instead of round-tripping
   /// `App::active_selected_index()` / `App::active_list_offset()` —
@@ -149,9 +144,11 @@ impl FeedModel {
     self.library_visual_anchor = self.library_list.selected();
   }
 
-  /// Exit library bulk-select mode; clear the per-URL selection set.
+  /// Exit library bulk-select mode; clear the per-URL selection set and
+  /// reset the anchor.
   pub fn exit_library_visual_mode(&mut self) {
     self.library_visual_mode = false;
+    self.library_visual_anchor = 0;
     self.library_selected_urls.clear();
   }
 
@@ -387,9 +384,7 @@ impl Default for FeedModel {
 /// no ambiguity, so the references can ride straight in the struct.
 pub struct FeedContext<'a> {
   pub workspace: &'a crate::data::workspace_store::Workspace,
-  pub config: &'a crate::config::Config,
   pub theme: ui_theme::Theme,
-  pub viewport: Viewport,
   /// Indices into [`items_for_tab`]`(workspace, feed)` after applying
   /// search + filter + tab-scoping. Empty for the History tab.
   pub visible_indices: Vec<usize>,
@@ -494,7 +489,7 @@ mod tests {
   #[test]
   fn default_feed_tab_is_inbox() {
     let model = FeedModel::default();
-    assert!(model.feed_tab() == FeedTab::Inbox);
+    assert!(model.feed_tab == FeedTab::Inbox);
   }
 
   #[test]
