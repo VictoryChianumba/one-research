@@ -10,6 +10,10 @@ ci () {
   cargo upgrade --verbose
   cargo audit
 
+  # Slice-1 render-purification tripwires (ADR-001). Cheap grep checks
+  # that catch regressions before the test suite would.
+  scripts/check-render-purification.sh
+
   cargo +nightly check && cargo +nightly fix --allow-dirty && cargo +nightly clippy --fix --allow-dirty && cargo +nightly fmt --all && cargo +nightly test
   #cargo +nightly fmt --all
   #cargo +nightly clippy --all-targets --all-features -- -Dwarnings

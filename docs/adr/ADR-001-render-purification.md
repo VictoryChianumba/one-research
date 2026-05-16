@@ -1,7 +1,7 @@
 # ADR-001 — Render purification, per pane
 
-- **Status:** Proposed (Slice 1, PR 1 of 6). Becomes Accepted when Slice 1 PR 6 lands. Closes when all panes have been refactored under lazy rollout (likely years out).
-- **Date:** 2026-05-15
+- **Status:** Accepted (Slice 1 complete: PRs 1, 2, 3, 4a, 4b, 4c, 6 landed; PR 5 — `Action::OpenInReader` cross-pane plumbing — deferred until Slice 2 triggers it). Closes when all panes have been refactored under lazy rollout (likely years out).
+- **Date:** 2026-05-15 (proposed); 2026-05-16 (accepted)
 - **Owner:** Victory Chianumba
 - **Supersedes:** none
 
@@ -86,8 +86,8 @@ Classification table for the feed pane:
 | 4a | `pre_draw` (wide feed): auto-scroll for item-table and history-tab moves into `FeedModel::pre_draw`. | None visible |
 | 4b | `pre_draw` (narrow feed): variable-row-height variant `pre_draw_narrow_feed` lands; the third deferred mutation site moves into it. | None visible |
 | 4c | Render-signature flip: `feed.rs` renders take `&mut FeedModel + &FeedContext`, no `&App`. `FeedContext` carries pre-computed `visible_indices` + `filtered_history` + counts + theme + workspace/config borrows. **The load-bearing PR.** | None visible |
-| 5 | Cross-pane via `Action::OpenInReader { item, target: ReaderTarget }` (forward-compat with Slice 2). | None visible |
-| 6 | Lock the door: grep-based check that `feed.rs` has no `App`; ADR-001 status flips to Accepted. | None |
+| 5 | Cross-pane via `Action::OpenInReader { item, target: ReaderTarget }` (forward-compat with Slice 2). **Deferred to Slice 2** — the audit on 2026-05-16 flagged this as premature in isolation; cleaner to land alongside the reader-pane slice that uses it. | None visible |
+| 6 | Lock the door: `scripts/check-render-purification.sh` greps for `App` in `feed.rs` and verifies the ADR-001 D6 table mentions every slice-1 PR. Wired into `ci.sh`. ADR-001 status flips to Accepted. | None |
 
 Feature freeze for the ~2 weeks of evening work the slice takes. Bug fixes and trivial UI tweaks are fine; no new surfaces.
 
