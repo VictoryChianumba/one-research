@@ -117,13 +117,12 @@ pub fn draw_main_row(
         focused,
         &t,
       );
+      app
+        .reader
+        .primary
+        .pre_draw(crate::ui::Viewport::new(rows[1].width, rows[1].height));
       let kitty = app.kitty_supported;
       if let Some(tab) = app.reader_active_tab_mut() {
-        let new_size = (rows[1].width, rows[1].height);
-        if tab.last_resize != Some(new_size) {
-          tab.reader.resize(new_size.0, new_size.1);
-          tab.last_resize = Some(new_size);
-        }
         tread::draw(frame, rows[1], &tab.reader, &tread_theme);
         let burst = tab.burst.in_burst();
         tread::after_draw_guarded(
@@ -147,13 +146,12 @@ pub fn draw_main_row(
         focused,
         &t,
       );
+      app
+        .reader
+        .secondary
+        .pre_draw(crate::ui::Viewport::new(rows[1].width, rows[1].height));
       let kitty = app.kitty_supported;
       if let Some(tab) = app.reader_secondary_active_tab_mut() {
-        let new_size = (rows[1].width, rows[1].height);
-        if tab.last_resize != Some(new_size) {
-          tab.reader.resize(new_size.0, new_size.1);
-          tab.last_resize = Some(new_size);
-        }
         tread::draw(frame, rows[1], &tab.reader, &tread_theme);
         let burst = tab.burst.in_burst();
         tread::after_draw_guarded(
@@ -214,13 +212,12 @@ pub fn draw_main_row(
         true,
         &t,
       );
+      app
+        .reader
+        .primary
+        .pre_draw(crate::ui::Viewport::new(rows[1].width, rows[1].height));
       let kitty = app.kitty_supported;
       if let Some(tab) = app.reader_active_tab_mut() {
-        let new_size = (rows[1].width, rows[1].height);
-        if tab.last_resize != Some(new_size) {
-          tab.reader.resize(new_size.0, new_size.1);
-          tab.last_resize = Some(new_size);
-        }
         tread::draw(frame, rows[1], &tab.reader, &tread_theme);
         let burst = tab.burst.in_burst();
         tread::after_draw_guarded(
@@ -259,14 +256,13 @@ pub fn draw_main_row(
       true,
       &t,
     );
+    app
+      .reader
+      .primary
+      .pre_draw(crate::ui::Viewport::new(rows[1].width, rows[1].height));
     let kitty = app.kitty_supported;
     if let Some(tab) = app.reader_active_tab_mut() {
       let elapsed = std::time::Instant::now();
-      let new_size = (rows[1].width, rows[1].height);
-      if tab.last_resize != Some(new_size) {
-        tab.reader.resize(new_size.0, new_size.1);
-        tab.last_resize = Some(new_size);
-      }
       tread::draw(frame, rows[1], &tab.reader, &tread_theme);
       let burst = tab.burst.in_burst();
       tread::after_draw_guarded(
@@ -306,14 +302,13 @@ pub fn draw_main_row(
         true,
         &t,
       );
+      app
+        .reader
+        .primary
+        .pre_draw(crate::ui::Viewport::new(rows[1].width, rows[1].height));
       let kitty = app.kitty_supported;
       if let Some(tab) = app.reader_active_tab_mut() {
         let elapsed = std::time::Instant::now();
-        let new_size = (rows[1].width, rows[1].height);
-        if tab.last_resize != Some(new_size) {
-          tab.reader.resize(new_size.0, new_size.1);
-          tab.last_resize = Some(new_size);
-        }
         tread::draw(frame, rows[1], &tab.reader, &tread_theme);
         let burst = tab.burst.in_burst();
         tread::after_draw_guarded(

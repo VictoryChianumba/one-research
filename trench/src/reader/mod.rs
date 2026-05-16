@@ -50,6 +50,25 @@ impl ReaderInstanceModel {
     }
   }
 
+  /// Layout-derived reconciliation that runs once per frame, before
+  /// the render hook calls `tread::draw`.  Compares the supplied
+  /// viewport against `last_resize` on the active tab and emits the
+  /// `tread::Reader::resize` call only when the size actually changed.
+  ///
+  /// Without this, the render path would call `resize()` every frame
+  /// — `tread::Reader` doesn't guarantee its own short-circuit and
+  /// the resize triggers re-flow + image re-placement, both expensive.
+  pub fn pre_draw(&mut self, viewport: crate::ui::Viewport) {
+    let Some(tab) = self.tabs.get_mut(self.active_tab) else {
+      return;
+    };
+    let new_size = (viewport.cols, viewport.rows);
+    if tab.last_resize != Some(new_size) {
+      tab.reader.resize(new_size.0, new_size.1);
+      tab.last_resize = Some(new_size);
+    }
+  }
+
   /// Remove the active tab.  Returns `true` if the instance is now
   /// empty (callers may want to dismiss the pane).  Re-anchors
   /// `active_tab` to the previous index so the cursor stays on a real
@@ -181,6 +200,16 @@ impl ReaderPopupModel {
   /// the data instead of trusting the caller to keep the flag in sync.
   pub fn is_open(&self) -> bool {
     self.active || self.editor.is_some() || self.rx.is_some()
+  }
+
+  /// Same shape as [`ReaderInstanceModel::pre_draw`] — resize the
+  /// editor once per frame.  Popup has no `last_resize` short-circuit
+  /// (its render path historically resized every frame), so this is
+  /// where the per-frame `tread::Reader::resize` call lives.
+  pub fn pre_draw(&mut self, viewport: crate::ui::Viewport) {
+    if let Some(editor) = self.editor.as_mut() {
+      editor.resize(viewport.cols, viewport.rows);
+    }
   }
 }
 

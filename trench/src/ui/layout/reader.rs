@@ -206,11 +206,13 @@ pub fn draw_reader_popup(frame: &mut Frame, app: &mut App, area: Rect) {
 
   let tread_theme = app.theme_for_tread();
   let kitty = app.kitty_supported;
-  // The three popup fields now live behind a single struct, so a single
-  // `&mut app.reader_popup` borrow gives access to all of them.
+  // Layout-derived editor resize now lives in `ReaderPopupModel::pre_draw`
+  // (ADR-002 §D3). One mutable borrow on `app.reader_popup` per frame.
+  app
+    .reader_popup
+    .pre_draw(crate::ui::Viewport::new(inner.width, inner.height));
   let popup = &mut app.reader_popup;
   if let Some(editor) = popup.editor.as_mut() {
-    editor.resize(inner.width, inner.height);
     tread::draw(frame, inner, editor, &tread_theme);
     tread::after_draw_guarded(
       editor,
