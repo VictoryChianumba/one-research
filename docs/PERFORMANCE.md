@@ -947,3 +947,83 @@ than the original 2496ms unaltered baseline.
   (intermittent failure, not always-failure).
 - huggingface→arxiv batch 429 — still open; today's run happened to
   avoid it (probably arxiv server load timing).
+
+---
+
+## TestBackend render harness (landed 2026-05-17)
+
+The third bucket-3 deferral from the audit summary (line 376: "TestBackend
+benches for the heavy scenarios — construct synthetic App states ... time
+`ui::draw` against `ratatui::backend::TestBackend`. ~100-200 lines of
+harness, would give repeatable scaling data that also feeds axis 6
+(scalability)") lands as the `--bench-render` flag + companion module
++ Python sweep harness. ~230 lines total.
+
+**Pattern**: same shape as `--bench-startup` from axis 4. Flag check at
+the top of `main()` short-circuits before terminal setup; the bench
+constructs a synthetic App via `App::new()` + a deterministic
+index-keyed `FeedItem` factory, drives `ui::draw` against
+`TestBackend` for F frames after a 5-frame warmup, and emits
+`key=value` lines for the Python harness to aggregate.
+
+**MVP scope**: one scenario, `feed`, parameterized on N. Additional
+scenarios (search-active, resize cycle, repo viewer, notes) layer onto
+the same harness — each new scenario is ~30 lines in `bench.rs`. The
+choice to ship one scenario instead of all five is CLAUDE.md Rule 2
+(simplicity first) — prove the pattern, then extend on demand.
+
+**Tooling added**:
+- `trench/src/bench.rs` — module with `parse_bench_args`, `run`, and
+  `synthetic_item` factory. Index-keyed (deterministic, reproducible).
+- `--bench-render <scenario> [--n N] [--frames F] [--width W] [--height H]`
+  on main binary. Defaults: scenario=feed, N=1000, frames=200, 160x48.
+- `/tmp/bench_render.py` — sweeps across N values, prints a table of
+  `p50/p95/p99/max` per N. No pty needed (bench exits before terminal
+  setup).
+
+**Baseline measurements** (release build, 160×48 viewport, system quiet):
+
+| N | p50_us | p95_us | p99_us | max_us |
+|---|---|---|---|---|
+| 1000 | 487 | 506-549 | 528-756 | 531-995 |
+| 10000 | 575 | 632-657 | 674-922 | 750-1303 |
+
+Reproducible to ~1μs precision on p50 across runs when the system isn't
+loaded. **10× input → 1.18× p50** — sub-linear scaling, empirically
+confirming axis 6's positive finding that the feed renderer's cost is
+bounded by viewport (memoized `visible_cache`) and not by total item
+count. The +88μs additive component between N=1000 and N=10000 is the
+small all-items work in `pre_draw_update` + index touches.
+
+**All measurements are far under the 16ms frame budget** even at
+N=10000. Max ever observed in a quiet run: 1303μs. Under sustained
+system load p99 spiked to ~13ms (still inside budget) — that's
+scheduler contention, not algorithmic growth.
+
+**What this unblocks**: axis 7's "heavy-path scenarios deferred" open
+threads (line 366) — anything that fits the same pattern (construct
+synthetic App, drive `ui::draw`, time it) now has a place to land.
+Specifically next-up:
+- `feed_search` scenario — same N, with an active search query that
+  invalidates the visible_cache each frame, measures the cache-miss
+  path
+- `resize` scenario — same N, cycle through 3 viewport sizes per
+  frame, measures geometry-recompute cost
+- `repo_viewer` scenario — synthetic repo with M files / K lines,
+  measures the post-fix syntect-off-UI-thread path (feature 18)
+- `notes` scenario — synthetic notes with K entries, measures the
+  O(N) `find` by note_id site that feature 17 flagged as deferred
+
+Each is ~30 lines once the factory pattern is established. They're
+not built because nothing currently demands them; the harness is
+ready when one of them does.
+
+**Open thread**: the bench measures `ui::draw` only, not event
+handling or `pre_draw_update` in isolation. If a future scenario
+needs to attribute cost between those phases, add timing breakouts
+inside `bench::run_feed` rather than hand-rolling a separate harness.
+
+**Lesson banked** from running the harness immediately after the
+audit closed: a noisy machine produces 5-25× p99 inflation while p50
+only doubles. The full distribution separates "scaling problem" from
+"contention" — neither summary statistic alone is enough.

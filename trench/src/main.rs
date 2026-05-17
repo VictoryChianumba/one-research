@@ -1,5 +1,6 @@
 mod action;
 mod app;
+mod bench;
 mod commands;
 mod config;
 mod discovery;
@@ -596,6 +597,14 @@ fn migrate_legacy_config_dir() {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+  // --bench-render: TestBackend timing harness. Runs before any terminal
+  // setup, log file rotation, or alt-screen entry — the bench needs a
+  // clean stdout for `key=value` output and has no use for the normal
+  // event loop. See `bench.rs` for scenarios.
+  if let Some(opts) = bench::parse_bench_args() {
+    return bench::run(opts);
+  }
+
   let startup_t0 = std::time::Instant::now();
   // --bench-startup: exit cleanly after the first frame draws and print the
   // first-frame-ready elapsed time to stdout. Used by the startup harness to
