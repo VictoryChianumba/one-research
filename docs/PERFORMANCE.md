@@ -487,3 +487,57 @@ audit task list; this log is the durable record.
   - **Criterion benches with varying N** to validate scaling
     empirically — would catch any regression that introduced an
     accidental O(N²). Not built; would be ~50 lines.
+
+### Axis 8 — Energy / wakeups (closed 2026-05-17 — already energy-conscious, positive finding)
+
+- **Main loop adaptive poll timeout**: `event::poll(timeout)` uses
+  16ms when `needs_redraw || has_active_animation()`, 250ms when truly
+  idle (main.rs:1117-1121). Comment explicitly says: "CPU drops to
+  near-zero and battery is preserved." This is the correct pattern.
+- **No busy loops** in any thread:
+  - Ingestion thread (`spawn_fetch`) blocks on network I/O and exits
+    after `AllComplete` — no perpetual loop
+  - Main loop drains mpsc channels via non-blocking `try_recv()`, so
+    the channel itself isn't a wakeup source
+  - Per-frame tick functions (reader/chat/repo) early-return when no
+    state changed; cheap when idle
+- **Dirty-flag gating**: `check_needs_redraw()` reads-and-clears in one
+  call. Idle frames cost ~0 work since per-frame allocations live
+  inside `ui::draw` and `ui::draw` only runs when dirty.
+- **No fix landed.** Closing positive: like axis 6, the audit
+  confirmed the design rather than uncovered work. Idle trench should
+  show near-zero CPU and very low wakeups/sec.
+- **Open threads** (low priority, low expected payoff at idle):
+  - **Empirical verification on macOS** via `powermetrics --samplers
+    cpu_power,tasks -i 5000` while trench is idle in another window.
+    Expected: trench in the bottom-N processes by CPU%; wakeups <10/s.
+  - **Verify the 250ms idle timeout actually kicks in** — the gate
+    `needs_redraw || has_active_animation()` could stay perpetually
+    `true` if any tick function unconditionally calls `mark_dirty()`.
+    Quick way to check: after a sustained idle period (no input, no
+    fetch), grep `trench.log` for `frame summary` lines (axis 5
+    histogram) — should show 0 frames drawn over the summary window if
+    the idle path is actually idle.
+
+---
+
+## Audit summary (2026-05-17)
+
+8 axes audited. 2 banked real wins; 4 were diagnostic-only with no fix
+needed (3 of those positive findings: 6, 8 already well-designed; 7's
+infrastructure adequate); 1 added permanent instrumentation (5); 1
+closed diagnostic-only with cargo-bloat data + 4 attackable items
+deferred (3).
+
+| Axis | Result | Commit |
+|---|---|---|
+| 4 Startup | −47% instrumented (~30ms → ~16ms); median first-frame 22ms warm | f77f81c |
+| 2 Throughput | −34% pipeline (2496ms → 1651ms); openreview venue parallelization | d1f6a39 |
+| 3 Footprint | Diagnostic; 4 attackable items deferred (audio stack, http2, html5ever, dhat-rs profiling) | 56e57d9 |
+| 7 Responsiveness | Diagnostic; existing instrumentation adequate; feed view sub-ms | fb0df40 |
+| 1 Latency | Diagnostic; no concrete target; revisit on user complaint | 6aad448 |
+| 5 Tail jitter | Permanent frame-time histogram added | b60393f |
+| 6 Scalability | Positive finding; already well-designed | 3ccbfa5 |
+| 8 Energy | Positive finding; already energy-conscious | (this commit) |
+
+Tooling banked: `--bench-startup` flag, `cargo bloat`, `/tmp/bench_first_frame.py`, `/tmp/bench_pipeline.py`, INFO-level frame histogram in main loop.
