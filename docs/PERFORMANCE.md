@@ -243,3 +243,40 @@ audit task list; this log is the durable record.
   instrumented) folds into axis 3 (footprint).
 - **Tooling kept**: `--bench-startup` flag + `/tmp/bench_first_frame.py`
   harness for repeatable cold-start measurement.
+
+### Axis 2 — Throughput (closed 2026-05-17)
+
+- **Premise correction**: the audit started with the doc claim that "all
+  sources run sequentially on one thread." That was stale — the code in
+  `services/ingestion.rs` already used `std::thread::scope` for four
+  concurrent groups (A: arxiv→hf, B: openreview, C: core, D: RSS feeds).
+  Total wall-clock = max(groups), not sum. CLAUDE.md still has the stale
+  description; flagged for separate doc-hygiene cleanup.
+- **Baseline**: 2496ms total pipeline (1999ms fetch + 496ms enrichment).
+  Critical path was Group B at 1998ms — single source dominating the
+  whole fetch phase.
+- **Dominant cost**: `openreview::fetch()` made 3 sequential HTTP requests,
+  one per venue (ICLR/NeurIPS/ICML), to the same upstream
+  `api2.openreview.net`. Each ~600–700ms, total ~2s.
+- **Fix**: parallelized the three venue fetches with `std::thread::scope`
+  inside `openreview::fetch` (same primitive the outer service already
+  uses). Same-host concurrency was the named risk — tested clean, no 429s.
+- **Result**: openreview dropped to 536ms (−73%); fetch phase dropped to
+  1142ms (−43%); total pipeline dropped to 1651ms (−34%).
+- **New critical path**: Group A (1141ms = arxiv 168 + huggingface 973)
+  and Group D max (bair at 1085ms) — both bounded by upstream
+  responsiveness and the deliberate Group A serialization for shared-host
+  rate-limit politeness.
+- **Tooling kept**: per-source elapsed-time logging in `run_source`,
+  per-enrichment-stage timing, and `ingestion: total pipeline Nms` summary
+  log (INFO level — useful for ongoing observation, not diagnostic-only).
+  `/tmp/bench_pipeline.py` harness uses clean 'q' shutdown so env_logger
+  drop handlers flush buffered output (SIGTERM loses everything past the
+  first second).
+- **Open threads** (correctness, not throughput — separate from axis 2):
+  - `semantic_scholar` rate-limited (429) on the first request, enriches
+    0 items. Enrichment pipeline runs but does no work.
+  - `huggingface → arxiv` abstract batch fill 429s, so 53 papers per
+    refresh miss their abstracts.
+  - Both worth a follow-up audit cycle (axis 1 latency or its own slot)
+    once we have a quieter critical path to attribute against.

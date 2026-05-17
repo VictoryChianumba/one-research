@@ -15,14 +15,27 @@ const VENUES: &[&str] = &[
 ];
 
 pub fn fetch() -> Result<Vec<FeedItem>, String> {
-  let mut items = Vec::new();
-  for venue in VENUES {
-    match fetch_venue(venue) {
-      Ok(mut venue_items) => items.append(&mut venue_items),
-      Err(e) => log::warn!("openreview: venue {venue} failed — {e}"),
+  // Parallelize venue fetches. Each fetch_venue hits api2.openreview.net —
+  // same host — but the upstream has tolerated 3 concurrent requests in
+  // testing without 429. If that changes, add per-venue backoff or revert
+  // to the sequential loop. Wall-clock is bounded by the slowest single
+  // venue (~700ms) instead of the sum of all three (~2s).
+  let items: std::sync::Mutex<Vec<FeedItem>> = std::sync::Mutex::new(Vec::new());
+  std::thread::scope(|scope| {
+    for venue in VENUES {
+      let items_ref = &items;
+      scope.spawn(move || match fetch_venue(venue) {
+        Ok(mut venue_items) => {
+          items_ref
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .append(&mut venue_items);
+        }
+        Err(e) => log::warn!("openreview: venue {venue} failed — {e}"),
+      });
     }
-  }
-  Ok(items)
+  });
+  Ok(items.into_inner().unwrap_or_else(|e| e.into_inner()))
 }
 
 fn fetch_venue(invitation: &str) -> Result<Vec<FeedItem>, String> {

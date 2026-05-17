@@ -18,9 +18,14 @@ fn run_source<F>(
   F: FnOnce() -> Result<Vec<models::FeedItem>, String>,
 {
   log::info!("source {name}: starting fetch");
+  let t = std::time::Instant::now();
   match fetch_fn() {
     Ok(items) => {
-      log::info!("source {name}: completed, {} items", items.len());
+      log::info!(
+        "source {name}: completed in {}ms, {} items",
+        t.elapsed().as_millis(),
+        items.len()
+      );
       // Clone outside the lock so the critical section is just the
       // `.extend(...)` move. Two consumers (accumulator + channel) so
       // one clone is unavoidable; the win is shrinking the lock window
@@ -31,7 +36,10 @@ fn run_source<F>(
       let _ = tx.send(FetchMessage::SourceComplete(name.to_string()));
     }
     Err(e) => {
-      log::error!("source {name}: failed — {e}");
+      log::error!(
+        "source {name}: failed in {}ms — {e}",
+        t.elapsed().as_millis()
+      );
       let _ = tx.send(FetchMessage::SourceError(name.to_string(), e));
     }
   }
@@ -126,6 +134,7 @@ pub(crate) fn spawn_fetch(
       //       on a distinct host.
       // thread::scope auto-joins all spawns at scope exit, so enrichment
       // (which needs the full all_items) naturally runs after fetches.
+      let pipeline_t0 = std::time::Instant::now();
       std::thread::scope(|scope| {
         // Group A
         let tx_a = tx.clone();
@@ -233,21 +242,33 @@ pub(crate) fn spawn_fetch(
         all_items.into_inner().unwrap_or_else(|e| e.into_inner());
 
       log::info!(
-        "background: {} total items collected across all sources",
+        "ingestion: fetch phase completed in {}ms ({} items total)",
+        pipeline_t0.elapsed().as_millis(),
         all_items.len()
       );
 
       let mut ecache = store::enrichment_cache::load();
+      let t = std::time::Instant::now();
       ingestion::semantic_scholar::enrich(
         &mut all_items,
         &mut ecache,
         config.semantic_scholar_key.as_deref(),
       );
+      log::info!(
+        "ingestion: semantic_scholar enrichment in {}ms",
+        t.elapsed().as_millis()
+      );
+      let t = std::time::Instant::now();
       ingestion::huggingface::enrich_with_repos(&mut all_items);
+      log::info!(
+        "ingestion: huggingface repo enrichment in {}ms",
+        t.elapsed().as_millis()
+      );
       let with_repo =
         all_items.iter().filter(|i| i.github_repo.is_some()).count();
       log::info!(
-        "ingestion complete: {with_repo}/{} items have github_repo set",
+        "ingestion: total pipeline {}ms ({with_repo}/{} items have github_repo set)",
+        pipeline_t0.elapsed().as_millis(),
         all_items.len()
       );
       let _ = tx.send(FetchMessage::EnrichedItems(all_items));
