@@ -849,6 +849,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   // hook covers panics; this closure covers Err returns.
   let mut first_draw_logged = false;
   let mut first_frame_at: Option<std::time::Duration> = None;
+  // Per-frame draw-time histogram for axis 5 (tail latency) + axis 7
+  // (frame budget). Captures only frames that actually drew (gated by
+  // needs_redraw); idle frames are excluded. Summarized periodically to
+  // a single INFO log line so the distribution is visible in trench.log
+  // without diagnostic flags.
+  let mut frame_times_ms: Vec<u64> = Vec::with_capacity(128);
+  let mut last_frame_summary_at = std::time::Instant::now();
+  const FRAME_SUMMARY_INTERVAL: std::time::Duration =
+    std::time::Duration::from_secs(30);
   let run_result: std::io::Result<()> = (|| -> std::io::Result<()> {
     loop {
       // Drain any pending fetch results before drawing. process_incoming +
@@ -1108,6 +1117,35 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if draw_ms > 16 {
           log::debug!("terminal.draw took {}ms (slow frame)", draw_ms);
         }
+        frame_times_ms.push(draw_ms as u64);
+      }
+
+      // Periodic frame-time distribution summary (axis 5 + 7). Logs
+      // p50/p95/p99/max for the window since the last summary, then
+      // clears. Runs at most once per FRAME_SUMMARY_INTERVAL and only
+      // when there's at least one drawn frame in the window — idle
+      // sessions stay silent.
+      if !frame_times_ms.is_empty()
+        && last_frame_summary_at.elapsed() >= FRAME_SUMMARY_INTERVAL
+      {
+        let mut sorted = frame_times_ms.clone();
+        sorted.sort_unstable();
+        let n = sorted.len();
+        let p50 = sorted[n / 2];
+        let p95 = sorted[(n * 95) / 100];
+        let p99 = sorted[(n * 99) / 100];
+        let max = *sorted.last().unwrap();
+        log::info!(
+          "frame summary ({} drawn over {}s): p50={}ms p95={}ms p99={}ms max={}ms",
+          n,
+          last_frame_summary_at.elapsed().as_secs(),
+          p50,
+          p95,
+          p99,
+          max
+        );
+        frame_times_ms.clear();
+        last_frame_summary_at = std::time::Instant::now();
       }
 
       // Cadence: 16ms when something is animating or already dirty (so we

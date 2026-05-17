@@ -411,3 +411,34 @@ audit task list; this log is the durable record.
 - **No fix landed.** Closing diagnostic-only with the instruction:
   revisit when a specific operation feels slow to the user, then we
   have a concrete reproducer to instrument against.
+
+### Axis 5 — Tail latency / jitter (closed 2026-05-17 — instrumentation added)
+
+- **Gap before**: the existing "(slow frame)" warning at main.rs:1110
+  is binary — fires only when a single frame exceeds 16ms. No
+  distribution data, no awareness of jitter that stays below the
+  threshold but spikes within it (e.g., consistent p50 of 1ms but p99
+  of 14ms is "fine" by the binary check, but is a visible jitter
+  story).
+- **Instrumentation added**: per-frame draw-time histogram in
+  `main.rs`. Captures only drawn frames (gated on `needs_redraw`),
+  excludes idle frames. Logs an INFO-level summary every 30s of active
+  use: `frame summary (N drawn over Ks): p50=Xms p95=Ymsp99=Zms max=Wms`.
+  Stays silent on idle sessions. ~25 lines.
+- **Why INFO level**: lasting operational value. A future user
+  noticing UI hitches can grep `trench.log` for `frame summary` and
+  see whether the renderer is meeting budget. Same rationale as the
+  per-source elapsed-time logging in axis 2.
+- **No baseline number yet** because the histogram requires sustained
+  interactive use to populate meaningfully. Once you've used trench
+  for >30s during a future session, the log will start showing
+  distributions.
+- **What we expect to see** based on axes 4 + 7 data: feed view
+  steady-state p50/p95/p99 all <2ms (since all measured frames are
+  sub-ms). The interesting numbers will be when opening a paper,
+  resizing, or searching with many items — those are the scenarios
+  where p99 might approach or exceed 16ms.
+- **Open thread**: if interactive use ever reveals consistent p99 >
+  16ms in any scenario, that becomes the concrete target for axis 1
+  (latency) — the histogram bridges the gap between axis 5 (visibility)
+  and axis 1 (attack).
