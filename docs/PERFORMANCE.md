@@ -718,3 +718,32 @@ Round 2 — per-feature deep coverage of trench (tread treated as black box).
 - **No fix landed.** Closing positive: trench's voice wiring is
   clean — minimal Arc-handle plumbing with all the work delegated
   to tread.
+
+### Feature — Workflow state mutations — closed 2026-05-17 (positive finding)
+
+- **Audit shape**: code review of all `store::*::save` callsites
+  (state.json, ui.json, tags.json, history.json).
+- **Save call sites + frequency**:
+  - `store::save` (state.json — workflow states): user-initiated
+    workflow gestures (mark Skimmed/Queued/etc.) at
+    `library_filter.rs:113,278`. **Batched** for multi-select
+    (apply once per selection group, not once per item). ~2KB,
+    ~2ms.
+  - `store::save_ui` (ui.json — notes tabs, last_read): once at
+    main exit. <1KB, ~1ms. No concern.
+  - `store::tags::save` (tags.json): user tag-picker confirmation.
+    Per-action. <1KB, ~1ms.
+  - `store::history::save` (history.json — read items, discovery
+    queries): per `record_paper` / `record_discovery_query` call.
+    **79KB**, ~5ms full-rewrite per save.
+- **One open observation**: `history.json` is the biggest of the
+  state files at ~79KB and gets rewritten in full on every paper open.
+  ~5ms on UI thread per save is fine at human action rate, but rapid
+  arrow-key browsing could fire many per second. Could be queued via
+  a debounced background writer like `store::cache::queue_save` from
+  axis 4. Not attacked — bounded by user action speed in practice.
+- **All saves use `atomic_write`** (tmp file + rename) for
+  crash-safety. Owner-only 0600 perms on Unix via set_private.
+- **No fix landed.** Closing positive: workflow state writes are
+  user-action-triggered (not periodic, not auto-save), correctly
+  batched for multi-select, and atomically written.
