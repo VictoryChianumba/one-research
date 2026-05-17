@@ -791,3 +791,18 @@ Round 2 — per-feature deep coverage of trench (tread treated as black box).
 - **When open**: build Lines from the const section data once per
   frame. Bounded by section size (small).
 - **No fix landed.** Closing positive.
+
+### Feature — Library / library_filter — closed 2026-05-17 (positive finding, already audited)
+
+- **Already deeply audited in axes 4 + 6**. Cross-reference closure.
+- **Five RefCell-memoized caches** noted in axis 6: visible_cache
+  (keyed by FeedTab), counts_cache, filter_source_names_cache,
+  filter_summary_cache, filtered_history_cache.
+- **`visible_items()` at app/mod.rs:482** is the hot path —
+  checks visible_cache first, returns cached indices on tab match;
+  only recomputes on cache miss (tab change, items change, search
+  query change).
+- **`title_lower` / `authors_lower`** precomputed on FeedItem
+  (#[serde(skip)], populated by sanitize_in_place) avoid per-keystroke
+  `to_lowercase` allocs across N items. Documented at feed/mod.rs:41.
+- **No fix landed.** Already designed for scale.
