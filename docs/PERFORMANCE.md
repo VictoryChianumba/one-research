@@ -340,3 +340,45 @@ audit task list; this log is the durable record.
     with real before/after numbers.
 - **Tooling kept**: `cargo bloat` is now installed (`~/.cargo/bin/`)
   for future binary-size audits.
+
+### Axis 7 — Responsiveness / frame budget (closed 2026-05-17 — infrastructure validated, heavy-path data deferred)
+
+- **Infrastructure status**: per-pane draw timing already comprehensive.
+  21 `log::debug!("draw_X: Nms", ...)` sites across `trench/src/ui/`
+  cover all 6 main feed panes (title_bar, search_row, item_table,
+  filter_panel, details_panel, footer) in both narrow and wide layouts.
+  Plus `terminal.draw()` total timing + binary "(slow frame)" warning
+  when total > 16ms (main.rs:1110).
+- **Feed view baseline**: every recorded frame in the audit logs shows
+  each pane at 0ms (sub-millisecond). No "(slow frame)" warnings ever
+  recorded. Feed view total draw is consistently far below the 16ms
+  frame budget — likely <2-3ms total even with 1781 items + a 4-pane
+  layout.
+- **What's NOT covered by current logs**: reader view (open paper,
+  LaTeX rendering), repo viewer, notes app, chat panel, search filtering
+  with many items typed, resize events. These are keyboard-driven
+  scenarios that the headless harness can't trigger.
+- **No fix landed.** Axis closes because (a) the parts we could measure
+  are well under budget, (b) the parts we can't measure require either
+  interactive testing or a TestBackend bench harness that doesn't exist
+  yet, and (c) there's no evidence of a problem to fix in the data we
+  do have.
+- **Open threads**:
+  - **Interactive test protocol** for capturing heavy-path data:
+    1. `TRENCH_DEBUG_LOG=1 trench` and use it normally
+    2. Open a few large papers (especially arXiv ones with figures /
+       heavy LaTeX)
+    3. Scroll through, search across all items, resize the terminal
+    4. Quit cleanly with `q` (so env_logger drop handlers flush — see
+       axis 4 lesson about SIGTERM losing buffered writes)
+    5. Inspect `~/.config/trench/trench.log` for any "(slow frame)"
+       warnings or per-pane draws over a few ms
+  - **TestBackend benches** for the heavy scenarios — construct
+    synthetic App states (reader open with N blocks, repo viewer with
+    M files, notes with K entries) and time `ui::draw` against
+    `ratatui::backend::TestBackend`. ~100-200 lines of harness, would
+    give repeatable scaling data that also feeds axis 6 (scalability).
+  - **Frame-time histogram** (p50/p95/p99 instead of just
+    above/below-16ms binary): ~30 lines, would let us see tail/jitter
+    behaviour over time without waiting for a specific overrun. Folds
+    cleanly into axis 5 (tail latency) work.
