@@ -541,3 +541,37 @@ deferred (3).
 | 8 Energy | Positive finding; already energy-conscious | (this commit) |
 
 Tooling banked: `--bench-startup` flag, `cargo bloat`, `/tmp/bench_first_frame.py`, `/tmp/bench_pipeline.py`, INFO-level frame histogram in main loop.
+
+---
+
+## Feature audits (2026-05-17)
+
+Round 2 — per-feature deep coverage of trench (tread treated as black box).
+
+### Feature — Reader-wrapper in trench (src/reader/) — closed 2026-05-17
+
+- **Finding**: `ReaderPopupModel::pre_draw` was calling
+  `tread::Reader::resize` on every frame, paying the full reflow +
+  image-re-placement cost regardless of whether the viewport had
+  actually changed. The codebase explicitly documented the gap in a
+  comment: "Popup has no `last_resize` short-circuit (its render path
+  historically resized every frame)".
+- **Why it existed**: the primary/secondary readers
+  (`ReaderInstanceModel`) had the short-circuit; the popup
+  (`ReaderPopupModel`) was historically lifted from a different code
+  path and never received the same treatment.
+- **Fix**: added `last_resize: Option<(u16, u16)>` field to
+  `ReaderPopupModel`; mirrored the existing
+  `ReaderInstanceModel::pre_draw` short-circuit; reset `last_resize`
+  to `None` when `editor` is replaced (alongside the existing
+  `image_state` + `burst` resets at main.rs:1037). Same lifecycle, same
+  pattern, three-edit surgical fix.
+- **Result**: every frame while the popup is open now skips the
+  resize call when the viewport is unchanged. Cost shape avoided: full
+  LaTeX reflow + per-figure image re-placement. Cost saved per frame
+  is bounded by paper size — small for short papers, large for long
+  papers with many figures.
+- **Not measured precisely** because tread internals are black-box;
+  the existing axis 5 frame histogram will catch any regression. The
+  fix is justified by the existing pattern + explicit comment about
+  the gap, not by a before/after number.

@@ -1033,8 +1033,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // Reset the popup's image cache and burst tracker — the
                 // previous occupant (if any) had different kitty_ids, and
                 // a stale burst would suppress the first frame's render.
+                // Also clear `last_resize` so the new editor's first
+                // pre_draw actually fires `resize` and gets its viewport.
                 app.reader_popup.image_state = tread::ImageState::default();
                 app.reader_popup.burst = tread::BurstTracker::default();
+                app.reader_popup.last_resize = None;
                 app.reader_popup.active = true;
                 app.clear_notification();
               }

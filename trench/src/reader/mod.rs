@@ -188,6 +188,13 @@ pub struct ReaderPopupModel {
   pub editor: Option<tread::Reader>,
   pub image_state: tread::ImageState,
   pub burst: tread::BurstTracker,
+  /// Last viewport size we called `tread::Reader::resize` with. Mirrors
+  /// `ReaderTab::last_resize` (see [`ReaderInstanceModel::pre_draw`]) so
+  /// the popup's per-frame `pre_draw` can short-circuit when the
+  /// viewport hasn't changed. Reset to `None` whenever `editor` is
+  /// replaced so the first `pre_draw` against a new editor always
+  /// resizes.
+  pub last_resize: Option<(u16, u16)>,
 }
 
 impl ReaderPopupModel {
@@ -203,12 +210,18 @@ impl ReaderPopupModel {
   }
 
   /// Same shape as [`ReaderInstanceModel::pre_draw`] — resize the
-  /// editor once per frame.  Popup has no `last_resize` short-circuit
-  /// (its render path historically resized every frame), so this is
-  /// where the per-frame `tread::Reader::resize` call lives.
+  /// editor only when the viewport size actually changed. Without the
+  /// `last_resize` short-circuit the popup paid for a full reflow +
+  /// image re-placement on every frame it was open (the previous
+  /// comment here documented the gap; this commit closes it).
   pub fn pre_draw(&mut self, viewport: crate::ui::Viewport) {
-    if let Some(editor) = self.editor.as_mut() {
-      editor.resize(viewport.cols, viewport.rows);
+    let Some(editor) = self.editor.as_mut() else {
+      return;
+    };
+    let new_size = (viewport.cols, viewport.rows);
+    if self.last_resize != Some(new_size) {
+      editor.resize(new_size.0, new_size.1);
+      self.last_resize = Some(new_size);
     }
   }
 }
