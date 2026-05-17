@@ -1027,3 +1027,57 @@ inside `bench::run_feed` rather than hand-rolling a separate harness.
 audit closed: a noisy machine produces 5-25× p99 inflation while p50
 only doubles. The full distribution separates "scaling problem" from
 "contention" — neither summary statistic alone is enough.
+
+---
+
+## Correctness item — huggingface→arxiv abstract batch (closed 2026-05-17)
+
+The first of the cross-cutting "correctness open threads" from the
+2026-05-17 audit summary (line 948). Two bugs landed as two separate
+commits during the correctness pass.
+
+### Bug 1 — 429 silently drops all abstracts (commit `5491470`)
+
+- **Symptom**: HF papers refresh with empty `summary_short`. Audit
+  flagged the 53-papers-per-refresh case from a specific log.
+- **Root cause**: `arxiv::fetch` and `huggingface::fetch_abstracts`
+  both hit `export.arxiv.org` back-to-back inside the Group-A thread
+  in `services/ingestion.rs:138`. The comment at line 130 promises
+  "1 query per 3s" politeness but the code runs them serial-without-
+  delay. arXiv's 429 fired intermittently on the second request.
+- **Fix**: retry on 429/503 with backoff matching arXiv's published
+  envelope (3s, then 6s). Other failures fall through to the
+  existing log-and-skip path unchanged.
+- **Cost shape**: zero on happy path; up to ~9s on 429 path but we
+  get the abstracts. Beats "always fail silently."
+
+### Bug 2 — max_results=50 truncates every refresh >50 papers (commit `6e60c6e`)
+
+- **Discovered during validation** of Bug 1's fix. Today's log:
+  `received 50 abstracts from arXiv` + three `no abstract matched`
+  warnings for 53 IDs requested. Deterministic partial-failure
+  bleeding for at least the time the audit was running, possibly
+  longer — not previously flagged because partial failures are
+  quieter than total ones.
+- **Root cause**: URL hardcoded `&max_results=50`. arXiv returns at
+  most `max_results` entries per query regardless of `id_list`
+  length.
+- **Fix**: scale `max_results` with `ids.len()`, capped at 100 to
+  match `arxiv::fetch_by_ids`' pattern (arxiv.rs:67).
+- **Verified**: same pipeline run after the fix — 53 requested, 53
+  received, zero "no abstract matched" warnings.
+
+### Cross-cutting lesson
+
+Running correctness validation against a known-broken code path
+surfaced a second latent bug in the same file. Diagnostic-only audit
+closures should specifically include "run the broken code path with
+logging on and watch for *other* warnings" before declaring the
+audit complete.
+
+### Open thread (downgraded, not closed)
+
+- `~~huggingface→arxiv batch 429~~` — **MITIGATED** by retry. If
+  arXiv ever tightens its rate limit further, the retry might
+  exhaust; but at that point the right move is splitting the batch,
+  not adding more retries.
