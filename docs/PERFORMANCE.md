@@ -780,3 +780,14 @@ Round 2 — per-feature deep coverage of trench (tread treated as black box).
   target/input change. Not attacked — at typical scale the
   complexity addition outweighs the perf gain.
 - **No fix landed.** Closing positive.
+
+### Feature — Help overlay — closed 2026-05-17 (positive finding)
+
+- **Static keybinding data**: `HELP_SECTIONS` is a `const` at the top
+  of popups/help.rs — keybinding data is compile-time, no per-frame
+  allocation of the source-of-truth.
+- **Gated draw**: `if app.help.active` in ui/layout/mod.rs:58 — zero
+  per-frame cost when closed.
+- **When open**: build Lines from the const section data once per
+  frame. Bounded by section size (small).
+- **No fix landed.** Closing positive.
