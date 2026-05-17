@@ -671,3 +671,27 @@ Round 2 — per-feature deep coverage of trench (tread treated as black box).
   - Main loop checks `was_repo_animating` BEFORE tick and only marks
     dirty if scroll was actually advancing — correctly avoids
     no-op redraws.
+
+### Feature — Discovery agent (src/discovery/) — closed 2026-05-17 (positive finding)
+
+- **Two entry points**: `spawn_discovery` (URL-to-feed classification)
+  and `spawn_ai_discovery` (multi-turn Claude agent via pipeline).
+- **Both run on `std::thread::spawn` workers** with `catch_unwind`
+  panic routing — UI thread never blocks on network/API work.
+- **Sequential patterns observed, deliberately not attacked**:
+  - `discover_feed` (services/discovery.rs:92-101) tries 5 common
+    feed-path suffixes sequentially via HEAD requests against the
+    same user-supplied host. Could theoretically parallelize but
+    risks 429 from the same host (per the axis-2 huggingface→arxiv
+    finding). Also user-initiated + infrequent.
+  - `run_fallback` in pipeline.rs (line 65-72) loops over
+    `plan.search_terms` calling `arxiv::search_query` sequentially.
+    Same-host concern: arxiv's rate envelope is the reason axis 2's
+    Group A kept arxiv→huggingface sequential.
+- **Agent loop is inherently sequential** — each Claude call depends
+  on the previous tool_use responses. Parallel tool execution within
+  a single turn could be considered but is agent-design territory,
+  not perf.
+- **No fix landed.** Closing positive: discovery is well-designed;
+  the sequential patterns that exist are bounded by upstream
+  rate-limit concerns that we already saw bite us in axis 2.
