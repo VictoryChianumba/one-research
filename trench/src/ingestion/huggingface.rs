@@ -40,20 +40,8 @@ fn fetch_abstracts(items: &mut Vec<FeedItem>) {
     ids.len()
   );
 
-  let body = match crate::http::client().get(&url).send().and_then(|r| {
-    if r.status().is_success() {
-      Ok(r)
-    } else {
-      Err(r.error_for_status().unwrap_err())
-    }
-  }) {
-    Ok(r) => match crate::http::read_body(r) {
-      Ok(b) => b,
-      Err(e) => {
-        log::warn!("huggingface: abstract batch fetch failed — {e}");
-        return;
-      }
-    },
+  let body = match fetch_arxiv_with_retry(&url) {
+    Ok(b) => b,
     Err(e) => {
       log::warn!("huggingface: abstract batch fetch failed — {e}");
       return;
@@ -70,6 +58,43 @@ fn fetch_abstracts(items: &mut Vec<FeedItem>) {
       log::warn!("huggingface: no abstract matched for {}", item.id);
     }
   }
+}
+
+/// GET `url` with backoff on 429 / 503. arxiv::fetch ran moments before on
+/// the same Group-A thread targeting `export.arxiv.org`; arXiv's published
+/// envelope is "1 query per 3 seconds" (https://info.arxiv.org/help/api/tou.html),
+/// and the two back-to-back requests trip it intermittently. Backoffs match
+/// the published envelope (3s, then 6s). Other failures fall through to
+/// the caller's log-and-skip path unchanged.
+fn fetch_arxiv_with_retry(url: &str) -> Result<String, String> {
+  const BACKOFFS_MS: &[u64] = &[3_000, 6_000];
+  let mut last_err = String::new();
+  for attempt in 0..=BACKOFFS_MS.len() {
+    if attempt > 0 {
+      let wait = BACKOFFS_MS[attempt - 1];
+      log::info!(
+        "huggingface: arxiv rate-limited — sleeping {}ms before retry {}",
+        wait,
+        attempt
+      );
+      std::thread::sleep(std::time::Duration::from_millis(wait));
+    }
+    let resp = match crate::http::client().get(url).send() {
+      Ok(r) => r,
+      Err(e) => return Err(format!("HTTP request failed: {e}")),
+    };
+    let code = resp.status().as_u16();
+    if resp.status().is_success() {
+      return crate::http::read_body(resp);
+    }
+    last_err = format!("HTTP {code}");
+    // 429 = rate-limited, 503 = service unavailable. Both are
+    // "try again later" semantics. Anything else is a hard error.
+    if code != 429 && code != 503 {
+      return Err(last_err);
+    }
+  }
+  Err(last_err)
 }
 
 /// Parse an arXiv Atom response and return a map of arXiv ID → full abstract.
