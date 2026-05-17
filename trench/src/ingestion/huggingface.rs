@@ -31,8 +31,13 @@ fn fetch_abstracts(items: &mut Vec<FeedItem>) {
 
   let ids: Vec<&str> = items.iter().map(|i| i.id.as_str()).collect();
   let id_list = ids.join(",");
+  // `max_results` must scale with the id_list length. The previous hardcoded
+  // 50 silently truncated whenever HF returned >50 papers (~3 items missing
+  // per refresh in the days observed). `.min(100)` matches arxiv::fetch_by_ids
+  // for the same reason — arXiv accepts larger but the cap stays sane.
+  let max_results = ids.len().min(100);
   let url = format!(
-    "https://export.arxiv.org/api/query?id_list={id_list}&max_results=50"
+    "https://export.arxiv.org/api/query?id_list={id_list}&max_results={max_results}"
   );
 
   log::info!(
