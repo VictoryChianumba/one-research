@@ -280,3 +280,63 @@ audit task list; this log is the durable record.
     refresh miss their abstracts.
   - Both worth a follow-up audit cycle (axis 1 latency or its own slot)
     once we have a quieter critical path to attribute against.
+
+### Axis 3 — Footprint (closed 2026-05-17 — diagnostic only, no fix landed)
+
+- **Inventory**:
+  - Binary: 11MB on Apple Silicon (release, `strip=true` already on);
+    `.text` section 6.9MiB
+  - `cache.json`: 2.9MB for 1781 items (~1.7KB per `FeedItem`)
+  - Other on-disk caches: ~220KB combined (negligible)
+- **Top binary contributors** (via `cargo bloat --crates`):
+  - `std` 1.6MiB / 23.7% — fmt/io machinery; not attackable
+  - `trench` 700KB / 9.9% — our own code
+  - `html5ever` 368KB / 5.2% — HTML parser pulled by `readability`/`html2text`
+  - `rustls` 310KB + `ring` 132KB + `h2` 132KB + `hyper` 87KB = 661KB
+    HTTP/TLS stack via reqwest
+  - `tread` 255KB + `arxiv_render` 184KB — paper reader (intentional)
+  - `regex_automata` 234KB + `regex_syntax` 129KB — regex engine
+  - `zune_jpeg` 138KB + `image` 111KB — image decoding for figures
+- **Surprise finding** (via `cargo bloat` function-level view): a
+  `symphonia_bundle_mp3::Layer3::decode` function at 30KB shows up — the
+  full audio stack (`rodio` + `symphonia` + `cpal`) is bundled via
+  `tread::build_voice_controller`, despite the project TODO noting "voice
+  mode broken in hygg rewrite." Estimated 500KB-1MB of unreachable audio
+  code in the binary for currently-unused functionality.
+- **Experiment attempted, reverted**: disabled reqwest's `http2` default
+  feature in trench's 3 Cargo.tomls (`trench/Cargo.toml`, `crates/http`,
+  `crates/chat`) to drop `h2` (132KB). Result: **no savings; binary grew
+  ~200KB**. Reason: cargo's feature unification with tread's
+  `crates/arxiv-render/Cargo.toml` (which still pulls reqwest with
+  default features) forced `http2` back on. Single-workspace feature
+  reduction is a no-op when an out-of-workspace path dep enables the
+  same features. Reverted; binary back to baseline.
+- **Memory side**: per-item refactor candidates audited (drop
+  `github_owner`/`github_repo_name` and derive on demand; switch String
+  to Box<str>; move `title_lower`/`authors_lower` to a side table).
+  Estimated 300–800KB RAM savings combined, but each requires 10–50+
+  call-site changes AND proper heap profiling (dhat-rs setup) to
+  measure cleanly. Not attempted in this session.
+- **No code change landed.** This axis closes with diagnostic data + a
+  clear list of attackable items that require either cross-workspace
+  coordination or measurement infrastructure that doesn't exist yet.
+- **Open threads** (sized estimates, not measured):
+  - **Cross-workspace tread voice feature flag** — gate
+    `build_voice_controller` behind a `voice` feature in tread, disable
+    in trench. Estimated 500KB-1MB binary savings. Two-PR effort
+    (tread + trench).
+  - **Cross-workspace reqwest http2 drop** — apply the same Cargo.toml
+    change attempted here to ALL reqwest call sites including tread's
+    `arxiv-render`. Estimated 132–200KB. One-line PR in tread + the
+    three already-prepared edits in trench (which were reverted).
+  - **HTML parser replacement** — `html5ever` (368KB) is pulled by
+    `readability` and `html2text` for ingestion. Switching to a simpler
+    HTML→text pipeline (e.g., `scraper` or hand-rolled regex strip) for
+    the limited use cases trench actually has might save most of it.
+    Higher-risk, larger refactor.
+  - **Memory profiling with dhat-rs** — set up `#[global_allocator]`
+    behind a feature flag, run trench under dhat, identify the largest
+    `FeedItem`-related allocations, then drive the per-item refactor
+    with real before/after numbers.
+- **Tooling kept**: `cargo bloat` is now installed (`~/.cargo/bin/`)
+  for future binary-size audits.
