@@ -761,3 +761,22 @@ Round 2 — per-feature deep coverage of trench (tread treated as black box).
   recompute of colors.
 - **No fix landed.** Closing positive: popup overlays are textbook
   good design — gated draws + bounded render cost when open.
+
+### Feature — Tag picker — closed 2026-05-17 (positive finding)
+
+- **Same gated-popup pattern** as settings: `if app.tag_picker.active`
+  in ui/layout/mod.rs:64 gates the draw. Zero per-frame cost when
+  closed.
+- **One mild observation**: when open, every frame recomputes a
+  `common_on_all` HashSet at tag_picker.rs:24-34 via triple-nested
+  iteration:
+    `all.iter().filter(|tag| target_urls.iter().all(|url|
+       tags::for_url(...).iter().any(|t| t == *tag)))`
+  Complexity: O(tags × targets × tags_per_url). At typical scale
+  (~20 tags × 1-10 targets × ~5 tags/url) = ~1000 compares/frame,
+  trivial. Becomes noticeable at extreme scale (1000+ tags or
+  100+ multi-selected URLs).
+- **Could be memoized** once-on-open with invalidation on
+  target/input change. Not attacked — at typical scale the
+  complexity addition outweighs the perf gain.
+- **No fix landed.** Closing positive.
