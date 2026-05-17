@@ -634,3 +634,40 @@ Round 2 — per-feature deep coverage of trench (tread treated as black box).
     via `std::thread::scope` or `rayon` when it matters.
 - **No fix landed.** Closing positive: notes is well-designed for
   current scale; open threads documented for future scaling.
+
+### Feature — Repo viewer (ui/repo_viewer.rs) — closed 2026-05-17
+
+- **Two findings, one fix landed**:
+  - **Fix landed**: `repo_apply_file` was running
+    `crate::syntax::highlight_file` (syntect highlighting) synchronously
+    on the UI thread when a file load completed. For a 10K-line code
+    file syntect can take hundreds of ms to seconds — that's a frame
+    budget violation that would freeze the UI during file open.
+  - **Bonus finding**: `classify_repo_file_kind` was ALSO calling
+    `highlight_file` to decide Code vs PlainText, so the file open
+    path did the syntect pass TWICE on the UI thread.
+- **Fix**: moved classify + lines-split + syntect highlight to the
+  `spawn_repo_file` background thread (the one that already has the
+  raw content from GitHub). Added a `RepoFileFetched` struct that
+  bundles `(raw_content, file_kind, file_lines, file_highlighted)`;
+  the worker builds it, the UI thread just absorbs the fields.
+  Refactored `classify_repo_file_kind` into
+  `classify_and_highlight_repo_file` that does the syntect pass once
+  and returns both the kind and the highlighted output — eliminates
+  the double-highlight bug.
+- **Files touched**: app/state/repo.rs (struct + enum variant),
+  app/state/mod.rs (re-export), app/mod.rs (refactored function),
+  services/repo_load.rs (work moved into worker thread),
+  app/methods/repo.rs (simplified to absorb the bundle).
+- **Result**: file open is now `network + classify + syntect` on
+  the worker thread, with the UI thread only paying the assignment
+  cost. No more UI freeze on large code files.
+- **Positive design also noted**:
+  - All three `spawn_repo_*` operations (open, dir, file) run on
+    `std::thread::spawn` workers with `catch_unwind` panic routing.
+  - `repo_tick()` early-returns when `repo_context.is_none()` or
+    `scroll_velocity.abs() < 0.5` — cheap per-frame cost during
+    momentum scroll, zero cost when not scrolling.
+  - Main loop checks `was_repo_animating` BEFORE tick and only marks
+    dirty if scroll was actually advancing — correctly avoids
+    no-op redraws.

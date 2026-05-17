@@ -39,6 +39,18 @@ pub struct RepoContext {
   pub scroll_velocity: f32,
 }
 
+/// Pre-computed bundle from a background file fetch. The classify +
+/// syntect highlight pass was previously done on the UI thread inside
+/// `repo_apply_file`; moved to the background thread that already has
+/// the content. For a 10K-line file syntect highlighting can take
+/// hundreds of ms to seconds — that work no longer blocks the UI.
+pub struct RepoFileFetched {
+  pub raw_content: String,
+  pub file_kind: RepoFileKind,
+  pub file_lines: Vec<String>,
+  pub file_highlighted: Vec<Vec<(u8, u8, u8, String)>>,
+}
+
 /// Result from a background repo fetch operation.
 pub enum RepoFetchResult {
   /// Initial repo open: default branch + root tree.
@@ -51,8 +63,13 @@ pub enum RepoFetchResult {
     path: String,
     result: Result<Vec<crate::github::TreeNode>, String>,
   },
-  /// File view: path, filename, raw content.
-  FileLoaded { path: String, name: String, result: Result<String, String> },
+  /// File view: path, filename, and the pre-computed file bundle
+  /// (classify + lines split + syntect highlight done on the worker).
+  FileLoaded {
+    path: String,
+    name: String,
+    result: Result<RepoFileFetched, String>,
+  },
 }
 
 /// What action should be taken when Enter is pressed in the repo tree pane.

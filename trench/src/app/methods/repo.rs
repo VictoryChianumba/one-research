@@ -1,6 +1,4 @@
-use super::super::{
-  classify_repo_file_kind, encode_repo_url_path, validate_download_name,
-};
+use super::super::{encode_repo_url_path, validate_download_name};
 use crate::app::{App, AppView, RepoEnterTarget, RepoFileKind, RepoPane};
 
 impl App {
@@ -77,30 +75,25 @@ impl App {
     &mut self,
     path: String,
     name: String,
-    result: Result<String, String>,
+    result: Result<crate::app::RepoFileFetched, String>,
   ) {
     let ctx = match self.repo_context.as_mut() {
       Some(c) => c,
       None => return,
     };
     match result {
-      Ok(raw_content) => {
-        let file_kind = classify_repo_file_kind(&name, &raw_content);
-        let highlighted = match file_kind {
-          RepoFileKind::Code => {
-            crate::syntax::highlight_file(&raw_content, &name)
-              .unwrap_or_default()
-          }
-          _ => Vec::new(),
-        };
-        let lines: Vec<String> =
-          raw_content.lines().map(|l| l.to_string()).collect();
+      Ok(fetched) => {
+        // Classify + lines-split + syntect highlight already happened on
+        // the spawn_repo_file worker thread; here we just absorb the
+        // pre-computed bundle. Previously this block did all three
+        // synchronously on the UI thread and could block hundreds of ms
+        // to seconds on a large file.
         ctx.file_path = Some(path);
         ctx.file_name = Some(name);
-        ctx.raw_file_content = raw_content;
-        ctx.file_kind = file_kind;
-        ctx.file_lines = lines;
-        ctx.file_highlighted = highlighted;
+        ctx.raw_file_content = fetched.raw_content;
+        ctx.file_kind = fetched.file_kind;
+        ctx.file_lines = fetched.file_lines;
+        ctx.file_highlighted = fetched.file_highlighted;
         ctx.markdown_cache = None;
         ctx.rendered_line_count = 0;
         ctx.markdown_has_pannable_lines = false;

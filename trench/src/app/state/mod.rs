@@ -24,7 +24,8 @@ pub use popups::{
 };
 pub use reader::ReaderTab;
 pub use repo::{
-  RepoContext, RepoEnterTarget, RepoFetchResult, RepoFileKind, RepoPane,
+  RepoContext, RepoEnterTarget, RepoFetchResult, RepoFileFetched,
+  RepoFileKind, RepoPane,
 };
 pub use settings::SettingsEditState;
 pub use theme_picker::{

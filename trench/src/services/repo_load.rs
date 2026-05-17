@@ -88,7 +88,29 @@ pub(crate) fn spawn_repo_file(
     let name_panic = name.clone();
     let outcome =
       std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let result = github::fetch_file(&owner, &repo, &path, &token);
+        // Fetch + classify + lines-split + syntect highlight, all on
+        // the background thread. Previously the syntect pass ran on
+        // the UI thread inside `repo_apply_file` and could block for
+        // hundreds of ms to seconds on a large file.
+        let result = match github::fetch_file(&owner, &repo, &path, &token)
+        {
+          Err(e) => Err(e),
+          Ok(raw_content) => {
+            let (file_kind, file_highlighted) =
+              crate::app::classify_and_highlight_repo_file(
+                &name,
+                &raw_content,
+              );
+            let file_lines: Vec<String> =
+              raw_content.lines().map(|l| l.to_string()).collect();
+            Ok(crate::app::RepoFileFetched {
+              raw_content,
+              file_kind,
+              file_lines,
+              file_highlighted,
+            })
+          }
+        };
         let _ = tx.send(RepoFetchResult::FileLoaded { path, name, result });
       }));
     if let Err(payload) = outcome {

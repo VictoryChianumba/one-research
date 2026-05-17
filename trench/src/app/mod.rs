@@ -1503,22 +1503,29 @@ mod tests {
 
 // ── Reader tab accessors ──────────────────────────────────────────────────────
 
-pub(super) fn classify_repo_file_kind(
+/// Classify a repo file AND produce its syntect-highlighted lines in a
+/// single pass. Previously two separate calls: `classify_repo_file_kind`
+/// internally called `highlight_file` to decide Code vs PlainText, then
+/// the caller called `highlight_file` AGAIN to get the highlighted
+/// result — double work on the UI thread. This version highlights once
+/// and returns both the kind and the highlighted output.
+///
+/// Returned `file_highlighted` is empty for non-Code kinds.
+pub(crate) fn classify_and_highlight_repo_file(
   name: &str,
   content: &str,
-) -> RepoFileKind {
+) -> (RepoFileKind, Vec<Vec<(u8, u8, u8, String)>>) {
   let lower = name.to_ascii_lowercase();
   if lower.ends_with(".md")
     || lower.ends_with(".markdown")
     || lower == "readme"
     || lower.starts_with("readme.")
   {
-    return RepoFileKind::Markdown;
+    return (RepoFileKind::Markdown, Vec::new());
   }
 
-  if crate::syntax::highlight_file(content, name).is_some() {
-    RepoFileKind::Code
-  } else {
-    RepoFileKind::PlainText
+  match crate::syntax::highlight_file(content, name) {
+    Some(h) => (RepoFileKind::Code, h),
+    None => (RepoFileKind::PlainText, Vec::new()),
   }
 }
