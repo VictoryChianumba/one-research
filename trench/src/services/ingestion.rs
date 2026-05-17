@@ -247,17 +247,35 @@ pub(crate) fn spawn_fetch(
         all_items.len()
       );
 
-      let mut ecache = store::enrichment_cache::load();
-      let t = std::time::Instant::now();
-      ingestion::semantic_scholar::enrich(
-        &mut all_items,
-        &mut ecache,
-        config.semantic_scholar_key.as_deref(),
-      );
-      log::info!(
-        "ingestion: semantic_scholar enrichment in {}ms",
-        t.elapsed().as_millis()
-      );
+      // Gate semantic_scholar enrichment on a configured API key. The
+      // function supports an unauthenticated best-effort path (cap of 10
+      // requests), but in practice S2 rate-limits at request #1 every
+      // time — the unauthenticated path enriches 0 items and consumes
+      // ~0.5-2s on every refresh waiting for the 429 + retry budget.
+      // Mirror the `core` source pattern: skip when no key. If S2
+      // loosens their unauthenticated limit later this becomes a
+      // one-line revert.
+      let s2_key = config
+        .semantic_scholar_key
+        .as_deref()
+        .filter(|k| !k.trim().is_empty());
+      if let Some(key) = s2_key {
+        let mut ecache = store::enrichment_cache::load();
+        let t = std::time::Instant::now();
+        ingestion::semantic_scholar::enrich(
+          &mut all_items,
+          &mut ecache,
+          Some(key),
+        );
+        log::info!(
+          "ingestion: semantic_scholar enrichment in {}ms",
+          t.elapsed().as_millis()
+        );
+      } else {
+        log::info!(
+          "ingestion: semantic_scholar skipped — no API key configured"
+        );
+      }
       let t = std::time::Instant::now();
       ingestion::huggingface::enrich_with_repos(&mut all_items);
       log::info!(

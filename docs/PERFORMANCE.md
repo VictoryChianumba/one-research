@@ -912,3 +912,38 @@ fix) consumed an extra 1286ms today vs the baseline run.
 - **Validation closes the audit.** With both shipped fixes verified,
   no new regressions surfaced, and the open threads accounted for,
   this performance review is closed.
+
+### Post-validation fix — semantic_scholar gate (2026-05-17)
+
+The validation pass showed `semantic_scholar::enrich` consumed
+**1780ms** for **0 items enriched** — every request hits the S2
+unauthenticated rate limit at request #1 and burns the rest of the
+budget on the inner cap. This was previously noted as an open
+correctness thread; the validation made it a concrete perf hit.
+
+**Fix**: gate the call at the orchestrator on a configured API key,
+mirroring the existing `core` source's "no API key configured —
+skipping" pattern. The `enrich` function itself is unchanged — if S2
+ever loosens the unauthenticated limit, removing the gate is a
+one-line revert.
+
+**Result** (single pipeline run, post-gate):
+
+| Phase | Pre-gate | Post-gate | Δ |
+|---|---|---|---|
+| Fetch phase total | 1381ms | 1504ms | +123 (network variance) |
+| semantic_scholar | 1780ms | 0ms (skipped) | **−1780ms** |
+| Total pipeline | 3221ms | **1507ms** | **−1714ms (−53%)** |
+
+The 1507ms total is **better than the original axis 2 baseline**
+(1651ms) — the structural openreview fix from axis 2 PLUS the
+semantic_scholar gate together produce a pipeline that's ~40% faster
+than the original 2496ms unaltered baseline.
+
+**Updated open threads** (after this fix):
+- ~~semantic_scholar 429 retry pathology~~ — **MITIGATED**: gated on
+  API key. The function-level 429 behavior still exists if/when a
+  key is configured but rate-limited; that's a different problem
+  (intermittent failure, not always-failure).
+- huggingface→arxiv batch 429 — still open; today's run happened to
+  avoid it (probably arxiv server load timing).
