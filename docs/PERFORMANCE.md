@@ -1081,3 +1081,47 @@ audit complete.
   arXiv ever tightens its rate limit further, the retry might
   exhaust; but at that point the right move is splitting the batch,
   not adding more retries.
+
+---
+
+## Correctness item — export atomic_write (closed 2026-05-17, commit `9a3ad31`)
+
+The second of the cross-cutting "correctness open threads" from the
+2026-05-17 audit summary (feature 26).
+
+- **Symptom**: a disk-full or panic mid-export left a truncated file
+  at the final export path. The audit flagged this as
+  "correctness, not perf — acceptable for on-demand exports
+  (recoverable by deleting + re-exporting)."
+- **Root cause**: `export_history` / `export_library` called
+  `fs::File::create(&path)` and then streamed `writeln!` per row.
+  Any error between the create and the last writeln left a
+  partially-written file at the intended final path.
+- **Fix**: writers now accumulate into an in-memory `Vec<u8>`;
+  caller hands the full buffer to `store::atomic_write`, which
+  does the tmp-file + sync + rename pattern already proven via
+  state.json / ui.json / notes / chat. Mechanical swap.
+- **Side benefit**: exports now inherit `atomic_write`'s 0o600
+  owner-only perms automatically. Previous `fs::File::create` +
+  default umask gave exports 0644 (world-readable on most
+  systems), leaking paper titles + URLs from history. Audit-cited
+  reason for the 0o600 default applies here too.
+- **Memory cost**: ~3MB buffered for a 1781-item library export.
+  Fine for on-demand operations. If trench ever exports >100k
+  records, the streaming-with-tmp-file pattern would replace
+  this buffer-everything approach.
+- **Verified**: clean build, binary boots and renders via
+  `--bench-render` smoke test. The new invariant (no partial file
+  on disk-full) is structurally guaranteed by `atomic_write`'s
+  existing tmp+rename mechanism — no new test added because the
+  helper's correctness is already proven across multiple call sites.
+
+### Remaining correctness item
+
+- **#17 semantic_scholar 429 when a key IS configured** — different
+  bug from the always-failure path that's already gated (commit
+  `326a254`). Requires having a valid API key + observing a
+  rate-limit response to reproduce. Deferred until someone with a
+  key actually hits it; the function-level retry pattern from
+  commit `5491470` would apply identically if it becomes a
+  problem.
