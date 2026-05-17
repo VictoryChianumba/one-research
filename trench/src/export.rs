@@ -50,11 +50,12 @@ pub fn export_history(
 ) -> io::Result<PathBuf> {
   let path = timestamped_path("history", format)
     .ok_or_else(|| io::Error::other("could not resolve export directory"))?;
-  let mut f = fs::File::create(&path)?;
+  let mut buf: Vec<u8> = Vec::new();
   match format {
-    ExportFormat::Jsonl => write_history_jsonl(&mut f, entries)?,
-    ExportFormat::Markdown => write_history_markdown(&mut f, entries)?,
+    ExportFormat::Jsonl => write_history_jsonl(&mut buf, entries)?,
+    ExportFormat::Markdown => write_history_markdown(&mut buf, entries)?,
   }
+  crate::store::atomic_write(&path, &buf)?;
   Ok(path)
 }
 
@@ -65,47 +66,54 @@ pub fn export_library(
 ) -> io::Result<PathBuf> {
   let path = timestamped_path("library", format)
     .ok_or_else(|| io::Error::other("could not resolve export directory"))?;
-  let mut f = fs::File::create(&path)?;
+  let mut buf: Vec<u8> = Vec::new();
   match format {
-    ExportFormat::Jsonl => write_library_jsonl(&mut f, items)?,
+    ExportFormat::Jsonl => write_library_jsonl(&mut buf, items)?,
     ExportFormat::Markdown => {
-      write_library_markdown(&mut f, items, filter_label)?
+      write_library_markdown(&mut buf, items, filter_label)?
     }
   }
+  crate::store::atomic_write(&path, &buf)?;
   Ok(path)
 }
 
 // ── Writers ──────────────────────────────────────────────────────────────────
+//
+// Writers accumulate into an in-memory buffer rather than streaming to the
+// file directly; the caller hands the full buffer to `store::atomic_write`,
+// which writes via tmp-file + rename. A disk-full or panic mid-export now
+// leaves either no file or the complete file at the final path — never a
+// truncated one.
 
 fn write_history_jsonl(
-  f: &mut fs::File,
+  buf: &mut Vec<u8>,
   entries: &[&HistoryEntry],
 ) -> io::Result<()> {
   for entry in entries {
     let line = serde_json::to_string(entry).map_err(io::Error::other)?;
-    writeln!(f, "{line}")?;
+    writeln!(buf, "{line}")?;
   }
   Ok(())
 }
 
 fn write_history_markdown(
-  f: &mut fs::File,
+  buf: &mut Vec<u8>,
   entries: &[&HistoryEntry],
 ) -> io::Result<()> {
   let now = Local::now().format("%Y-%m-%d %H:%M");
-  writeln!(f, "# Trench history — exported {now}")?;
-  writeln!(f)?;
-  writeln!(f, "{} entries.", entries.len())?;
-  writeln!(f)?;
+  writeln!(buf, "# Trench history — exported {now}")?;
+  writeln!(buf)?;
+  writeln!(buf, "{} entries.", entries.len())?;
+  writeln!(buf)?;
 
   let mut current_day = String::new();
   for entry in entries {
     let local = entry.opened_at.with_timezone(&Local);
     let day = local.format("%Y-%m-%d").to_string();
     if day != current_day {
-      writeln!(f)?;
-      writeln!(f, "## {day}")?;
-      writeln!(f)?;
+      writeln!(buf)?;
+      writeln!(buf, "## {day}")?;
+      writeln!(buf)?;
       current_day = day;
     }
     let time = local.format("%H:%M").to_string();
@@ -119,7 +127,7 @@ fn write_history_markdown(
       HistoryKind::Query => "query",
     };
     writeln!(
-      f,
+      buf,
       "- **{}** · {} · {} · {time}{visit}",
       escape_md(&entry.title),
       kind,
@@ -130,28 +138,28 @@ fn write_history_markdown(
 }
 
 fn write_library_jsonl(
-  f: &mut fs::File,
+  buf: &mut Vec<u8>,
   items: &[&FeedItem],
 ) -> io::Result<()> {
   for item in items {
     let line = serde_json::to_string(item).map_err(io::Error::other)?;
-    writeln!(f, "{line}")?;
+    writeln!(buf, "{line}")?;
   }
   Ok(())
 }
 
 fn write_library_markdown(
-  f: &mut fs::File,
+  buf: &mut Vec<u8>,
   items: &[&FeedItem],
   filter_label: &str,
 ) -> io::Result<()> {
   let now = Local::now().format("%Y-%m-%d %H:%M");
   writeln!(
-    f,
+    buf,
     "# Trench library — {filter_label} ({} items, exported {now})",
     items.len()
   )?;
-  writeln!(f)?;
+  writeln!(buf)?;
 
   for item in items {
     let source = if item.source_name.is_empty() {
@@ -165,7 +173,7 @@ fn write_library_markdown(
       format!(" — {}", item.authors.join(", "))
     };
     writeln!(
-      f,
+      buf,
       "- **{}** — {source}{authors} — {}",
       escape_md(&item.title),
       item.url
