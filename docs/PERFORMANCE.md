@@ -442,3 +442,48 @@ audit task list; this log is the durable record.
   16ms in any scenario, that becomes the concrete target for axis 1
   (latency) — the histogram bridges the gap between axis 5 (visibility)
   and axis 1 (attack).
+
+### Axis 6 — Scalability (closed 2026-05-17 — already well-designed, positive finding)
+
+- **process_incoming (app/methods/process.rs)**:
+  - O(1) URL dedup via `workspace.url_index: HashMap<String, usize>`
+  - O(1) arxiv-ID dedup via `workspace.arxiv_id_index: HashMap<String, usize>`
+  - Comment at process.rs:73 explicitly notes this replaced a prior
+    O(N) linear scan that fired "~50× per refresh × ~2,600 items"
+  - Indices updated incrementally inside the loop so intra-batch dedup
+    works without a full rebuild (lines 100-103)
+  - Sort gated on `had_structural_item_changes` — skipped for
+    pure-update batches that don't change the item set
+  - Background cache save off the UI thread
+- **Search / filter path (app/mod.rs + feed/)**:
+  - Five RefCell-protected memoization caches:
+    - `visible_cache: RefCell<Option<(FeedTab, Vec<usize>)>>` keyed by
+      tab, so a tab switch is a natural cache-miss
+    - `counts_cache`, `filter_source_names_cache`,
+      `filter_summary_cache`, `filtered_history_cache`
+  - Per-item `title_lower` / `authors_lower` precomputed (#[serde(skip)],
+    populated by `sanitize_in_place` on ingest + cache load). Comment at
+    feed/mod.rs:41 calls out the win: "skips a per-frame to_lowercase
+    heap alloc". Axis 3 audit also flagged this — it's a deliberate
+    memory-for-CPU trade with clear documentation.
+- **Sort cost during fetch**: ~6 sorts per refresh (one per batch with
+  structural changes) at N=1781 is ~12ms total. Could be batched to 1
+  sort by waiting for AllComplete, saving ~10ms, but at the UX cost of
+  delayed item appearance in the feed during fetch. Current behaviour
+  prioritises UX visibility.
+- **No fix landed.** Closing positive: scalability is already a
+  deliberate priority in this codebase, with HashMap-backed dedup
+  paths, multi-level memoization on filter results, and per-item
+  precomputed lowercase fields. The audit confirmed the design rather
+  than uncovered work.
+- **Open threads** (would only matter at much larger N):
+  - **Sort batching during fetch**: could collapse ~6 sorts to 1 at
+    `AllComplete`. Saves ~10ms, costs UX. Not worth the trade at
+    current N.
+  - **Reflow on resize for large reader docs**: noted in
+    PERFORMANCE.md §6 checklist; tread/arxiv-render territory. Would
+    fold into axis 7's TestBackend benches for heavy-scenario
+    measurement (deferred open thread there).
+  - **Criterion benches with varying N** to validate scaling
+    empirically — would catch any regression that introduced an
+    accidental O(N²). Not built; would be ~50 lines.
