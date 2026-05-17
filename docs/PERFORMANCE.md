@@ -609,3 +609,28 @@ Round 2 — per-feature deep coverage of trench (tread treated as black box).
   field on the message would close the gap.
 - **No fix landed.** Closing positive: chat panel reflects deliberate
   perf design (async dispatch + per-message cache invalidation).
+
+### Feature — Notes (crates/notes) — closed 2026-05-17 (positive finding)
+
+- **Audit shape**: code review of save/load paths in storage.rs +
+  app/mod.rs + app/input.rs.
+- **Positive design**:
+  - `save_current_note_content` is user-triggered via
+    `NoteEditorAction::Save`, not per-keystroke. Editor edits stay
+    in RAM until explicit save (input.rs:36).
+  - `atomic_write` for crash-safe writes; quarantine path for corrupt
+    note files (storage.rs:131-150) preserves user data on parse
+    failure.
+- **Two open observations** (linear-scaling, not attacked at current
+  N):
+  - **O(N) `notes.iter().find(|n| n.note_id == ...)`** at 4 sites in
+    `app/mod.rs` (lines 179, 244, 636, 680). The FeedItem path (axis
+    6 finding) solved the equivalent problem with a HashMap index;
+    notes uses linear scan. Fine at typical N (10-100 notes);
+    matters for power users with 500+ notes.
+  - **`load_all_notes` reads each .json file sequentially** at
+    startup (storage.rs:117-156). ~1-2ms per note × N reads. At
+    N=100 that's ~100-200ms one-time-startup cost. Parallelizable
+    via `std::thread::scope` or `rayon` when it matters.
+- **No fix landed.** Closing positive: notes is well-designed for
+  current scale; open threads documented for future scaling.
