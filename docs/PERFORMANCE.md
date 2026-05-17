@@ -575,3 +575,37 @@ Round 2 — per-feature deep coverage of trench (tread treated as black box).
   the existing axis 5 frame histogram will catch any regression. The
   fix is justified by the existing pattern + explicit comment about
   the gap, not by a before/after number.
+
+### Feature — Chat panel (crates/chat) — closed 2026-05-17 (positive finding)
+
+- **Audit shape**: code review of `tick()`, `send_message()`,
+  `append_stream_chunk()`, the line cache, and the storage write path.
+- **Three positive design patterns** found:
+  - `send_message` dispatches the provider API call (hundreds of ms
+    to seconds) to a `std::thread::spawn` background thread; UI
+    thread never blocks. Pattern matches the ingestion threads.
+  - `line_cache` per message — explicit cache invalidation on width
+    change or session switch. Comment at ui/mod.rs:1297-1299:
+    "streaming reveals only re-wrap the streaming message instead of
+    the entire history." Prevents O(N messages) wrap recomputation
+    per streaming word.
+  - `tick()` uses non-blocking `try_recv` on the pending_response
+    channel; doesn't busy-wait, doesn't block.
+- **One mild observation, not attacked**: `save_session()` is a full
+  JSON serialize + atomic_write on the UI thread when an assistant
+  response completes (~5ms for typical 25KB sessions). Bounded,
+  infrequent (once per response, not per-tick). Could be moved off the
+  UI thread with a `queue_save` pattern like `store::cache::queue_save`
+  (axis 4), but leverage is much smaller — chat session writes are
+  ~1/minute during conversation vs ~6+/refresh for cache.json, and
+  sessions are ~100x smaller than cache.json. Not worth the queue
+  infrastructure cost.
+- **`append_stream_chunk` has a technically-O(N) `chars().last()`**
+  per call to determine whitespace boundary handling. At typical chat
+  sizes (~1000-2000 char responses over ~200 words) accumulated cost
+  is <1ms — under the floor where it matters. Would only become
+  notable for very long single-message responses (10K+ chars), at
+  which point switching to a tracked `ends_with_whitespace: bool`
+  field on the message would close the gap.
+- **No fix landed.** Closing positive: chat panel reflects deliberate
+  perf design (async dispatch + per-message cache invalidation).
