@@ -806,3 +806,56 @@ Round 2 — per-feature deep coverage of trench (tread treated as black box).
   (#[serde(skip)], populated by sanitize_in_place) avoid per-keystroke
   `to_lowercase` allocs across N items. Documented at feed/mod.rs:41.
 - **No fix landed.** Already designed for scale.
+
+### Feature — Export functionality — closed 2026-05-17 (positive finding)
+
+- **One-shot user-triggered operation** — no per-frame cost, no
+  background thread needed.
+- **Streams via `writeln!` to a File handle** in export.rs:80+ —
+  no buffer-everything-in-memory pattern, bounded by entries count
+  not by total output size.
+- **Worst-case cost**: library export of ~1781 items × ~1.7KB =
+  ~3MB written line-by-line. Total ~10-50ms. A brief pause user
+  expects when triggering an export.
+- **One mild observation**: `fs::File::create` + `writeln!` doesn't
+  use `atomic_write` (tmp file + rename). If disk fills mid-export
+  the user gets a partial file. Correctness concern, not perf;
+  acceptable for on-demand exports (recoverable by deleting +
+  re-exporting).
+- **No fix landed.** Closing positive.
+
+---
+
+## Feature audit summary (2026-05-17)
+
+12 trench features audited (tread out of scope per user directive).
+
+| # | Feature | Outcome |
+|---|---|---|
+| 15 | Reader-wrapper | **FIX**: ReaderPopupModel last_resize short-circuit |
+| 16 | Chat panel | Positive (async dispatch + line cache) |
+| 17 | Notes | Positive (user-triggered save, atomic_write) |
+| 18 | Repo viewer | **FIX**: syntect off UI thread + double-highlight kill |
+| 19 | Discovery agent | Positive (async dispatch + rate-limit-aware sequential) |
+| 20 | Voice integration | Positive (trench-side is 4 lines of plumbing) |
+| 21 | Workflow state | Positive (user-triggered, batched, atomic) |
+| 22 | Settings/themes | Positive (gated popups) |
+| 23 | Tag picker | Positive (gated popup with one mild O() observation) |
+| 24 | Help overlay | Positive (static const data) |
+| 25 | Library/filter | Positive (cross-ref axis 6) |
+| 26 | Export | Positive (one-shot streaming) |
+
+**Result**: 2 real fixes landed (#15, #18), 10 positive findings. The
+positive findings are not "skipped" — each documents the deliberate
+design choice + complexity it embodies, so future contributors can
+read PERFORMANCE.md instead of re-deriving from code.
+
+Cross-cutting open threads (collected from all 12 audits):
+- ReaderPopupModel last_resize (LANDED in #15)
+- Repo viewer syntect off UI (LANDED in #18)
+- Notes O(N) find by note_id (deferred — fine at typical N)
+- Notes load_all_notes sequential file reads (deferred — fine at N<100)
+- Chat save_session sync on UI thread (deferred — bounded, infrequent)
+- Tag picker common_on_all recompute per frame (deferred — trivial at typical N)
+- History.json full-rewrite per paper open (deferred — bounded by user action rate)
+- Export atomic_write (correctness, not perf — deferred)
