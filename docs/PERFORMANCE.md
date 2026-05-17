@@ -747,3 +747,17 @@ Round 2 — per-feature deep coverage of trench (tread treated as black box).
 - **No fix landed.** Closing positive: workflow state writes are
   user-action-triggered (not periodic, not auto-save), correctly
   batched for multi-select, and atomically written.
+
+### Feature — Settings / themes popups — closed 2026-05-17 (positive finding)
+
+- **All popups (settings, theme picker, sources) are gated by
+  `is_active` checks** in ui/layout/mod.rs:42-63 before their draw
+  function is called. When closed: zero per-frame cost.
+- **When open**: standard ratatui widget rendering of a small modal
+  with fixed-size content (form fields, theme list). Bounded by
+  popup geometry, not by feed/notes state.
+- **Theme switching** updates `app.active_theme` / `active_custom_theme_id`;
+  the theme is read once per frame via `app.theme()`. No per-frame
+  recompute of colors.
+- **No fix landed.** Closing positive: popup overlays are textbook
+  good design — gated draws + bounded render cost when open.
