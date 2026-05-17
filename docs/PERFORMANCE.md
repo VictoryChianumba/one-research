@@ -382,3 +382,32 @@ audit task list; this log is the durable record.
     above/below-16ms binary): ~30 lines, would let us see tail/jitter
     behaviour over time without waiting for a specific overrun. Folds
     cleanly into axis 5 (tail latency) work.
+
+### Axis 1 — Latency (closed 2026-05-17 — no concrete target identified)
+
+- **Per the leverage notes**: latency tuning is usually premature in a
+  TUI until frame budget (axis 7) is nailed. Axis 7 closed cleanly with
+  feed at sub-ms — so axis 1 is now appropriate to attempt.
+- **Inventory of measured warm-state operations**:
+  - Per-pane draws: <1ms each, total <2-3ms per frame (axis 7)
+  - Ingestion pipeline: 1651ms end-to-end after parallelization (axis 2)
+  - Cold-start to first frame: 22ms median (axis 4)
+  - Cache load + index rebuild on cold start: 15ms (deemed structural
+    in axis 4; serde_json at ~180 MB/s is at the high end of what's
+    achievable for JSON of that size)
+- **No specific latency complaint surfaced** during the audit. Latency
+  tuning without a concrete scenario is fishing — random
+  micro-optimizations will not improve anything users notice and may
+  hurt code clarity.
+- **What we'd profile if we had a complaint**:
+  - LaTeX parsing in tread/arxiv_render — dominant cost when opening a
+    paper; not in critical paths
+  - process_incoming dedup loop on each fetch batch
+  - Search filter rebuild on each keystroke (filter_summary_cache
+    already amortizes some of this)
+  - Arc<Mutex>-protected VoicePlayingInfo lock churn — voice mode
+    currently broken per project TODO, so the lock isn't actually
+    contended in practice
+- **No fix landed.** Closing diagnostic-only with the instruction:
+  revisit when a specific operation feels slow to the user, then we
+  have a concrete reproducer to instrument against.
