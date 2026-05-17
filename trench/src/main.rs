@@ -597,6 +597,11 @@ fn migrate_legacy_config_dir() {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
   let startup_t0 = std::time::Instant::now();
+  // --bench-startup: exit cleanly after the first frame draws and print the
+  // first-frame-ready elapsed time to stdout. Used by the startup harness to
+  // produce a real cold-start wall-clock number that includes binary load +
+  // dyld + first draw, not just instrumented phases.
+  let bench_startup = std::env::args().any(|a| a == "--bench-startup");
   migrate_legacy_config_dir();
 
   let log_level = if std::env::var_os("TRENCH_DEBUG_LOG").is_some() {
@@ -702,45 +707,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
   }
 
-  // Loud tmux/passthrough banner.  `allow-passthrough` is off by default
+  // tmux/passthrough advisory.  `allow-passthrough` is off by default
   // in tmux, and when it's off every DCS envelope our graphics emitter
   // produces is silently consumed before reaching the host terminal —
-  // figures don't render and there's no error to investigate.  Active
-  // probe lets us distinguish OFF (loud banner) from "couldn't probe"
-  // (advisory) from ON (nothing to say).  Same printed-before-alt-screen
-  // pattern as the Zellij case so it survives in terminal scrollback.
-  if tread::detect_kitty_supported() {
-    match tread::tmux_passthrough_enabled() {
-      Some(false) => {
-        eprintln!(
-          "\n\
-           ═══════════════════════════════════════════════════════════════════\n\
-           trench: tmux detected with allow-passthrough OFF.\n\
-           Figures will NOT render — every DCS envelope is being dropped\n\
-           by tmux before it reaches the host terminal.\n\
-           \n\
-           Fix:\n  \
-             echo 'set -g allow-passthrough on' >> ~/.tmux.conf\n  \
-             tmux source-file ~/.tmux.conf\n\
-           \n\
-           Verify:\n  \
-             tmux show -gv allow-passthrough   # should print: on\n\
-           ═══════════════════════════════════════════════════════════════════\n"
-        );
-      }
-      None if tread::in_zellij() => {
-        // Already covered by the Zellij banner above.
-      }
-      None if std::env::var_os("TMUX").is_some() => {
-        eprintln!(
-          "trench: tmux detected but `allow-passthrough` could not be probed.\n  \
-           If figures don't render, add to ~/.tmux.conf:\n    \
-             set -g allow-passthrough on\n    \
-             set -g focus-events on"
-        );
-      }
-      _ => {}
-    }
+  // figures don't render and there's no error to investigate.
+  //
+  // We previously *probed* the active tmux server via `tmux show -gv
+  // allow-passthrough` so we could distinguish OFF (loud banner) from
+  // "couldn't probe" (advisory) from ON (silent).  That fork/exec cost
+  // ~8ms on startup for every tmux user — single largest pre-App::new
+  // cost.  Replaced with an unconditional one-line advisory: users
+  // with correct config see a redundant tip; users with it off see
+  // the tip alongside broken figures.  Same printed-before-alt-screen
+  // pattern as the Zellij case so the advisory survives in scrollback.
+  if std::env::var_os("TMUX").is_some()
+    && !tread::in_zellij()
+    && tread::detect_kitty_supported()
+  {
+    eprintln!(
+      "trench: tmux detected.  If figures don't render, ensure tmux\n  \
+       allow-passthrough is enabled:\n    \
+         echo 'set -g allow-passthrough on' >> ~/.tmux.conf\n    \
+         tmux source-file ~/.tmux.conf"
+    );
   }
 
   enable_raw_mode()?;
@@ -777,8 +766,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   // stderr before exit so the panic message still surfaces.
   redirect_stderr_to_devnull();
 
+  // Use a local timer so this log measures App::new specifically,
+  // not cumulative-from-main-entry (which it used to do, misleadingly).
+  let app_new_t = std::time::Instant::now();
   let mut app = App::new();
-  log::debug!("startup: App::new {}ms", startup_t0.elapsed().as_millis());
+  log::debug!("startup: App::new {}ms", app_new_t.elapsed().as_millis());
 
   // Load config.
   let t = std::time::Instant::now();
@@ -856,6 +848,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   // LeaveAlternateScreen + flag-pop (audit Rel HIGH H7). The panic
   // hook covers panics; this closure covers Err returns.
   let mut first_draw_logged = false;
+  let mut first_frame_at: Option<std::time::Duration> = None;
   let run_result: std::io::Result<()> = (|| -> std::io::Result<()> {
     loop {
       // Drain any pending fetch results before drawing. process_incoming +
@@ -1101,11 +1094,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         terminal.draw(|frame| ui::draw(frame, &mut app))?;
         let draw_ms = t_draw.elapsed().as_millis();
         if !first_draw_logged {
+          let elapsed = startup_t0.elapsed();
           log::debug!(
             "startup: first frame ready in {}ms",
-            startup_t0.elapsed().as_millis()
+            elapsed.as_millis()
           );
           first_draw_logged = true;
+          first_frame_at = Some(elapsed);
+          if bench_startup {
+            app.should_quit = true;
+          }
         }
         if draw_ms > 16 {
           log::debug!("terminal.draw took {}ms (slow frame)", draw_ms);
@@ -1217,5 +1215,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     DisableMouseCapture,
     DisableFocusChange,
   );
+  if bench_startup {
+    if let Some(elapsed) = first_frame_at {
+      println!("first_frame_ready_ms={}", elapsed.as_millis());
+    }
+  }
   run_result.map_err(Into::into)
 }
