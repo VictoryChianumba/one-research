@@ -695,3 +695,26 @@ Round 2 — per-feature deep coverage of trench (tread treated as black box).
 - **No fix landed.** Closing positive: discovery is well-designed;
   the sequential patterns that exist are bounded by upstream
   rate-limit concerns that we already saw bite us in axis 2.
+
+### Feature — Voice integration — closed 2026-05-17 (positive finding)
+
+- **Note on premise**: this audit originally assumed voice was broken
+  (per the prior CLAUDE.md TODO). The user confirmed voice has been
+  fixed and the TODO entries were removed from CLAUDE.md during this
+  session. Audit ran as a normal feature audit.
+- **Trench-side voice surface is minimal** — only 4 references total:
+  - `voice_controller: Arc<tread::PlaybackController>` field on App
+  - Constructed via `tread::build_voice_controller()` at App::new
+    (already measured 0ms in axis 4 sub-phase audit)
+  - Cloned into the primary Reader at `main.rs:968` (fulltext drain
+    path)
+  - Cloned into the popup Reader at `main.rs:1030`
+- **All actual voice logic lives in tread** (out of scope by user
+  directive). Trench is just passing a shared Arc handle.
+- **No per-frame work in trench around voice.** No lock churn in
+  trench code. No sync I/O in trench code. The `VoicePlayingInfo
+  Arc<Mutex>` contention path noted in axis 1 is between tread's
+  threads, not trench's.
+- **No fix landed.** Closing positive: trench's voice wiring is
+  clean — minimal Arc-handle plumbing with all the work delegated
+  to tread.
