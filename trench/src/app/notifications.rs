@@ -17,10 +17,6 @@ impl NotificationState {
     Self::default()
   }
 
-  pub fn is_active(&self) -> bool {
-    self.message.is_some()
-  }
-
   pub fn clear(&mut self) {
     self.message = None;
     self.item_id = None;

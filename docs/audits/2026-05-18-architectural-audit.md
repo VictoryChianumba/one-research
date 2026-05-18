@@ -118,6 +118,8 @@ Per the skill: candidates, not interfaces. Twelve carried from the prior audit (
 *Solution:* Delete now. If a future slice needs them, the actual usage will inform the design.
 *Benefits:* The warning surface becomes trustworthy. Compiler warnings stop being noise.
 
+> **Update during this audit's execution**: a deletion pass attempted on 2026-05-18 found that the prior audit's "delete now" verdict was *too aggressive*. Most warnings are protected by one of four conditions: (1) tested-forward-design — the primitives (`ListState`, `ScrollState`, `AsyncLoadState`) have comprehensive tests that exercise the unused methods, so deletion costs the tests too; (2) stated future use in code comments — e.g., `ReaderTab.arxiv_id` is marked "used by `:reload` to refetch"; (3) load-bearing vocabulary documented in CONTEXT.md/ADR-002 (`ReaderTarget::Popup`, `Action::DismissTopModal`, `ReaderContext`, `Effect::WorkflowStateChanged` fields); (4) Slice 2 still in flight (reader-mod stubs are <2 weeks old). After triage, the only clean delete was `NotificationState::is_active` (1 method). The educational finding is that "delete dead code" is more nuanced than the prior audit acknowledged — the right rule is "delete *untested* dead code with no stated future use," not "delete all dead code." C11 status: **partially resolved (1 method)**, mostly **downgraded to nuance**.
+
 **C12. ✓ SHIPPED.** `rustfmt.toml` fixed.
 
 ### New friction surfaced by 2-day commits
