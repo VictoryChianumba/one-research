@@ -1,6 +1,6 @@
 # CONTEXT — trench domain and architecture vocabulary
 
-Last reviewed: 2026-05-15
+Last reviewed: 2026-05-18
 
 This file is the onboarding document. It captures the terms a future contributor (or future-you) must know to navigate the codebase, and the architectural patterns every new pane is expected to follow.
 
@@ -28,6 +28,8 @@ When you change behaviour described here, update this file in the same commit.
 | **ReaderPopupModel** | The floating popup reader (`Ldr+Enter`), a sibling Model to `ReaderPaneModel`. Lifecycle is async-load + dismissible; deliberately distinct from `ReaderInstanceModel`. |
 | **ReaderContext** | The per-frame read-only context for reader renders (analogue of `FeedContext`). Carries `&Workspace`, the active theme, `Viewport`, and any pre-computed data the orchestrator owes the renderer. |
 | **ReaderTarget** | Discriminator on `Action::OpenInReader` naming which reader surface receives an item: `Primary`, `Secondary`, `Popup`. |
+| **NotesPaneModel** | Composition-root model for the notes dock. Owns the shared `notes::app::App` persistence backend, the primary `NotesInstanceModel` (always allocated), an optional secondary, and two visibility flags. Sibling to `ReaderPaneModel`. Introduced by slice 3 (`ADR-003`). |
+| **NotesInstanceModel** | One notes context (primary or secondary). Owns tabs, active tab, `NotesMode`, and the optional `NotesContext` (paper anchoring). Per-instance — primary and secondary can be in different modes and tied to different papers. Pure content; visibility lives on the parent `NotesPaneModel`. |
 
 ### Term hygiene
 
@@ -83,7 +85,7 @@ The refactor is incremental. Lazy rollout — a pane is refactored when a featur
 | **Reader** | Slice 2 accepted (2026-05-16) | ADR-002. 6 PRs landed. PR 5 scoped down from "full signature flip" to "pre_draw landing" to avoid the per-frame allocation regression slice 1 PR 4c introduced — full flip remains available if a testability driver forces it. |
 | **Popup reader** | Slice 2 accepted | Folded into ADR-002 as `ReaderPopupModel`. |
 | **Voice** | Pending | Separate slice after slice 2. `VoiceModel` on `App`. Trigger: ElevenLabs credits + feature ask. |
-| **Notes** | Legacy | Audit candidate C5. Lazy. Notes dock alongside reader and have to know `focused_reader` state — likely the trigger for slice 3. |
+| **Notes** | Slice 3 in flight (2026-05-18) | ADR-003. PR 1 lands skeletons + ADR + vocabulary. PRs 2-4 migrate state, lift gestures, tripwire-lock. Trigger: audit-grade-alone (proactive cleanup, same justification shape as ADR-002). |
 | **Chat** | Legacy | Lazy. No pressure to refactor. |
 | **Repo Viewer** | Legacy | Lazy. |
 | **Settings overlay** | Legacy | Lazy. Already partly migrated to `Action::DismissTopModal` / `Action::OpenSettings`. |
@@ -95,5 +97,6 @@ The refactor is incremental. Lazy rollout — a pane is refactored when a featur
 
 - `docs/adr/ADR-001-render-purification.md` — the parent per-pane refactor decision (slice 1, feed).
 - `docs/adr/ADR-002-reader-slice.md` — slice 2 reader-pane extension.
+- `docs/adr/ADR-003-notes-slice.md` — slice 3 notes-dock consolidation (in flight; PR 1 lands skeletons).
 - `docs/audits/` — periodic architectural audits with letter-graded scorecards. Latest: `2026-05-18-architectural-audit.md` (C+, unchanged from 2026-05-16). Run `/improve-codebase-architecture` to produce a new one.
 - `CLAUDE.md` — project-wide rules. CONTEXT.md is the *language* layer above those.
