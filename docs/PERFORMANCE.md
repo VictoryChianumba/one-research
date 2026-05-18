@@ -241,7 +241,7 @@ audit task list; this log is the durable record.
 - **Open thread**: cold-cache run is 4× warm — folds naturally into axis 5
   (tail jitter) when we get there. Binary load floor (~40ms wall - 22ms
   instrumented) folds into axis 3 (footprint).
-- **Tooling kept**: `--bench-startup` flag + `/tmp/bench_first_frame.py`
+- **Tooling kept**: `--bench-startup` flag + `scripts/bench/bench_first_frame.py`
   harness for repeatable cold-start measurement.
 
 ### Axis 2 — Throughput (closed 2026-05-17)
@@ -270,7 +270,7 @@ audit task list; this log is the durable record.
 - **Tooling kept**: per-source elapsed-time logging in `run_source`,
   per-enrichment-stage timing, and `ingestion: total pipeline Nms` summary
   log (INFO level — useful for ongoing observation, not diagnostic-only).
-  `/tmp/bench_pipeline.py` harness uses clean 'q' shutdown so env_logger
+  `scripts/bench/bench_pipeline.py` harness uses clean 'q' shutdown so env_logger
   drop handlers flush buffered output (SIGTERM loses everything past the
   first second).
 - **Open threads** (correctness, not throughput — separate from axis 2):
@@ -540,7 +540,7 @@ deferred (3).
 | 6 Scalability | Positive finding; already well-designed | 3ccbfa5 |
 | 8 Energy | Positive finding; already energy-conscious | (this commit) |
 
-Tooling banked: `--bench-startup` flag, `cargo bloat`, `/tmp/bench_first_frame.py`, `/tmp/bench_pipeline.py`, INFO-level frame histogram in main loop.
+Tooling banked: `--bench-startup` flag, `cargo bloat`, `scripts/bench/bench_first_frame.py`, `scripts/bench/bench_pipeline.py`, INFO-level frame histogram in main loop.
 
 ---
 
@@ -977,7 +977,7 @@ choice to ship one scenario instead of all five is CLAUDE.md Rule 2
   `synthetic_item` factory. Index-keyed (deterministic, reproducible).
 - `--bench-render <scenario> [--n N] [--frames F] [--width W] [--height H]`
   on main binary. Defaults: scenario=feed, N=1000, frames=200, 160x48.
-- `/tmp/bench_render.py` — sweeps across N values, prints a table of
+- `scripts/bench/bench_render.py` — sweeps across N values, prints a table of
   `p50/p95/p99/max` per N. No pty needed (bench exits before terminal
   setup).
 
