@@ -6,24 +6,57 @@ use crate::models::{
   detect_subtopics,
 };
 
-// Venues to fetch. Invitation strings are venue-specific; these cover the
-// major ML conferences for the current and prior cycle.
-const VENUES: &[&str] = &[
+use super::pipeline::{FetchContext, Source};
+
+/// Default venue invitation strings — the major ML conferences for the
+/// current and prior cycle. Lifted from the hardcoded `const VENUES` in
+/// the pre-C10 implementation so [`OpenReviewSource::default`] reproduces
+/// it byte-for-byte.
+pub const DEFAULT_VENUES: &[&str] = &[
   "ICLR.cc/2025/Conference/-/Submission",
   "NeurIPS.cc/2024/Conference/-/Submission",
   "ICML.cc/2024/Conference/-/Submission",
 ];
 
-pub fn fetch() -> Result<Vec<FeedItem>, String> {
+/// Bulk-refresh source for the OpenReview v2 notes API. Lifts the
+/// previously-hardcoded `VENUES` constant to construction-time `venues:
+/// Vec<String>` per ADR-004 §D5 — the orchestrator (via the registry)
+/// builds one source seeded with [`DEFAULT_VENUES`]; future per-user
+/// venue overrides become a config-level change, not a code change.
+pub struct OpenReviewSource {
+  pub venues: Vec<String>,
+}
+
+impl Default for OpenReviewSource {
+  fn default() -> Self {
+    Self { venues: DEFAULT_VENUES.iter().map(|s| (*s).to_string()).collect() }
+  }
+}
+
+impl Source for OpenReviewSource {
+  fn name(&self) -> &str {
+    "openreview"
+  }
+  fn host_group(&self) -> &str {
+    "openreview"
+  }
+  fn fetch(&self, _ctx: &FetchContext) -> Result<Vec<FeedItem>, String> {
+    fetch_venues(&self.venues)
+  }
+}
+
+fn fetch_venues(venues: &[String]) -> Result<Vec<FeedItem>, String> {
   // Parallelize venue fetches. Each fetch_venue hits api2.openreview.net —
   // same host — but the upstream has tolerated 3 concurrent requests in
   // testing without 429. If that changes, add per-venue backoff or revert
   // to the sequential loop. Wall-clock is bounded by the slowest single
   // venue (~700ms) instead of the sum of all three (~2s).
-  let items: std::sync::Mutex<Vec<FeedItem>> = std::sync::Mutex::new(Vec::new());
+  let items: std::sync::Mutex<Vec<FeedItem>> =
+    std::sync::Mutex::new(Vec::new());
   std::thread::scope(|scope| {
-    for venue in VENUES {
+    for venue in venues {
       let items_ref = &items;
+      let venue = venue.as_str();
       scope.spawn(move || match fetch_venue(venue) {
         Ok(mut venue_items) => {
           items_ref

@@ -1,11 +1,3 @@
-// PR 1 ships the trait surface + FetchContext without any impls yet — the
-// five `impl Source` / two `impl EnrichmentSource` blocks land in PR 2.
-// `#[allow(dead_code)]` covers the trait + struct + helper-method warnings
-// during the one-PR window where the surface is declared but unwired.
-// PR 2 removes this attribute when the orchestrator starts calling
-// `src.fetch(&ctx)`.
-#![allow(dead_code)]
-
 //! C10 ingestion seam (ADR-004).
 //!
 //! Two traits, one module: [`Source`] for bulk fetch, [`EnrichmentSource`]
@@ -97,6 +89,15 @@ pub struct FetchContext<'a> {
   /// Filesystem path under which per-source caches live (typically
   /// `~/.config/trench/`). Enrichment impls that own caches load from /
   /// save to this directory.
+  ///
+  /// Today's enrichment impls (`SemanticScholarEnrichment`,
+  /// `HuggingFaceRepoEnrichment`) derive their own paths via the
+  /// existing `store::enrichment_cache` / `huggingface::hf_cache_path`
+  /// helpers, so `cache_dir` is forward-design: it surfaces the path
+  /// uniformly so a future `Store<T>` seam (audit candidate C8) can
+  /// route all cache I/O through the context. `#[allow(dead_code)]`
+  /// covers the gap until the first consumer lands.
+  #[allow(dead_code)]
   pub cache_dir: &'a Path,
 }
 

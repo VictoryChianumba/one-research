@@ -5,6 +5,31 @@ use crate::models::{
   detect_subtopics,
 };
 
+use super::pipeline::{FetchContext, Source};
+
+/// Bulk-refresh source for the CORE API. Requires an API key — the
+/// registry skips building this source when `config.core_api_key` is
+/// absent (preserving the "skipped — no API key" log line at the
+/// orchestrator boundary, ADR-004 §D6).
+pub struct CoreSource;
+
+impl Source for CoreSource {
+  fn name(&self) -> &str {
+    "core"
+  }
+  fn host_group(&self) -> &str {
+    "core"
+  }
+  fn fetch(&self, ctx: &FetchContext) -> Result<Vec<FeedItem>, String> {
+    let key = ctx
+      .config
+      .core_api_key
+      .as_deref()
+      .ok_or_else(|| "core: no API key configured".to_string())?;
+    fetch(key)
+  }
+}
+
 pub fn fetch(api_key: &str) -> Result<Vec<FeedItem>, String> {
   // CORE API key moved off the URL query string and into the Authorization
   // header. Previously the key landed in proxy logs, the server access log,

@@ -6,6 +6,40 @@ use crate::models::{
   detect_subtopics,
 };
 
+use super::pipeline::{FetchContext, Source};
+
+/// Bulk-refresh source for one RSS / Atom feed. Multiple `RssSource`
+/// instances exist per refresh — one per built-in feed (OpenAI blog,
+/// DeepMind blog, …) and one per user-configured custom feed. The
+/// orchestrator schedules them in parallel since each hits a distinct host.
+pub struct RssSource {
+  pub source_name: String,
+  pub feed_url: String,
+  pub platform: SourcePlatform,
+  pub content_type: ContentType,
+}
+
+impl Source for RssSource {
+  fn name(&self) -> &str {
+    &self.source_name
+  }
+  fn host_group(&self) -> &str {
+    // Each RSS feed is on a distinct host, so each gets its own group —
+    // returning `&self.source_name` would also work (every group is unique)
+    // but the orchestrator's grouping is keyed by string equality, and
+    // forcing per-source uniqueness keeps the grouping intent explicit.
+    &self.source_name
+  }
+  fn fetch(&self, _ctx: &FetchContext) -> Result<Vec<FeedItem>, String> {
+    fetch(
+      &self.source_name,
+      &self.feed_url,
+      self.platform.clone(),
+      self.content_type.clone(),
+    )
+  }
+}
+
 pub fn fetch(
   source_name: &str,
   feed_url: &str,

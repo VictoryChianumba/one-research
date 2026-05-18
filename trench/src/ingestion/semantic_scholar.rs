@@ -1,9 +1,48 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
 
 use crate::models::{FeedItem, arxiv_id_from_url};
 use crate::store::enrichment_cache::{
-  EnrichmentEntry, is_stale, save, today_str,
+  EnrichmentEntry, is_stale, load, save, today_str,
 };
+
+use super::pipeline::{EnrichmentSource, FetchContext};
+
+/// Post-fetch enrichment for arXiv items. Owns the on-disk cache loaded
+/// at construction time (registry-build), reads the S2 API key from
+/// [`FetchContext::config`] at each enrich call. `RefCell` because the
+/// trait method is `&self` not `&mut self` — interior mutability is the
+/// pattern that lets the trait stay object-safe and `Sync`-free
+/// (see ADR-004 §D4).
+pub struct SemanticScholarEnrichment {
+  cache: RefCell<HashMap<String, EnrichmentEntry>>,
+}
+
+impl SemanticScholarEnrichment {
+  pub fn new() -> Self {
+    Self { cache: RefCell::new(load()) }
+  }
+}
+
+impl Default for SemanticScholarEnrichment {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
+impl EnrichmentSource for SemanticScholarEnrichment {
+  fn name(&self) -> &str {
+    "semantic_scholar"
+  }
+  fn enrich(&self, items: &mut [FeedItem], ctx: &FetchContext) {
+    let key = ctx
+      .config
+      .semantic_scholar_key
+      .as_deref()
+      .filter(|k| !k.trim().is_empty());
+    enrich(items, &mut self.cache.borrow_mut(), key);
+  }
+}
 
 /// Enrich arXiv items with Semantic Scholar metadata.
 ///
@@ -14,7 +53,7 @@ use crate::store::enrichment_cache::{
 const MAX_REQUESTS: usize = 10;
 
 pub fn enrich(
-  items: &mut Vec<FeedItem>,
+  items: &mut [FeedItem],
   cache: &mut HashMap<String, EnrichmentEntry>,
   api_key: Option<&str>,
 ) {

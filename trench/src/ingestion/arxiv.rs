@@ -6,6 +6,27 @@ use crate::models::{
   detect_subtopics, map_arxiv_category,
 };
 
+use super::pipeline::{FetchContext, Source};
+
+/// Bulk-refresh source for the arXiv export Atom API. Delegates to the
+/// pre-C10 [`fetch`] free function so the discovery agent (which still
+/// calls `arxiv::fetch` outside any `FetchContext`) doesn't fork.
+pub struct ArxivSource {
+  pub categories: Vec<String>,
+}
+
+impl Source for ArxivSource {
+  fn name(&self) -> &str {
+    "arxiv"
+  }
+  fn host_group(&self) -> &str {
+    "arxiv"
+  }
+  fn fetch(&self, _ctx: &FetchContext) -> Result<Vec<FeedItem>, String> {
+    fetch(&self.categories)
+  }
+}
+
 pub fn fetch(categories: &[String]) -> Result<Vec<FeedItem>, String> {
   let query = if categories.is_empty() {
     "cat:cs.LG+OR+cat:cs.AI+OR+cat:stat.ML".to_string()

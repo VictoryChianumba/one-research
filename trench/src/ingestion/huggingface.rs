@@ -4,17 +4,73 @@ use crate::models::{
 };
 use quick_xml::Reader;
 use quick_xml::events::Event as XmlEvent;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+use trench_http::RetryPolicy;
+
+use super::pipeline::{EnrichmentSource, FetchContext, Source};
+
+/// Post-fetch enrichment that fills `github_repo` on items lacking one,
+/// via the HuggingFace papers API + GitHub URL regex fallback. Caches
+/// results at `~/.config/trench/hf_repo_cache.json` (7-day TTL) loaded
+/// at registry-build time. Same `RefCell` rationale as
+/// [`super::semantic_scholar::SemanticScholarEnrichment`] (ADR-004 §D4).
+pub struct HuggingFaceRepoEnrichment {
+  cache: RefCell<HashMap<String, HfRepoCacheEntry>>,
+}
+
+impl HuggingFaceRepoEnrichment {
+  pub fn new() -> Self {
+    Self { cache: RefCell::new(load_hf_cache()) }
+  }
+}
+
+impl Default for HuggingFaceRepoEnrichment {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
+impl EnrichmentSource for HuggingFaceRepoEnrichment {
+  fn name(&self) -> &str {
+    "huggingface_repo"
+  }
+  fn enrich(&self, items: &mut [FeedItem], _ctx: &FetchContext) {
+    enrich_with_repos_using_cache(items, &mut self.cache.borrow_mut());
+  }
+}
 
 const HF_PAPERS_URL: &str = "https://huggingface.co/papers";
 
-pub fn fetch() -> Result<Vec<FeedItem>, String> {
+/// Bulk-refresh source for HuggingFace daily papers. Two-pass internally:
+/// scrape the daily papers page, then batched arXiv API call to backfill
+/// abstracts. The batched call is the one historic 429/503 culprit —
+/// `HuggingFaceSource::fetch` is the only `Source` impl in trench that
+/// uses [`FetchContext::with_retry`].
+pub struct HuggingFaceSource;
+
+impl Source for HuggingFaceSource {
+  fn name(&self) -> &str {
+    "huggingface"
+  }
+  fn host_group(&self) -> &str {
+    // Same envelope as arxiv — `fetch_abstracts` hits `export.arxiv.org`,
+    // which arxiv::fetch also touches. Grouping both as "arxiv" makes the
+    // orchestrator schedule them serially on one thread per ADR-004 §D5.
+    "arxiv"
+  }
+  fn fetch(&self, ctx: &FetchContext) -> Result<Vec<FeedItem>, String> {
+    fetch(ctx)
+  }
+}
+
+pub fn fetch(ctx: &FetchContext) -> Result<Vec<FeedItem>, String> {
   let body = get_text(HF_PAPERS_URL)?;
   let today = today_date();
   let mut items = parse_papers(&body, &today);
-  fetch_abstracts(&mut items);
+  fetch_abstracts(&mut items, ctx);
   Ok(items)
 }
 
@@ -24,7 +80,12 @@ pub fn fetch() -> Result<Vec<FeedItem>, String> {
 
 /// Fetch abstracts from the arXiv API in a single batched request and fill in
 /// `summary_short` on each item. Failures are logged and silently skipped.
-fn fetch_abstracts(items: &mut Vec<FeedItem>) {
+///
+/// The batched arXiv call sits behind [`FetchContext::with_retry`] using
+/// [`RetryPolicy::arxiv`] (3s / 6s on 429 / 503) — the only retry-using
+/// site in trench. Pre-C10 this lived in a local `fetch_arxiv_with_retry`
+/// helper (commit `5491470`); the audit's C13 lifted it into `trench_http`.
+fn fetch_abstracts(items: &mut [FeedItem], ctx: &FetchContext) {
   if items.is_empty() {
     return;
   }
@@ -45,10 +106,17 @@ fn fetch_abstracts(items: &mut Vec<FeedItem>) {
     ids.len()
   );
 
-  let body = match fetch_arxiv_with_retry(&url) {
-    Ok(b) => b,
+  let resp = match ctx.with_retry(&RetryPolicy::arxiv(), |c| c.get(&url)) {
+    Ok(r) => r,
     Err(e) => {
       log::warn!("huggingface: abstract batch fetch failed — {e}");
+      return;
+    }
+  };
+  let body = match trench_http::read_body(resp) {
+    Ok(b) => b,
+    Err(e) => {
+      log::warn!("huggingface: abstract batch read failed — {e}");
       return;
     }
   };
@@ -63,43 +131,6 @@ fn fetch_abstracts(items: &mut Vec<FeedItem>) {
       log::warn!("huggingface: no abstract matched for {}", item.id);
     }
   }
-}
-
-/// GET `url` with backoff on 429 / 503. arxiv::fetch ran moments before on
-/// the same Group-A thread targeting `export.arxiv.org`; arXiv's published
-/// envelope is "1 query per 3 seconds" (https://info.arxiv.org/help/api/tou.html),
-/// and the two back-to-back requests trip it intermittently. Backoffs match
-/// the published envelope (3s, then 6s). Other failures fall through to
-/// the caller's log-and-skip path unchanged.
-fn fetch_arxiv_with_retry(url: &str) -> Result<String, String> {
-  const BACKOFFS_MS: &[u64] = &[3_000, 6_000];
-  let mut last_err = String::new();
-  for attempt in 0..=BACKOFFS_MS.len() {
-    if attempt > 0 {
-      let wait = BACKOFFS_MS[attempt - 1];
-      log::info!(
-        "huggingface: arxiv rate-limited — sleeping {}ms before retry {}",
-        wait,
-        attempt
-      );
-      std::thread::sleep(std::time::Duration::from_millis(wait));
-    }
-    let resp = match crate::http::client().get(url).send() {
-      Ok(r) => r,
-      Err(e) => return Err(format!("HTTP request failed: {e}")),
-    };
-    let code = resp.status().as_u16();
-    if resp.status().is_success() {
-      return crate::http::read_body(resp);
-    }
-    last_err = format!("HTTP {code}");
-    // 429 = rate-limited, 503 = service unavailable. Both are
-    // "try again later" semantics. Anything else is a hard error.
-    if code != 429 && code != 503 {
-      return Err(last_err);
-    }
-  }
-  Err(last_err)
 }
 
 /// Parse an arXiv Atom response and return a map of arXiv ID → full abstract.
@@ -444,8 +475,14 @@ pub fn fetch_paper_repo(arxiv_id: &str) -> Option<String> {
 /// Results are cached at `~/.config/trench/hf_repo_cache.json` with a
 /// 7-day TTL so subsequent startups don't re-fetch. Capped at 20 live
 /// requests per ingestion cycle; items with the most upvotes are tried first.
-pub fn enrich_with_repos(items: &mut Vec<FeedItem>) {
-  let mut cache = load_hf_cache();
+/// Inner implementation that takes an external cache — used by the
+/// [`HuggingFaceRepoEnrichment`] trait impl so the registry-owned
+/// `RefCell` can be borrowed at the call site without re-loading from
+/// disk each refresh.
+fn enrich_with_repos_using_cache(
+  items: &mut [FeedItem],
+  cache: &mut HashMap<String, HfRepoCacheEntry>,
+) {
   let mut request_count: usize = 0;
   let mut enriched: usize = 0;
   let mut attempted: usize = 0;
@@ -505,10 +542,10 @@ pub fn enrich_with_repos(items: &mut Vec<FeedItem>) {
   log::info!(
     "repo enrichment: {enriched}/{attempted} items enriched with github_repo"
   );
-  save_hf_cache(&cache);
+  save_hf_cache(cache);
 }
 
-fn apply_repo(items: &mut Vec<FeedItem>, idx: usize, repo: &str) {
+fn apply_repo(items: &mut [FeedItem], idx: usize, repo: &str) {
   items[idx].github_repo = Some(repo.to_string());
   let (owner, name) = parse_github_owner_repo(repo);
   items[idx].github_owner = owner;
