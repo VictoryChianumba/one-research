@@ -123,7 +123,8 @@ pub(super) fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
               crate::history::HistoryKind::Paper => {
                 if let Some(item) = app.history_item(&entry) {
                   let _ = app.activate_history_item_target(&entry);
-                  let target = if app.reader.focused == FocusedReader::Secondary {
+                  let target = if app.reader.focused == FocusedReader::Secondary
+                  {
                     crate::action::ReaderTarget::Secondary
                   } else {
                     crate::action::ReaderTarget::Primary
@@ -146,7 +147,7 @@ pub(super) fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
               crate::history::HistoryKind::Query => {
                 let topic = entry.key.clone();
                 let config = app.config.clone();
-                app.feed.discovery.force_new = true;
+                app.discovery.force_new = true;
                 app.feed.feed_tab = FeedTab::Discoveries;
                 app.reset_active_feed_position();
                 spawn_ai_discovery(topic, config, app);

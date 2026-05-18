@@ -209,7 +209,7 @@ impl App {
     let mut messages = Vec::new();
     let mut disconnected = false;
 
-    if let Some(rx) = &self.feed.discovery.rx {
+    if let Some(rx) = &self.discovery.rx {
       loop {
         match rx.try_recv() {
           Ok(msg) => messages.push(msg),
@@ -223,8 +223,8 @@ impl App {
     }
 
     if disconnected {
-      self.feed.discovery.rx = None;
-      self.feed.discovery.loading = false;
+      self.discovery.rx = None;
+      self.discovery.loading = false;
     }
 
     let had_messages = !messages.is_empty();
@@ -232,27 +232,26 @@ impl App {
     for msg in messages {
       match msg {
         DiscoveryMessage::StatusUpdate(s) => {
-          self.feed.discovery.status = s;
+          self.discovery.status = s;
         }
         DiscoveryMessage::Items(items) => {
           self.merge_discovery_items(items);
-          save_discovery_items(&self.feed.discovery.items);
+          save_discovery_items(&self.discovery.items);
         }
         DiscoveryMessage::SessionSnapshot(snapshot) => {
-          self.feed.discovery.session = snapshot;
-          crate::store::session::save(&self.feed.discovery.session);
+          self.discovery.session = snapshot;
+          crate::store::session::save(&self.discovery.session);
         }
         DiscoveryMessage::Complete => {
-          self.feed.discovery.rx = None;
-          self.feed.discovery.loading = false;
-          let n = self.feed.discovery.items.len();
-          self.feed.discovery.status = format!("Found {n} papers");
+          self.discovery.rx = None;
+          self.discovery.loading = false;
+          let n = self.discovery.items.len();
+          self.discovery.status = format!("Found {n} papers");
           self.status_message = Some("Discovery complete".to_string());
 
-          let topic = self.feed.discovery.session.initial_query.clone();
+          let topic = self.discovery.session.initial_query.clone();
           if !topic.is_empty() {
             let titles: String = self
-              .feed
               .discovery
               .items
               .iter()
@@ -271,9 +270,9 @@ impl App {
           }
         }
         DiscoveryMessage::Error(e) => {
-          self.feed.discovery.rx = None;
-          self.feed.discovery.loading = false;
-          self.feed.discovery.status = format!("Error: {e}");
+          self.discovery.rx = None;
+          self.discovery.loading = false;
+          self.discovery.status = format!("Error: {e}");
           self.push_chat_assistant_message(format!("Discovery failed: {e}"));
           self.status_message = Some("Discovery failed".to_string());
         }
@@ -299,33 +298,32 @@ impl App {
       }
 
       // URL dedup via index — O(1).
-      if let Some(&pos) = self.feed.discovery.url_index.get(&item.url) {
-        self.feed.discovery.items[pos] = item;
+      if let Some(&pos) = self.discovery.url_index.get(&item.url) {
+        self.discovery.items[pos] = item;
         continue;
       }
 
       // ArXiv ID dedup — O(1).
       if let Some(aid) = arxiv_id_from_url(&item.url) {
-        if let Some(&pos) = self.feed.discovery.arxiv_id_index.get(aid) {
+        if let Some(&pos) = self.discovery.arxiv_id_index.get(aid) {
           if item.source_platform == SourcePlatform::ArXiv {
-            let ws = self.feed.discovery.items[pos].workflow_state;
-            self.feed.discovery.items[pos] = item;
-            self.feed.discovery.items[pos].workflow_state = ws;
+            let ws = self.discovery.items[pos].workflow_state;
+            self.discovery.items[pos] = item;
+            self.discovery.items[pos].workflow_state = ws;
           }
           continue;
         }
       }
 
       // New item: push and update indices incrementally.
-      let new_idx = self.feed.discovery.items.len();
-      self.feed.discovery.url_index.insert(item.url.clone(), new_idx);
+      let new_idx = self.discovery.items.len();
+      self.discovery.url_index.insert(item.url.clone(), new_idx);
       if let Some(aid) = arxiv_id_from_url(&item.url) {
-        self.feed.discovery.arxiv_id_index.insert(aid.to_string(), new_idx);
+        self.discovery.arxiv_id_index.insert(aid.to_string(), new_idx);
       }
-      self.feed.discovery.items.push(item);
+      self.discovery.items.push(item);
     }
     self
-      .feed
       .discovery
       .items
       .sort_by(|a, b| b.published_at.cmp(&a.published_at));

@@ -32,8 +32,12 @@ fn dispatch_feed_pane(frame: &mut Frame, app: &mut App, area: Rect) {
   // Both helpers take field-scoped borrows so the resulting owned
   // values (Vec<usize>, Vec<&HistoryEntry>) carry no live borrow on
   // `app` beyond `app.workspace` — leaving `&mut app.feed` free below.
-  let visible_indices =
-    crate::feed::visible_indices_for(&app.workspace, &app.feed, &app.config);
+  let visible_indices = crate::feed::visible_indices_for(
+    &app.workspace,
+    &app.feed,
+    &app.discovery,
+    &app.config,
+  );
   let filtered_history =
     crate::feed::filtered_history_for(&app.workspace, &app.feed);
   let ctx = crate::feed::FeedContext {
@@ -43,7 +47,11 @@ fn dispatch_feed_pane(frame: &mut Frame, app: &mut App, area: Rect) {
     filtered_history,
     item_counts: counts,
   };
-  draw_feed_pane(frame, &mut app.feed, &ctx, area);
+  // Split-borrow App into disjoint &mut fields so draw_feed_pane can
+  // hold `&mut FeedModel` + `&mut DiscoveryModel` at once. The drawer
+  // re-borrows as `&` for read paths and `&mut` only for `pre_draw`
+  // (C7 PR 2 / ADR-005 §S2).
+  draw_feed_pane(frame, &mut app.feed, &mut app.discovery, &ctx, area);
 }
 
 /// Screen rects computed by draw_main_row, passed back to app.update_pane_rects.

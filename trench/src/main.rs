@@ -852,7 +852,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
       item.workflow_state = *state;
     }
   }
-  for item in &mut app.feed.discovery.items {
+  for item in &mut app.discovery.items {
     if let Some(state) = app.workspace.persisted_states.get(&item.url) {
       item.workflow_state = *state;
     }

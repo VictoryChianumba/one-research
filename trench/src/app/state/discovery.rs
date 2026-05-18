@@ -10,11 +10,8 @@ use crate::models::FeedItem;
 /// and the background agent's `Receiver<DiscoveryMessage>`. Sibling to
 /// `FeedModel`, `ReaderPaneModel`, and `NotesPaneModel`.
 ///
-/// Lives at `App.discovery: DiscoveryModel` after C7 PR 2. PR 1 (this
-/// commit) just renames the struct in place — the field still lives at
-/// `App.feed.discovery` until PR 2 moves it.
-///
-/// Introduced by slice 5 (`ADR-005`); was `DiscoveryState` pre-rename.
+/// Lives at `App.discovery`. Introduced by slice 5 (`ADR-005`); was
+/// `DiscoveryState` pre-rename and `App.feed.discovery` pre-PR 2.
 #[derive(Default)]
 pub struct DiscoveryModel {
   pub items: Vec<FeedItem>,

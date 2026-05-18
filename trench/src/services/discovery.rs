@@ -185,7 +185,7 @@ fn domain_name(url: &str) -> String {
 }
 
 /// Spawn an AI discovery query thread using the pipeline and attach the
-/// receiver to `app`. Mutates app.feed.discovery state extensively to set up
+/// receiver to `app`. Mutates app.discovery state extensively to set up
 /// the session before kicking off the worker.
 pub(crate) fn spawn_ai_discovery(
   topic: String,
@@ -198,12 +198,11 @@ pub(crate) fn spawn_ai_discovery(
     .map(|k| !k.trim().is_empty())
     .unwrap_or(false);
 
-  let is_refinement = !app.feed.discovery.session.is_empty()
-    && !app.feed.discovery.force_new
-    && has_claude;
+  let is_refinement =
+    !app.discovery.session.is_empty() && !app.discovery.force_new && has_claude;
 
   let prior_history = if is_refinement {
-    Some(app.feed.discovery.session.messages.clone())
+    Some(app.discovery.session.messages.clone())
   } else {
     None
   };
@@ -212,23 +211,23 @@ pub(crate) fn spawn_ai_discovery(
     app.reset_discovery_items();
   }
 
-  app.feed.discovery.force_new = false;
+  app.discovery.force_new = false;
 
-  let intent = if let Some(forced) = app.feed.discovery.forced_intent.take() {
+  let intent = if let Some(forced) = app.discovery.forced_intent.take() {
     forced
   } else if is_refinement {
-    app.feed.discovery.session.query_intent
+    app.discovery.session.query_intent
   } else {
     discovery::intent::classify(&topic)
   };
-  app.feed.discovery.intent = intent;
+  app.discovery.intent = intent;
 
   app.record_discovery_query(&topic, intent);
 
   let (tx, rx) = mpsc::channel::<discovery::DiscoveryMessage>();
-  app.feed.discovery.rx = Some(rx);
-  app.feed.discovery.loading = true;
-  app.feed.discovery.status = if is_refinement {
+  app.discovery.rx = Some(rx);
+  app.discovery.loading = true;
+  app.discovery.status = if is_refinement {
     format!("Refining [{}]: '{topic}'…", intent.label())
   } else {
     format!("Searching [{}]…", intent.label())

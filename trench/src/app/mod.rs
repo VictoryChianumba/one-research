@@ -32,10 +32,17 @@ pub struct App {
 
   /// Feed-pane composition-root model. Owns: tab selection, per-tab list
   /// cursors, library/history filter chips, library bulk-select, search
-  /// bar state, filter panel state, and the discovery sub-state. Slice 1
-  /// PR 2 lifted these fields off `App`; see
-  /// `docs/adr/ADR-001-render-purification.md`.
+  /// bar state, filter panel state. Slice 1 PR 2 lifted these fields off
+  /// `App`; see `docs/adr/ADR-001-render-purification.md`. Discovery used
+  /// to live nested at `feed.discovery` — C7 PR 2 (ADR-005) promoted it
+  /// to a sibling composition root (see `discovery` below).
   pub feed: crate::feed::FeedModel,
+
+  /// Discovery-pane composition-root model. Owns: agent search bar,
+  /// discovered-items list + dedup indices, multi-turn session, intent
+  /// classification, slash-command palette, agent receiver. Sibling to
+  /// `feed`, `reader`, `notes`. Lifted out of `feed` by C7 PR 2 (ADR-005).
+  pub discovery: DiscoveryModel,
 
   /// Tag picker popup state.
   pub tag_picker: TagPickerState,
@@ -238,6 +245,11 @@ impl App {
       should_quit: false,
       quit_popup: QuitPopupState::default(),
       feed: crate::feed::FeedModel::new(),
+      discovery: DiscoveryModel {
+        items: crate::store::discovery_cache::load(),
+        session: crate::store::session::load(),
+        ..DiscoveryModel::default()
+      },
       tag_picker: TagPickerState::default(),
       status_message: None,
       fetch_rx: None,
@@ -409,13 +421,13 @@ impl App {
 
   /// Same as `rebuild_indices` but for `discovery_items`.
   pub fn rebuild_discovery_indices(&mut self) {
-    self.feed.discovery.url_index.clear();
-    self.feed.discovery.arxiv_id_index.clear();
-    self.feed.discovery.url_index.reserve(self.feed.discovery.items.len());
-    for (idx, item) in self.feed.discovery.items.iter().enumerate() {
-      self.feed.discovery.url_index.insert(item.url.clone(), idx);
+    self.discovery.url_index.clear();
+    self.discovery.arxiv_id_index.clear();
+    self.discovery.url_index.reserve(self.discovery.items.len());
+    for (idx, item) in self.discovery.items.iter().enumerate() {
+      self.discovery.url_index.insert(item.url.clone(), idx);
       if let Some(aid) = arxiv_id_from_url(&item.url) {
-        self.feed.discovery.arxiv_id_index.insert(aid.to_string(), idx);
+        self.discovery.arxiv_id_index.insert(aid.to_string(), idx);
       }
     }
   }
@@ -439,7 +451,7 @@ impl App {
   /// - `discovery_loading` — discovery agent in flight
   /// - `settings_save_time` — TTL window for the "Saved." indicator
   pub fn has_active_animation(&self) -> bool {
-    if self.is_loading || self.is_refreshing || self.feed.discovery.loading {
+    if self.is_loading || self.is_refreshing || self.discovery.loading {
       return true;
     }
     if self.settings.save_time.is_some() {
@@ -603,9 +615,9 @@ impl App {
   /// Same shape as `reset_items` but for the discovery-side mirrors —
   /// keeps the parallel indexes in sync.
   pub fn reset_discovery_items(&mut self) {
-    self.feed.discovery.items.clear();
-    self.feed.discovery.url_index.clear();
-    self.feed.discovery.arxiv_id_index.clear();
+    self.discovery.items.clear();
+    self.discovery.url_index.clear();
+    self.discovery.arxiv_id_index.clear();
     self.route_effects(&[crate::effect::Effect::ItemsChanged]);
   }
 
@@ -660,7 +672,7 @@ impl App {
     match self.feed.feed_tab {
       FeedTab::Inbox => &self.workspace.items,
       FeedTab::Library => &self.workspace.items,
-      FeedTab::Discoveries => &self.feed.discovery.items,
+      FeedTab::Discoveries => &self.discovery.items,
       FeedTab::History => &[],
     }
   }
@@ -669,7 +681,7 @@ impl App {
     match self.feed.feed_tab {
       FeedTab::Inbox => self.feed.inbox_list.selected(),
       FeedTab::Library => self.feed.library_list.selected(),
-      FeedTab::Discoveries => self.feed.discovery.list.selected(),
+      FeedTab::Discoveries => self.discovery.list.selected(),
       FeedTab::History => self.feed.history_list.selected(),
     }
   }
@@ -694,8 +706,8 @@ impl App {
         self.feed.library_list.set_selected(value);
       }
       FeedTab::Discoveries => {
-        self.feed.discovery.list.set_count(count);
-        self.feed.discovery.list.set_selected(value);
+        self.discovery.list.set_count(count);
+        self.discovery.list.set_selected(value);
       }
       FeedTab::History => {
         self.feed.history_list.set_count(count);
@@ -708,7 +720,7 @@ impl App {
     match self.feed.feed_tab {
       FeedTab::Inbox => self.feed.inbox_list.set_offset(value),
       FeedTab::Library => self.feed.library_list.set_offset(value),
-      FeedTab::Discoveries => self.feed.discovery.list.set_offset(value),
+      FeedTab::Discoveries => self.discovery.list.set_offset(value),
       FeedTab::History => self.feed.history_list.set_offset(value),
     }
   }
@@ -788,7 +800,7 @@ impl App {
     let kind =
       if self.focus.focused_pane == PaneId::Reader && self.reader.active {
         QuitPopupKind::LeaveReader
-      } else if self.feed.discovery.loading || self.is_loading {
+      } else if self.discovery.loading || self.is_loading {
         QuitPopupKind::QuitWithProgress
       } else if self.chat.active
         && self.chat.ui.as_ref().map_or(false, |c| !c.input.trim().is_empty())
@@ -1117,20 +1129,20 @@ mod tests {
   #[test]
   fn reset_discovery_items_clears_indices() {
     let mut app = App::new();
-    app.feed.discovery.items = mock_items();
+    app.discovery.items = mock_items();
     // Manually populate the discovery indices to mirror what
     // merge_discovery_items would do; rebuild_indices targets the primary
     // items vec, not discovery_items.
-    for (idx, item) in app.feed.discovery.items.iter().enumerate() {
-      app.feed.discovery.url_index.insert(item.url.clone(), idx);
+    for (idx, item) in app.discovery.items.iter().enumerate() {
+      app.discovery.url_index.insert(item.url.clone(), idx);
     }
-    assert!(!app.feed.discovery.url_index.is_empty());
+    assert!(!app.discovery.url_index.is_empty());
 
     app.reset_discovery_items();
 
-    assert!(app.feed.discovery.items.is_empty());
-    assert!(app.feed.discovery.url_index.is_empty());
-    assert!(app.feed.discovery.arxiv_id_index.is_empty());
+    assert!(app.discovery.items.is_empty());
+    assert!(app.discovery.url_index.is_empty());
+    assert!(app.discovery.arxiv_id_index.is_empty());
   }
 
   #[test]
@@ -1143,7 +1155,7 @@ mod tests {
     app.is_refreshing = true;
     assert!(app.has_active_animation());
     app.is_refreshing = false;
-    app.feed.discovery.loading = true;
+    app.discovery.loading = true;
     assert!(app.has_active_animation());
   }
 

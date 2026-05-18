@@ -191,7 +191,7 @@ fn is_text_entry_context(app: &App) -> bool {
     return true;
   }
   if app.feed.feed_tab == FeedTab::Discoveries
-    && app.feed.discovery.search_focused
+    && app.discovery.search_focused
   {
     return true;
   }
@@ -801,11 +801,10 @@ fn find_item_by_url<'a>(
     .and_then(|&idx| app.workspace.items.get(idx))
     .or_else(|| {
       app
-        .feed
         .discovery
         .url_index
         .get(url)
-        .and_then(|&idx| app.feed.discovery.items.get(idx))
+        .and_then(|&idx| app.discovery.items.get(idx))
     })
 }
 
@@ -820,11 +819,10 @@ fn find_item_by_arxiv_id<'a>(
     .and_then(|&idx| app.workspace.items.get(idx))
     .or_else(|| {
       app
-        .feed
         .discovery
         .arxiv_id_index
         .get(arxiv_id)
-        .and_then(|&idx| app.feed.discovery.items.get(idx))
+        .and_then(|&idx| app.discovery.items.get(idx))
     })
 }
 

@@ -126,25 +126,25 @@ impl App {
 
   /// Mirror of `push_search_char` for the discovery palette.
   pub fn push_discovery_char(&mut self, c: char) {
-    self.feed.discovery.query.push(c);
-    self.feed.discovery.query_lower = self.feed.discovery.query.to_lowercase();
+    self.discovery.query.push(c);
+    self.discovery.query_lower = self.discovery.query.to_lowercase();
   }
 
   pub fn pop_discovery_char(&mut self) {
-    self.feed.discovery.query.pop();
-    self.feed.discovery.query_lower = self.feed.discovery.query.to_lowercase();
+    self.discovery.query.pop();
+    self.discovery.query_lower = self.discovery.query.to_lowercase();
   }
 
   pub fn clear_discovery_query(&mut self) {
-    self.feed.discovery.query.clear();
-    self.feed.discovery.query_lower.clear();
+    self.discovery.query.clear();
+    self.discovery.query_lower.clear();
   }
 
   /// Set the discovery query to an arbitrary string (used by slash-palette
   /// completion). Refreshes the lowercased mirror.
   pub fn set_discovery_query(&mut self, s: String) {
-    self.feed.discovery.query = s;
-    self.feed.discovery.query_lower = self.feed.discovery.query.to_lowercase();
+    self.discovery.query = s;
+    self.discovery.query_lower = self.discovery.query.to_lowercase();
   }
 
   pub(crate) fn set_workflow_state_for_url(
@@ -153,10 +153,14 @@ impl App {
     state: WorkflowState,
   ) -> bool {
     // Delegate to the W3-hybrid model method (ADR-001 D5). Split borrow
-    // on disjoint fields: `feed` (mutates discovery.items) and
-    // `workspace` (mutates items + persisted_states).
-    let effects =
-      self.feed.set_workflow_state_for_url(&mut self.workspace, url, state);
+    // on disjoint fields: `feed`, `workspace` (items + persisted_states),
+    // and `discovery` (the discovery.items fallback search path).
+    let effects = self.feed.set_workflow_state_for_url(
+      &mut self.workspace,
+      &mut self.discovery,
+      url,
+      state,
+    );
     let found = !effects.is_empty();
     if found {
       self.route_effects(&effects);

@@ -246,11 +246,10 @@ fn details_subject<'a>(
           .map(|&i| &app.workspace.items[i])
           .or_else(|| {
             app
-              .feed
               .discovery
               .url_index
               .get(&entry.key)
-              .map(|&i| &app.feed.discovery.items[i])
+              .map(|&i| &app.discovery.items[i])
           });
         Some(DetailsSubject::HistoryPaper {
           entry,

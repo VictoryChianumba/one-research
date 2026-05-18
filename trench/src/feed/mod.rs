@@ -14,9 +14,11 @@
 use std::collections::HashSet;
 
 use crate::app::{DiscoveryModel, FeedTab, FilterState};
-// C7 PR 1: `DiscoveryState` was renamed to `DiscoveryModel` (ADR-005 §S1).
-// The field still lives at `App.feed.discovery` in PR 1 — only the type
-// name changed. PR 2 moves the field to `App.discovery`.
+// C7 PR 2 (ADR-005 §S2): `discovery: DiscoveryModel` field moved from
+// `FeedModel.discovery` to `App.discovery`. Methods and free fns that
+// previously read `self.discovery` now take `&DiscoveryModel` /
+// `&mut DiscoveryModel` parameters — dispatch on `FeedTab` stays here,
+// but the data lives elsewhere.
 use crate::ui::Viewport;
 
 /// Owned state for the feed pane. Renders take `&FeedModel`, never `&mut`
@@ -50,31 +52,33 @@ pub struct FeedModel {
   pub filter_focus: bool,
   pub filter_cursor: usize,
   pub active_filters: FilterState,
-
-  // Discovery sub-state. Lifted out to `App.discovery: DiscoveryModel`
-  // in C7 PR 2 (ADR-005 §S2). PR 1 just renames the type in place.
-  pub discovery: DiscoveryModel,
 }
 
 impl FeedModel {
-  /// Production constructor — performs disk I/O to hydrate the discovery
-  /// cache and the session log. `App::new` calls this.
+  /// Production constructor. Side-effect-free now that discovery cache
+  /// hydration moved to `App::new` (C7 PR 2). Kept as a distinct
+  /// constructor so callers can stay symmetric with the other models
+  /// and so future feed-only I/O has a home.
   pub fn new() -> Self {
-    let mut model = Self::default();
-    model.discovery.items = crate::store::discovery_cache::load();
-    model.discovery.session = crate::store::session::load();
-    model
+    Self::default()
   }
 
   /// The list cursor for the currently-active tab. Renders read
   /// `.selected()` / `.offset()` through this instead of round-tripping
   /// `App::active_selected_index()` / `App::active_list_offset()` —
   /// keeps the render path free of `&App`.
-  pub fn active_list(&self) -> &crate::primitives::ListState {
+  ///
+  /// Takes `&DiscoveryModel` because the Discoveries-tab cursor lives
+  /// there post-C7 PR 2 (ADR-005 §S2). The tab dispatch stays here, the
+  /// data lives there.
+  pub fn active_list<'a>(
+    &'a self,
+    discovery: &'a DiscoveryModel,
+  ) -> &'a crate::primitives::ListState {
     match self.feed_tab {
       FeedTab::Inbox => &self.inbox_list,
       FeedTab::Library => &self.library_list,
-      FeedTab::Discoveries => &self.discovery.list,
+      FeedTab::Discoveries => &discovery.list,
       FeedTab::History => &self.history_list,
     }
   }
@@ -173,6 +177,7 @@ impl FeedModel {
   ///   outside the model because it depends on `Workspace`).
   pub fn pre_draw(
     &mut self,
+    discovery: &mut DiscoveryModel,
     viewport: Viewport,
     total_items: usize,
     items_fitting_in_viewport: usize,
@@ -181,7 +186,7 @@ impl FeedModel {
     let list = match self.feed_tab {
       FeedTab::Inbox => &mut self.inbox_list,
       FeedTab::Library => &mut self.library_list,
-      FeedTab::Discoveries => &mut self.discovery.list,
+      FeedTab::Discoveries => &mut discovery.list,
       FeedTab::History => &mut self.history_list,
     };
     // ListState.set_count + set_viewport call ensure_visible internally,
@@ -216,17 +221,18 @@ impl FeedModel {
   pub fn selected_url(
     &self,
     workspace: &crate::data::workspace_store::Workspace,
+    discovery: &DiscoveryModel,
     config: &crate::config::Config,
   ) -> Option<String> {
-    let visible = visible_indices_for(workspace, self, config);
-    let selected = self.active_list().selected();
+    let visible = visible_indices_for(workspace, self, discovery, config);
+    let selected = self.active_list(discovery).selected();
     let idx = *visible.get(selected)?;
-    let items = items_for_tab(workspace, self);
+    let items = items_for_tab(workspace, self, discovery);
     items.get(idx).map(|item| item.url.clone())
   }
 
   /// Set the workflow state of the item with the given URL, wherever it
-  /// lives (workspace.items for Inbox/Library, self.discovery.items for
+  /// lives (workspace.items for Inbox/Library, discovery.items for
   /// Discoveries). Updates `workspace.persisted_states` and returns the
   /// `Effect::WorkflowStateChanged` event for the caller to route.
   ///
@@ -234,6 +240,7 @@ impl FeedModel {
   pub fn set_workflow_state_for_url(
     &mut self,
     workspace: &mut crate::data::workspace_store::Workspace,
+    discovery: &mut DiscoveryModel,
     url: &str,
     state: crate::models::WorkflowState,
   ) -> Vec<crate::effect::Effect> {
@@ -246,7 +253,7 @@ impl FeedModel {
       }
     }
     if !found {
-      for item in self.discovery.items.iter_mut() {
+      for item in discovery.items.iter_mut() {
         if item.url == url {
           item.workflow_state = state;
           found = true;
@@ -271,13 +278,14 @@ impl FeedModel {
   pub fn set_workflow_state_at_cursor(
     &mut self,
     workspace: &mut crate::data::workspace_store::Workspace,
+    discovery: &mut DiscoveryModel,
     config: &crate::config::Config,
     state: crate::models::WorkflowState,
   ) -> Vec<crate::effect::Effect> {
-    let Some(url) = self.selected_url(workspace, config) else {
+    let Some(url) = self.selected_url(workspace, discovery, config) else {
       return Vec::new();
     };
-    self.set_workflow_state_for_url(workspace, &url, state)
+    self.set_workflow_state_for_url(workspace, discovery, &url, state)
   }
 
   /// Variable-height variant of [`pre_draw`](Self::pre_draw) for the
@@ -296,6 +304,7 @@ impl FeedModel {
   ///   `[0, selected]`. Pass an empty slice when `total_items == 0`.
   pub fn pre_draw_narrow_feed(
     &mut self,
+    discovery: &mut DiscoveryModel,
     viewport: Viewport,
     total_items: usize,
     row_heights_up_to_selected: &[usize],
@@ -304,7 +313,7 @@ impl FeedModel {
     let list = match self.feed_tab {
       FeedTab::Inbox => &mut self.inbox_list,
       FeedTab::Library => &mut self.library_list,
-      FeedTab::Discoveries => &mut self.discovery.list,
+      FeedTab::Discoveries => &mut discovery.list,
       FeedTab::History => &mut self.history_list,
     };
     list.set_count(total_items);
@@ -367,7 +376,6 @@ impl Default for FeedModel {
       filter_focus: false,
       filter_cursor: 0,
       active_filters: FilterState::new(),
-      discovery: DiscoveryModel::default(),
     }
   }
 }
@@ -378,8 +386,8 @@ impl Default for FeedModel {
 ///
 /// `visible_indices` is owned (no borrow) — renders pair it with
 /// [`items_for_tab`] to look up real `&FeedItem`s. The owned shape
-/// avoids the dual-source lifetime problem: workspace.items and
-/// feed.discovery.items can't both back one `Vec<&FeedItem>` without
+/// avoids the dual-source lifetime problem: `workspace.items` and
+/// `discovery.items` can't both back one `Vec<&FeedItem>` without
 /// tying its lifetime to both, blocking a `&mut FeedModel` borrow at
 /// the dispatcher level (ADR-001 D4 / Rust split-borrow).
 ///
@@ -388,8 +396,8 @@ impl Default for FeedModel {
 pub struct FeedContext<'a> {
   pub workspace: &'a crate::data::workspace_store::Workspace,
   pub theme: ui_theme::Theme,
-  /// Indices into [`items_for_tab`]`(workspace, feed)` after applying
-  /// search + filter + tab-scoping. Empty for the History tab.
+  /// Indices into [`items_for_tab`]`(workspace, feed, discovery)` after
+  /// applying search + filter + tab-scoping. Empty for the History tab.
   pub visible_indices: Vec<usize>,
   /// History entries after the History tab's filter, in render order.
   pub filtered_history: Vec<&'a crate::history::HistoryEntry>,
@@ -398,15 +406,16 @@ pub struct FeedContext<'a> {
 
 /// The item slice the current tab is reading from.
 /// Inbox + Library read `workspace.items`; Discoveries reads
-/// `feed.discovery.items`; History reads nothing (uses
+/// `discovery.items`; History reads nothing (uses
 /// `filtered_history` instead).
 pub fn items_for_tab<'a>(
   workspace: &'a crate::data::workspace_store::Workspace,
   feed: &'a FeedModel,
+  discovery: &'a DiscoveryModel,
 ) -> &'a [crate::models::FeedItem] {
   match feed.feed_tab {
     FeedTab::Inbox | FeedTab::Library => &workspace.items,
-    FeedTab::Discoveries => &feed.discovery.items,
+    FeedTab::Discoveries => &discovery.items,
     FeedTab::History => &[],
   }
 }
@@ -417,9 +426,10 @@ pub fn items_for_tab<'a>(
 pub fn visible_indices_for(
   workspace: &crate::data::workspace_store::Workspace,
   feed: &FeedModel,
+  discovery: &DiscoveryModel,
   config: &crate::config::Config,
 ) -> Vec<usize> {
-  let items = items_for_tab(workspace, feed);
+  let items = items_for_tab(workspace, feed, discovery);
   let q = feed.search_query_lower.as_str();
   items
     .iter()
@@ -613,13 +623,14 @@ mod tests {
   fn pre_draw_makes_selection_visible_when_offscreen() {
     // Set up: selection at item 50, but offset forced to 0 (out of viewport).
     let mut m = FeedModel::default();
+    let mut discovery = DiscoveryModel::default();
     m.inbox_list.set_count(100);
     m.inbox_list.set_viewport(20);
     m.inbox_list.set_selected(50);
     m.inbox_list.set_offset(0);
     assert_eq!(m.inbox_list.offset(), 0);
 
-    m.pre_draw(Viewport::new(80, 20), 100, 20);
+    m.pre_draw(&mut discovery, Viewport::new(80, 20), 100, 20);
 
     // After pre_draw the cursor must lie within the viewport.
     let offset = m.inbox_list.offset();
@@ -634,12 +645,13 @@ mod tests {
   #[test]
   fn pre_draw_preserves_offset_when_selection_in_viewport() {
     let mut m = FeedModel::default();
+    let mut discovery = DiscoveryModel::default();
     m.inbox_list.set_count(100);
     m.inbox_list.set_viewport(20);
     m.inbox_list.set_selected(5);
     m.inbox_list.set_offset(0);
 
-    m.pre_draw(Viewport::new(80, 20), 100, 20);
+    m.pre_draw(&mut discovery, Viewport::new(80, 20), 100, 20);
 
     // Selection 5 is well inside [0, 20) — and the 2-item buffer doesn't
     // fire because 5 is far from the bottom edge. Offset stays at 0.
@@ -651,12 +663,13 @@ mod tests {
     // viewport fits 10 items; selection at row 9 (one short of bottom edge);
     // many more items follow → buffer should kick in.
     let mut m = FeedModel::default();
+    let mut discovery = DiscoveryModel::default();
     m.inbox_list.set_count(50);
     m.inbox_list.set_viewport(10);
     m.inbox_list.set_offset(0);
     m.inbox_list.set_selected(9);
 
-    m.pre_draw(Viewport::new(80, 10), 50, 10);
+    m.pre_draw(&mut discovery, Viewport::new(80, 10), 50, 10);
 
     // Buffer fires: new_offset = 9 + 2 - 10 = 1.
     assert_eq!(m.inbox_list.offset(), 1);
@@ -667,12 +680,13 @@ mod tests {
     // Selection near the very end — no more items below, buffer should
     // not advance past the end of the list.
     let mut m = FeedModel::default();
+    let mut discovery = DiscoveryModel::default();
     m.inbox_list.set_count(15);
     m.inbox_list.set_viewport(10);
     m.inbox_list.set_offset(5);
     m.inbox_list.set_selected(14);
 
-    m.pre_draw(Viewport::new(80, 10), 15, 10);
+    m.pre_draw(&mut discovery, Viewport::new(80, 10), 15, 10);
 
     // offset 5 + items_fitting 10 == 15 == total_items, so buffer guard
     // `offset + items_fitting < total_items` blocks the advance.
@@ -684,13 +698,14 @@ mod tests {
   fn pre_draw_dispatches_by_feed_tab() {
     // Library tab should reconcile library_list, not inbox_list.
     let mut m = FeedModel::default();
+    let mut discovery = DiscoveryModel::default();
     m.feed_tab = FeedTab::Library;
     m.library_list.set_count(100);
     m.library_list.set_viewport(10);
     m.library_list.set_selected(50);
     m.library_list.set_offset(0);
 
-    m.pre_draw(Viewport::new(80, 10), 100, 10);
+    m.pre_draw(&mut discovery, Viewport::new(80, 10), 100, 10);
 
     // Library list was reconciled; inbox_list is untouched.
     assert!(m.library_list.offset() > 0);
@@ -707,6 +722,7 @@ mod tests {
     // Selecting item 5 (row 4-5 of one-row band) must reverse-walk to
     // land offset where the cumulative height up to selected fits.
     let mut m = FeedModel::default();
+    let mut discovery = DiscoveryModel::default();
     m.inbox_list.set_count(20);
     m.inbox_list.set_viewport(10);
     m.inbox_list.set_offset(0);
@@ -715,7 +731,7 @@ mod tests {
     // Heights: items 0..=3 are 3 rows; items 4..=5 are 1 row each.
     let heights: Vec<usize> =
       (0..=5).map(|i| if i < 4 { 3 } else { 1 }).collect();
-    m.pre_draw_narrow_feed(Viewport::new(40, 10), 20, &heights);
+    m.pre_draw_narrow_feed(&mut discovery, Viewport::new(40, 10), 20, &heights);
 
     // Reverse walk from item 5: 1 + 1 + 3 + 3 + 3 = 11 > 10, so the walk
     // stops; offset lands at item 2 (1+1+3+3 = 8 rows, ≤ 10).
@@ -726,6 +742,7 @@ mod tests {
   fn pre_draw_narrow_feed_no_change_when_selection_already_fits() {
     // Selection already on screen at a sensible offset — no adjustment.
     let mut m = FeedModel::default();
+    let mut discovery = DiscoveryModel::default();
     m.inbox_list.set_count(20);
     m.inbox_list.set_viewport(10);
     m.inbox_list.set_offset(0);
@@ -733,7 +750,7 @@ mod tests {
 
     // Three items, each 2 rows tall — fits in a 10-row window.
     let heights = vec![2usize, 2, 2];
-    m.pre_draw_narrow_feed(Viewport::new(40, 10), 20, &heights);
+    m.pre_draw_narrow_feed(&mut discovery, Viewport::new(40, 10), 20, &heights);
 
     assert_eq!(m.inbox_list.offset(), 0);
     assert_eq!(m.inbox_list.selected(), 2);
@@ -742,7 +759,8 @@ mod tests {
   #[test]
   fn pre_draw_narrow_feed_handles_empty_list() {
     let mut m = FeedModel::default();
-    m.pre_draw_narrow_feed(Viewport::new(40, 10), 0, &[]);
+    let mut discovery = DiscoveryModel::default();
+    m.pre_draw_narrow_feed(&mut discovery, Viewport::new(40, 10), 0, &[]);
     assert_eq!(m.inbox_list.offset(), 0);
     assert_eq!(m.inbox_list.selected(), 0);
   }
@@ -787,9 +805,11 @@ mod tests {
     workspace.items.push(mock_item("https://a", WorkflowState::Inbox));
     workspace.items.push(mock_item("https://b", WorkflowState::Inbox));
     let mut model = FeedModel::default();
+    let mut discovery = DiscoveryModel::default();
 
     let effects = model.set_workflow_state_for_url(
       &mut workspace,
+      &mut discovery,
       "https://b",
       WorkflowState::DeepRead,
     );
@@ -817,17 +837,19 @@ mod tests {
 
     let mut workspace = Workspace::default();
     let mut model = FeedModel::default();
+    let mut discovery = DiscoveryModel::default();
     // Item only exists in discovery, not workspace.
-    model.discovery.items.push(mock_item("https://d", WorkflowState::Inbox));
+    discovery.items.push(mock_item("https://d", WorkflowState::Inbox));
 
     let effects = model.set_workflow_state_for_url(
       &mut workspace,
+      &mut discovery,
       "https://d",
       WorkflowState::Queued,
     );
 
     assert_eq!(effects.len(), 1);
-    assert_eq!(model.discovery.items[0].workflow_state, WorkflowState::Queued);
+    assert_eq!(discovery.items[0].workflow_state, WorkflowState::Queued);
     // Persistence is keyed by URL regardless of where the item lived.
     assert!(workspace.persisted_states.contains_key("https://d"));
   }
@@ -840,9 +862,11 @@ mod tests {
     let mut workspace = Workspace::default();
     workspace.items.push(mock_item("https://a", WorkflowState::Inbox));
     let mut model = FeedModel::default();
+    let mut discovery = DiscoveryModel::default();
 
     let effects = model.set_workflow_state_for_url(
       &mut workspace,
+      &mut discovery,
       "https://ghost",
       WorkflowState::DeepRead,
     );
@@ -858,20 +882,21 @@ mod tests {
     use crate::data::workspace_store::Workspace;
     let workspace = Workspace::default();
     let mut model = FeedModel::default();
+    let discovery = DiscoveryModel::default();
     // Inbox + Library read workspace.items
     model.feed_tab = FeedTab::Inbox;
-    assert_eq!(items_for_tab(&workspace, &model).len(), 0);
+    assert_eq!(items_for_tab(&workspace, &model, &discovery).len(), 0);
     model.feed_tab = FeedTab::Library;
-    assert_eq!(items_for_tab(&workspace, &model).len(), 0);
-    // Discoveries reads feed.discovery.items
+    assert_eq!(items_for_tab(&workspace, &model, &discovery).len(), 0);
+    // Discoveries reads discovery.items
     model.feed_tab = FeedTab::Discoveries;
     assert!(std::ptr::eq(
-      items_for_tab(&workspace, &model).as_ptr(),
-      model.discovery.items.as_ptr(),
+      items_for_tab(&workspace, &model, &discovery).as_ptr(),
+      discovery.items.as_ptr(),
     ));
     // History returns empty slice
     model.feed_tab = FeedTab::History;
-    assert!(items_for_tab(&workspace, &model).is_empty());
+    assert!(items_for_tab(&workspace, &model, &discovery).is_empty());
   }
 
   #[test]
@@ -885,7 +910,8 @@ mod tests {
     m.library_list.set_selected(6);
 
     let heights = vec![2usize; 7]; // 7 items of 2 rows each
-    m.pre_draw_narrow_feed(Viewport::new(40, 8), 50, &heights);
+    let mut discovery = DiscoveryModel::default();
+    m.pre_draw_narrow_feed(&mut discovery, Viewport::new(40, 8), 50, &heights);
 
     // Reverse walk from item 6: 2+2+2+2 = 8 rows fits; one more (2) would
     // overflow, so offset lands at item 3.

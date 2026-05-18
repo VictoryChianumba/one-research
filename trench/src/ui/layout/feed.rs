@@ -17,6 +17,7 @@ use crate::models::SourcePlatform;
 pub fn draw_feed_pane(
   frame: &mut Frame,
   model: &mut crate::feed::FeedModel,
+  discovery: &mut crate::app::DiscoveryModel,
   ctx: &crate::feed::FeedContext,
   area: Rect,
 ) {
@@ -27,27 +28,27 @@ pub fn draw_feed_pane(
 
   // Discoveries tab: paper list always shown; persistent search bar pinned at bottom.
   if model.feed_tab == FeedTab::Discoveries {
-    draw_discoveries_with_searchbar(frame, model, ctx, content_area);
+    draw_discoveries_with_searchbar(frame, model, discovery, ctx, content_area);
     return;
   }
 
   // History tab: filter chips + activity log.
   if model.feed_tab == FeedTab::History {
-    draw_history_tab(frame, model, ctx, content_area);
+    draw_history_tab(frame, model, discovery, ctx, content_area);
     return;
   }
 
   // Library tab: workflow-state filter chips + filtered item list.
   if model.feed_tab == FeedTab::Library {
-    draw_library_tab(frame, model, ctx, content_area);
+    draw_library_tab(frame, model, discovery, ctx, content_area);
     return;
   }
 
   // Narrow pane: switch to title-only list to avoid squished columns.
   if area.width < 70 {
-    draw_narrow_feed(frame, model, ctx, content_area);
+    draw_narrow_feed(frame, model, discovery, ctx, content_area);
   } else {
-    draw_item_table(frame, model, ctx, content_area);
+    draw_item_table(frame, model, discovery, ctx, content_area);
   }
 }
 
@@ -55,12 +56,13 @@ pub fn draw_feed_pane(
 fn draw_discoveries_with_searchbar(
   frame: &mut Frame,
   model: &mut crate::feed::FeedModel,
+  discovery: &mut crate::app::DiscoveryModel,
   ctx: &crate::feed::FeedContext,
   area: Rect,
 ) {
   const FOOTER_H: u16 = 3; // separator + input + hint
   if area.height <= FOOTER_H {
-    draw_discovery_searchbar(frame, model, ctx, area);
+    draw_discovery_searchbar(frame, model, discovery, ctx, area);
     return;
   }
 
@@ -72,25 +74,26 @@ fn draw_discoveries_with_searchbar(
 
   // Paper list
   if area.width < 70 {
-    draw_narrow_feed(frame, model, ctx, list_area);
+    draw_narrow_feed(frame, model, discovery, ctx, list_area);
   } else {
-    draw_item_table(frame, model, ctx, list_area);
+    draw_item_table(frame, model, discovery, ctx, list_area);
   }
 
-  draw_discovery_searchbar(frame, model, ctx, bar_area);
-  draw_discovery_palette(frame, model, ctx, list_area);
+  draw_discovery_searchbar(frame, model, discovery, ctx, bar_area);
+  draw_discovery_palette(frame, model, discovery, ctx, list_area);
 }
 
 fn draw_discovery_searchbar(
   frame: &mut Frame,
-  model: &crate::feed::FeedModel,
+  _model: &crate::feed::FeedModel,
+  discovery: &crate::app::DiscoveryModel,
   ctx: &crate::feed::FeedContext,
   area: Rect,
 ) {
   let t = ctx.theme;
   let w = area.width as usize;
-  let has_session = !model.discovery.session.is_empty();
-  let intent_label = model.discovery.intent.label();
+  let has_session = !discovery.session.is_empty();
+  let intent_label = discovery.intent.label();
 
   // Separator line — title shows current status inline rather than a separate row.
   let intent_badge = if intent_label != "papers" {
@@ -98,9 +101,8 @@ fn draw_discovery_searchbar(
   } else {
     String::new()
   };
-  let (title_text, title_style) = if model.discovery.loading {
-    let short =
-      model.discovery.status.trim_end_matches('…').trim_end_matches("...");
+  let (title_text, title_style) = if discovery.loading {
+    let short = discovery.status.trim_end_matches('…').trim_end_matches("...");
     (
       format!("{}…{}", short, intent_badge),
       Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
@@ -121,8 +123,8 @@ fn draw_discovery_searchbar(
   ]);
 
   // Input line — prompt only when focused, query dim when unfocused.
-  let cursor = if model.discovery.search_focused { "█" } else { "" };
-  let (prompt, query_style) = if model.discovery.search_focused {
+  let cursor = if discovery.search_focused { "█" } else { "" };
+  let (prompt, query_style) = if discovery.search_focused {
     (
       Span::styled("  ", Style::default().fg(t.accent)),
       Style::default().fg(t.text),
@@ -135,12 +137,12 @@ fn draw_discovery_searchbar(
   };
   let input_line = Line::from(vec![
     prompt,
-    Span::styled(format!("{}{}", model.discovery.query, cursor), query_style),
+    Span::styled(format!("{}{}", discovery.query, cursor), query_style),
   ]);
 
   // Hint line — contextual, always rendered to avoid height jitter.
-  let hint_text = if model.discovery.search_focused {
-    if model.discovery.query.starts_with('/') {
+  let hint_text = if discovery.search_focused {
+    if discovery.query.starts_with('/') {
       "Tab: complete  ↑↓: navigate  Enter: run  Esc: cancel"
     } else if has_session {
       "Enter: refine  Ctrl+N: new search  Esc: unfocus"
@@ -161,17 +163,17 @@ fn draw_discovery_searchbar(
 
 fn draw_discovery_palette(
   frame: &mut Frame,
-  model: &crate::feed::FeedModel,
+  _model: &crate::feed::FeedModel,
+  discovery: &crate::app::DiscoveryModel,
   ctx: &crate::feed::FeedContext,
   list_area: Rect,
 ) {
-  if !model.discovery.search_focused || !model.discovery.query.starts_with('/')
-  {
+  if !discovery.search_focused || !discovery.query.starts_with('/') {
     return;
   }
 
   let all_specs = crate::commands::registry::discovery_slash_specs();
-  let query_lower = model.discovery.query_lower.as_str();
+  let query_lower = discovery.query_lower.as_str();
   let suggestions: Vec<_> = all_specs
     .iter()
     .filter(|s| query_lower == "/" || s.command.starts_with(query_lower))
@@ -184,8 +186,8 @@ fn draw_discovery_palette(
   let t = ctx.theme;
   let w = list_area.width as usize;
   let visible = suggestions.len().min(8);
-  let selected = model.discovery.palette.selected().min(suggestions.len() - 1);
-  let scroll = model.discovery.palette.offset();
+  let selected = discovery.palette.selected().min(suggestions.len() - 1);
+  let scroll = discovery.palette.offset();
   let start = scroll;
   let end = (start + visible).min(suggestions.len());
 
@@ -257,6 +259,7 @@ fn draw_discovery_palette(
 pub fn draw_library_tab(
   frame: &mut Frame,
   model: &mut crate::feed::FeedModel,
+  discovery: &mut crate::app::DiscoveryModel,
   ctx: &crate::feed::FeedContext,
   area: Rect,
 ) {
@@ -352,15 +355,16 @@ pub fn draw_library_tab(
   }
 
   if list_area.width < 70 {
-    draw_narrow_feed(frame, model, ctx, list_area);
+    draw_narrow_feed(frame, model, discovery, ctx, list_area);
   } else {
-    draw_item_table(frame, model, ctx, list_area);
+    draw_item_table(frame, model, discovery, ctx, list_area);
   }
 }
 
 fn draw_history_tab(
   frame: &mut Frame,
   model: &mut crate::feed::FeedModel,
+  discovery: &mut crate::app::DiscoveryModel,
   ctx: &crate::feed::FeedContext,
   area: Rect,
 ) {
@@ -441,10 +445,21 @@ fn draw_history_tab(
   ])
   .height(2);
 
+  let pane = pane_inset(list_area);
+  if pane.height == 0 {
+    return;
+  }
   let inner = Rect {
-    y: list_area.y.saturating_add(1),
-    height: list_area.height.saturating_sub(1),
-    ..list_area
+    y: pane.y,
+    height: pane.height,
+    width: pane.width.saturating_sub(2),
+    ..pane
+  };
+  let scrollbar_rect = Rect {
+    x: inner.x + inner.width + 1,
+    y: inner.y,
+    width: 1,
+    height: inner.height,
   };
   if inner.height == 0 {
     return;
@@ -474,6 +489,7 @@ fn draw_history_tab(
   // `FeedModel::pre_draw` post-PR-4 — history's items are fixed-height,
   // so `items_fitting` is just `viewport_rows`. See ADR-001 D3.
   model.pre_draw(
+    discovery,
     crate::ui::Viewport::new(inner.width, viewport_rows as u16),
     total,
     viewport_rows,
@@ -519,11 +535,10 @@ fn draw_history_tab(
         .get(&entry.key)
         .map(|&idx| &ctx.workspace.items[idx])
         .or_else(|| {
-          model
-            .discovery
+          discovery
             .url_index
             .get(&entry.key)
-            .map(|&idx| &model.discovery.items[idx])
+            .map(|&idx| &discovery.items[idx])
         });
       let row_style =
         if is_selected { t.style_selection() } else { Style::default() };
@@ -600,7 +615,11 @@ fn draw_history_tab(
     let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
       .begin_symbol(None)
       .end_symbol(None);
-    frame.render_stateful_widget(scrollbar, inner, &mut scrollbar_state);
+    frame.render_stateful_widget(
+      scrollbar,
+      scrollbar_rect,
+      &mut scrollbar_state,
+    );
   }
 }
 
@@ -621,6 +640,7 @@ pub(super) fn history_source_label(
 pub fn draw_narrow_feed(
   frame: &mut Frame,
   model: &mut crate::feed::FeedModel,
+  discovery: &mut crate::app::DiscoveryModel,
   ctx: &crate::feed::FeedContext,
   area: Rect,
 ) {
@@ -639,12 +659,12 @@ pub fn draw_narrow_feed(
   // offset arithmetic. Heights for items [0, selected] feed the
   // variable-row reverse-walk inside `pre_draw_narrow_feed`.
   let total = ctx.visible_indices.len();
-  let selected = model.active_list().selected();
+  let selected = model.active_list(discovery).selected();
   // Phase 1: compute row heights with immutable borrow of `model`,
   // ending the borrow before `model.pre_draw_narrow_feed`.
   let row_heights: Vec<usize> = if total > 0 {
     let upper = selected.saturating_add(1).min(total);
-    let items = crate::feed::items_for_tab(ctx.workspace, &*model);
+    let items = crate::feed::items_for_tab(ctx.workspace, &*model, discovery);
     ctx.visible_indices[..upper]
       .iter()
       .map(|&i| reader_feed_row_height(&items[i], title_w))
@@ -653,11 +673,12 @@ pub fn draw_narrow_feed(
     Vec::new()
   };
   model.pre_draw_narrow_feed(
+    discovery,
     crate::ui::Viewport::new(list_area.width, list_area.height),
     total,
     &row_heights,
   );
-  let offset = model.active_list().offset();
+  let offset = model.active_list(discovery).offset();
 
   frame.render_widget(
     Paragraph::new(drawer_feed_header_line(list_area.width as usize, &t)),
@@ -668,7 +689,7 @@ pub fn draw_narrow_feed(
   // window at viewport_rows is a safe upper bound for what gets drawn.
   let window_end =
     offset.saturating_add(viewport_rows).min(ctx.visible_indices.len());
-  let items = crate::feed::items_for_tab(ctx.workspace, &*model);
+  let items = crate::feed::items_for_tab(ctx.workspace, &*model, discovery);
   let visible: Vec<&crate::models::FeedItem> = ctx.visible_indices
     [offset..window_end]
     .iter()
@@ -819,6 +840,7 @@ fn reader_feed_row_lines_with_wrapped(
 pub fn draw_item_table(
   frame: &mut Frame,
   model: &mut crate::feed::FeedModel,
+  discovery: &mut crate::app::DiscoveryModel,
   ctx: &crate::feed::FeedContext,
   area: Rect,
 ) {
@@ -839,11 +861,12 @@ pub fn draw_item_table(
   if pane.height == 0 {
     return;
   }
-  // Reserve a 1-col strip on the right for the scrollbar so the date column
-  // isn't clipped by it (VerticalRight overlays the rightmost col otherwise).
-  let inner = Rect { width: pane.width.saturating_sub(1), ..pane };
+  // Reserve a 2-col strip on the right: one blank gutter between the date
+  // column and the scrollbar, then one scrollbar column. This keeps the
+  // right-side spacing visually symmetric with the pane border inset.
+  let inner = Rect { width: pane.width.saturating_sub(2), ..pane };
   let scrollbar_rect = Rect {
-    x: inner.x + inner.width,
+    x: inner.x + inner.width + 1,
     y: inner.y,
     width: 1,
     height: inner.height,
@@ -866,16 +889,17 @@ pub fn draw_item_table(
   // borrow of `model`, ending the borrow before `model.pre_draw`.
   let total_items = ctx.visible_indices.len();
   let items_fitting = {
-    let items = crate::feed::items_for_tab(ctx.workspace, &*model);
+    let items = crate::feed::items_for_tab(ctx.workspace, &*model, discovery);
     count_items_fitting_from_indices(
       &ctx.visible_indices,
       items,
-      model.active_list().offset(),
+      model.active_list(discovery).offset(),
       viewport_rows,
       title_wrap_w,
     )
   };
   model.pre_draw(
+    discovery,
     crate::ui::Viewport::new(inner.width, viewport_rows as u16),
     total_items,
     items_fitting,
@@ -884,9 +908,10 @@ pub fn draw_item_table(
   // ── Slice to visible window — trust list offset as first visible item ─
   // Take viewport_rows + 2 extra so the last row is never clipped even when
   // an item spans 2 rows.
-  let start = model.active_list().offset().min(total_items.saturating_sub(1));
+  let start =
+    model.active_list(discovery).offset().min(total_items.saturating_sub(1));
   let end = (start + viewport_rows + 2).min(total_items);
-  let items = crate::feed::items_for_tab(ctx.workspace, &*model);
+  let items = crate::feed::items_for_tab(ctx.workspace, &*model, discovery);
   let window: Vec<&crate::models::FeedItem> =
     ctx.visible_indices[start..end].iter().map(|&i| &items[i]).collect();
 
@@ -925,7 +950,7 @@ pub fn draw_item_table(
   let t_rows = std::time::Instant::now();
   let visual_mode =
     model.feed_tab == FeedTab::Library && model.library_visual_mode;
-  let selected_idx = model.active_list().selected();
+  let selected_idx = model.active_list(discovery).selected();
   let rows: Vec<Row> = window
     .iter()
     .enumerate()

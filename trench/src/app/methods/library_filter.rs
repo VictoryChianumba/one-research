@@ -268,8 +268,12 @@ impl App {
   pub fn set_workflow_state(&mut self, state: WorkflowState) {
     // W3 hybrid (ADR-001 D5): delegate to the FeedModel gesture, which
     // owns the lookup + mutation and emits the cache-invalidation event.
+    // Split-borrow: feed + workspace + discovery + config are disjoint
+    // fields of App, so the compiler allows three `&mut` borrows + one
+    // `&` borrow held simultaneously across the call.
     let effects = self.feed.set_workflow_state_at_cursor(
       &mut self.workspace,
+      &mut self.discovery,
       &self.config,
       state,
     );

@@ -16,7 +16,7 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
   // that read as "Esc + Up + Down + Tab + Enter + ..." without saying
   // what they're for. Audit candidate from 2026-05-18 §C2.
   if app.feed.feed_tab == FeedTab::Discoveries
-    && app.feed.discovery.search_focused
+    && app.discovery.search_focused
     && handle_discovery_search_bar(key, app)
   {
     return;
@@ -26,7 +26,7 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
   if app.feed.feed_tab == FeedTab::Discoveries {
     if let KeyCode::Char(c) = key.code {
       if c != 'q' {
-        app.feed.discovery.search_focused = true;
+        app.discovery.search_focused = true;
         app.push_discovery_char(c);
         return;
       }
@@ -140,7 +140,10 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
               crate::action::ReaderTarget::Primary,
               crate::action::OpenMode::ReplaceActive,
             );
-            log::debug!("feed Enter: fetch setup took {}µs", t.elapsed().as_micros());
+            log::debug!(
+              "feed Enter: fetch setup took {}µs",
+              t.elapsed().as_micros()
+            );
           }
         }
       }
@@ -445,7 +448,7 @@ fn handle_history_tab(key: KeyEvent, app: &mut App) -> bool {
           let topic = entry.key.clone();
           let config = app.config.clone();
           // Re-running a query starts a fresh discovery session.
-          app.feed.discovery.force_new = true;
+          app.discovery.force_new = true;
           app.feed.set_tab(FeedTab::Discoveries);
           app.reset_active_feed_position();
           spawn_ai_discovery(topic, config, app);
@@ -582,40 +585,40 @@ fn handle_search_bar_input(key: KeyEvent, app: &mut App) {
 /// (Up/Down/Tab) when the query starts with `/`, plus query Enter,
 /// Backspace, Ctrl+N (force-new), Esc (defocus), and char typing.
 fn handle_discovery_search_bar(key: KeyEvent, app: &mut App) -> bool {
-  let palette_active = app.feed.discovery.query.starts_with('/');
+  let palette_active = app.discovery.query.starts_with('/');
   match key.code {
     KeyCode::Esc => {
-      app.feed.discovery.search_focused = false;
-      app.feed.discovery.palette.reset();
+      app.discovery.search_focused = false;
+      app.discovery.palette.reset();
     }
     KeyCode::Up if palette_active => {
       // Mirror the prior hardcoded `visible=8` until layout starts
       // pushing viewport size into the palette state (Phase 4).
-      app.feed.discovery.palette.set_viewport(8);
-      app.feed.discovery.palette.move_up();
+      app.discovery.palette.set_viewport(8);
+      app.discovery.palette.move_up();
     }
     KeyCode::Down if palette_active => {
-      let count = discovery_palette_count(&app.feed.discovery.query);
-      app.feed.discovery.palette.set_viewport(8);
-      app.feed.discovery.palette.set_count(count);
-      app.feed.discovery.palette.move_down();
+      let count = discovery_palette_count(&app.discovery.query);
+      app.discovery.palette.set_viewport(8);
+      app.discovery.palette.set_count(count);
+      app.discovery.palette.move_down();
     }
     KeyCode::Tab if palette_active => {
       // Complete selected command into the input.
       if let Some(completion) = discovery_palette_completion(
-        &app.feed.discovery.query,
-        app.feed.discovery.palette.selected(),
+        &app.discovery.query,
+        app.discovery.palette.selected(),
       ) {
         app.set_discovery_query(completion);
-        app.feed.discovery.palette.reset();
+        app.discovery.palette.reset();
       }
     }
     KeyCode::Enter => {
-      if !app.feed.discovery.query.is_empty() && !app.feed.discovery.loading {
-        let query = app.feed.discovery.query.clone();
-        app.feed.discovery.palette.reset();
+      if !app.discovery.query.is_empty() && !app.discovery.loading {
+        let query = app.discovery.query.clone();
+        app.discovery.palette.reset();
         if query.starts_with('/') {
-          app.feed.discovery.search_focused = false;
+          app.discovery.search_focused = false;
           app.clear_discovery_query();
           let cmd = crate::commands::parser::parse_slash_command(&query);
           crate::commands::dispatch::dispatch_slash_command(app, cmd);
@@ -626,19 +629,19 @@ fn handle_discovery_search_bar(key: KeyEvent, app: &mut App) -> bool {
       }
     }
     KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-      app.feed.discovery.force_new = true;
+      app.discovery.force_new = true;
       app.clear_discovery_query();
-      app.feed.discovery.palette.reset();
+      app.discovery.palette.reset();
     }
     KeyCode::Backspace => {
       app.pop_discovery_char();
-      if !app.feed.discovery.query.starts_with('/') {
-        app.feed.discovery.palette.reset();
+      if !app.discovery.query.starts_with('/') {
+        app.discovery.palette.reset();
       }
     }
     KeyCode::Char(c) => {
       app.push_discovery_char(c);
-      app.feed.discovery.palette.reset();
+      app.discovery.palette.reset();
     }
     _ => {}
   }

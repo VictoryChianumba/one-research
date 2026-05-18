@@ -148,16 +148,15 @@ impl App {
       if let Some(&idx) = self.workspace.arxiv_id_index.get(arxiv_id) {
         return self.workspace.items.get(idx).cloned();
       }
-      if let Some(&idx) = self.feed.discovery.arxiv_id_index.get(arxiv_id) {
-        return self.feed.discovery.items.get(idx).cloned();
+      if let Some(&idx) = self.discovery.arxiv_id_index.get(arxiv_id) {
+        return self.discovery.items.get(idx).cloned();
       }
     }
     self
-      .feed
       .discovery
       .url_index
       .get(&entry.key)
-      .and_then(|&idx| self.feed.discovery.items.get(idx))
+      .and_then(|&idx| self.discovery.items.get(idx))
       .cloned()
       .or_else(|| {
         entry
@@ -239,8 +238,8 @@ impl App {
           item.url.clone(),
         ));
       }
-      if let Some(&idx) = self.feed.discovery.arxiv_id_index.get(arxiv_id) {
-        let item = self.feed.discovery.items.get(idx)?;
+      if let Some(&idx) = self.discovery.arxiv_id_index.get(arxiv_id) {
+        let item = self.discovery.items.get(idx)?;
         return Some((
           FeedTab::Discoveries,
           item.workflow_state,
@@ -249,11 +248,10 @@ impl App {
       }
     }
     self
-      .feed
       .discovery
       .url_index
       .get(&entry.key)
-      .and_then(|&idx| self.feed.discovery.items.get(idx))
+      .and_then(|&idx| self.discovery.items.get(idx))
       .map(|item| (FeedTab::Discoveries, item.workflow_state, item.url.clone()))
   }
 }
