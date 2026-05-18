@@ -19,7 +19,7 @@ mod reader;
 mod title;
 mod widgets;
 
-pub use frame_layout::FrameLayout;
+pub use frame_layout::{FrameLayout, compute_frame_layout};
 
 use footer::draw_footer;
 use main_row::draw_main_row;
@@ -40,6 +40,13 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
   // to "react to selection / state change" runs here, so the render
   // path proper stays read-only. Phase 4 — render purification.
   app.pre_draw_update();
+  // C6 / ADR-008: post-layout hook.  Layout-derived mutations that
+  // `pre_draw_update` can't size (because it runs before layout) live
+  // in `apply_frame_layout`, fed by `compute_frame_layout(&App, area)`.
+  // The pair eliminates the last `// Intentional render-time mutation`
+  // marker in `ui/layout/reader.rs`.
+  let frame_layout = compute_frame_layout(app, frame.area());
+  app.apply_frame_layout(&frame_layout);
   match app.view {
     AppView::Feed => draw_feed(frame, app),
     AppView::Settings => {

@@ -9,6 +9,8 @@
 
 use ratatui::layout::Rect;
 
+use crate::app::App;
+
 /// Layout-derived inputs that `App::apply_frame_layout` needs to size
 /// scroll bounds, viewport caps, and other layout-shaped state.
 ///
@@ -26,6 +28,29 @@ pub struct FrameLayout {
   /// `apply_frame_layout` uses `.height` to size
   /// `reader_bottom_scroll.max` for feed-mode auto-scroll.
   pub reader_bottom_feed_list: Option<Rect>,
+}
+
+/// Compute `FrameLayout` from `app` state + the full frame area.
+///
+/// Pure — takes `&App` and never mutates. Called once per frame at the
+/// draw entry point; its result is handed to `App::apply_frame_layout`
+/// for the post-layout mutation pass, then discarded.
+pub fn compute_frame_layout(app: &App, area: Rect) -> FrameLayout {
+  let mut layout = FrameLayout::default();
+
+  // Reader bottom drawer is shown only when the dual-reader view is
+  // active AND the drawer is open AND it's in feed mode (not details).
+  // The Rect math mirrors `draw_reader_bottom_pane` /
+  // `draw_bottom_pane_feed`'s shared helpers in `ui/layout/reader.rs`.
+  if app.reader.dual_active
+    && app.reader_bottom_open
+    && !app.reader_bottom_details
+  {
+    layout.reader_bottom_feed_list =
+      super::reader::reader_bottom_feed_list_rect(area);
+  }
+
+  layout
 }
 
 #[cfg(test)]

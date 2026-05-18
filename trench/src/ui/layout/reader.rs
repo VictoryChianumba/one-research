@@ -15,12 +15,17 @@ pub(super) fn chat_context_line(app: &App) -> Option<String> {
   if app.reader.active {
     let title = match app.reader.focused {
       FocusedReader::Secondary if app.reader.dual_active => app
-        .reader.secondary.tabs
+        .reader
+        .secondary
+        .tabs
         .get(app.reader.secondary.active_tab)
         .map(|tab| tab.title.as_str()),
-      _ => {
-        app.reader.primary.tabs.get(app.reader.primary.active_tab).map(|tab| tab.title.as_str())
-      }
+      _ => app
+        .reader
+        .primary
+        .tabs
+        .get(app.reader.primary.active_tab)
+        .map(|tab| tab.title.as_str()),
     };
     if let Some(title) = title.filter(|title| !title.trim().is_empty()) {
       return Some(format!("active reader · {}", truncate(title, 96)));
@@ -64,7 +69,8 @@ pub(super) fn draw_reader_workspace_header(
     return;
   }
   let t = app.theme();
-  let primary = reader_tab_title(&app.reader.primary.tabs, app.reader.primary.active_tab);
+  let primary =
+    reader_tab_title(&app.reader.primary.tabs, app.reader.primary.active_tab);
   let context = primary.to_string();
   let label_style =
     Style::default().fg(t.accent).bg(t.bg_panel).add_modifier(Modifier::BOLD);
@@ -268,17 +274,46 @@ pub(super) fn draw_narrow_feed_details_popup(
   frame.render_widget(para, inner);
 }
 
+/// Compute the bottom-drawer popup `Rect` from the full frame area.
+/// Pure — shared between `draw_reader_bottom_pane` and the layout pass
+/// that populates `FrameLayout::reader_bottom_feed_list` (ADR-008).
+pub(super) fn reader_bottom_popup_rect(area: Rect) -> Rect {
+  const POPUP_H: u16 = 11; // border(2) + hint row(1) + sep(1) + content(7)
+  let popup_w = (area.width as u32 * 60 / 100) as u16;
+  let popup_x = area.x + (area.width.saturating_sub(popup_w)) / 2;
+  let popup_y = area.y + area.height.saturating_sub(POPUP_H);
+  Rect::new(popup_x, popup_y, popup_w, POPUP_H)
+}
+
+/// Compute the feed-mode list area inside the bottom drawer (header row
+/// stripped). Pure — used by both render and the layout pass. Returns
+/// `None` when the popup's inner area would be degenerate.
+pub(super) fn reader_bottom_feed_list_rect(area: Rect) -> Option<Rect> {
+  let popup = reader_bottom_popup_rect(area);
+  let inner = Rect {
+    x: popup.x + 1,
+    y: popup.y + 1,
+    width: popup.width.saturating_sub(2),
+    height: popup.height.saturating_sub(2),
+  };
+  if inner.height == 0 {
+    return None;
+  }
+  // Same vertical split as `draw_bottom_pane_feed`: 1-row header + rest.
+  let list_h = inner.height.saturating_sub(1);
+  if list_h == 0 {
+    return None;
+  }
+  Some(Rect { x: inner.x, y: inner.y + 1, width: inner.width, height: list_h })
+}
+
 pub(super) fn draw_reader_bottom_pane(
   frame: &mut Frame,
   app: &mut App,
   area: Rect,
 ) {
   let t = app.theme();
-  const POPUP_H: u16 = 11; // border(2) + hint row(1) + sep(1) + content(7)
-  let popup_w = (area.width as u32 * 60 / 100) as u16;
-  let popup_x = area.x + (area.width.saturating_sub(popup_w)) / 2;
-  let popup_y = area.y + area.height.saturating_sub(POPUP_H);
-  let popup_rect = Rect::new(popup_x, popup_y, popup_w, POPUP_H);
+  let popup_rect = reader_bottom_popup_rect(area);
 
   frame.render_widget(Clear, popup_rect);
 
@@ -411,7 +446,6 @@ fn draw_bottom_pane_details(frame: &mut Frame, app: &App, area: Rect) {
 
 fn draw_bottom_pane_feed(frame: &mut Frame, app: &mut App, area: Rect) {
   let t = app.theme();
-  let sel = app.reader_feed_popup_selected;
   let rows =
     Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(area);
   let header_area = rows[0];
@@ -421,24 +455,18 @@ fn draw_bottom_pane_feed(frame: &mut Frame, app: &mut App, area: Rect) {
     return;
   }
 
-  // Intentional render-time mutation. Same pattern as draw_item_table /
-  // draw_history_tab: this auto-scroll needs viewport_rows, which is
-  // layout-derived. The B2b hoist (reader-bottom variant) wasn't
-  // attempted after B2a's regressions; stays here until refactor B's
-  // deferred layout-metrics extraction lands.
+  // C6 / ADR-008: scroll-bound + offset clamp moved into
+  // `App::apply_frame_layout`, which runs after the layout pass with
+  // the pre-computed `list_area.height`.  `total` is data-only and
+  // could live in `pre_draw_update`; consolidating both writes into
+  // one hook keeps the auto-scroll story local to one place.
+  let sel = app.reader_feed_popup_selected;
   let total = if app.feed.feed_tab == FeedTab::History {
     app.history_count()
   } else {
     app.visible_count()
   };
-  app.reader_bottom_scroll.set_max(total.saturating_sub(1));
-  let mut offset = app.reader_bottom_scroll.offset();
-  if sel < offset {
-    offset = sel;
-  } else if sel >= offset.saturating_add(viewport_rows) {
-    offset = sel + 1 - viewport_rows;
-  }
-  app.reader_bottom_scroll.set_offset(offset);
+  let offset = app.reader_bottom_scroll.offset();
 
   frame.render_widget(
     Paragraph::new(drawer_feed_header_line(list_area.width as usize, &t)),

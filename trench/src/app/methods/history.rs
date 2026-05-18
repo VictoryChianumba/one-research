@@ -87,11 +87,33 @@ impl App {
   /// and the render pass, with `FrameLayout` carrying the post-layout
   /// `Rect`s that layout-derived mutations need.
   ///
-  /// PR 1 lands the empty body — no callers yet. PR 2 will wire the
-  /// reader-bottom feed-mode auto-scroll (currently the lone surviving
-  /// `// Intentional render-time mutation` site in `ui/layout/reader.rs`).
-  pub fn apply_frame_layout(&mut self, _layout: &crate::ui::FrameLayout) {
-    // Intentionally empty for PR 1.
+  /// C6 PR 2 routes the reader-bottom feed-mode auto-scroll through
+  /// this hook — the last `// Intentional render-time mutation` site
+  /// in `ui/layout/reader.rs` is now gone.
+  pub fn apply_frame_layout(&mut self, layout: &crate::ui::FrameLayout) {
+    if let Some(list_area) = layout.reader_bottom_feed_list {
+      let viewport_rows = list_area.height as usize;
+      if viewport_rows == 0 {
+        return;
+      }
+      let total = if self.feed.feed_tab == crate::app::FeedTab::History {
+        self.history_count()
+      } else {
+        self.visible_count()
+      };
+      // Mirrors the pre-C6 inline math at reader.rs:434-441 exactly:
+      // cap max at `total - 1`, then clamp offset so the selection is
+      // within [offset, offset + viewport_rows).
+      self.reader_bottom_scroll.set_max(total.saturating_sub(1));
+      let sel = self.reader_feed_popup_selected;
+      let mut offset = self.reader_bottom_scroll.offset();
+      if sel < offset {
+        offset = sel;
+      } else if sel >= offset.saturating_add(viewport_rows) {
+        offset = sel + 1 - viewport_rows;
+      }
+      self.reader_bottom_scroll.set_offset(offset);
+    }
   }
 
   /// URL-shaped key identifying the currently-shown details subject.
