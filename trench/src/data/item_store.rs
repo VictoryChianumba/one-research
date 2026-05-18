@@ -289,4 +289,184 @@ mod tests {
     assert_eq!(urls, urls2);
     assert_eq!(urls, vec![0, 1]);
   }
+
+  // ── Invariant witnesses (N2, ADR-007) ───────────────────────────────
+  //
+  // The per-operation tests above check specific behaviours. These tests
+  // lock the *whole-state invariant* that ItemStore exists to enforce:
+  //
+  //   "Every entry in url_index / arxiv_id_index points to a live item
+  //    in items whose key matches the index key."
+  //
+  // Bug class C9 was *named after* — items_store + url_index + arxiv_id_index
+  // drifting apart silently. The check_invariants helper below is the
+  // witness; every mutation path runs through it after a sequence of ops.
+
+  /// Walks every (key, idx) entry in both indices and asserts the matching
+  /// item exists at that position with the expected URL / arxiv-id key.
+  /// Also asserts no items in `items` are *missing* from `url_index`.
+  fn check_invariants(s: &ItemStore) {
+    // url_index → items: every entry resolves to a live item with
+    // matching url.
+    for (k, &idx) in &s.url_index {
+      let it = s.items.get(idx).unwrap_or_else(|| {
+        panic!("url_index entry {k:?}→{idx} points past end of items")
+      });
+      assert_eq!(
+        &it.url, k,
+        "url_index key {k:?} points to item with url {:?} at idx {idx}",
+        it.url
+      );
+    }
+    // arxiv_id_index → items: every entry resolves to an item whose URL
+    // really is an arXiv URL with the matching id.
+    for (aid, &idx) in &s.arxiv_id_index {
+      let it = s.items.get(idx).unwrap_or_else(|| {
+        panic!("arxiv_id_index entry {aid:?}→{idx} points past end of items")
+      });
+      let derived = arxiv_id_from_url(&it.url).unwrap_or_else(|| {
+        panic!("arxiv_id_index key {aid:?} points at non-arxiv item {:?}", it.url)
+      });
+      assert_eq!(
+        derived, aid,
+        "arxiv_id_index key {aid:?} disagrees with derived id {derived:?}"
+      );
+    }
+    // items → url_index: every live item is reachable via url_index.
+    for (idx, it) in s.items.iter().enumerate() {
+      let found = s.url_index.get(&it.url).copied();
+      assert_eq!(
+        found, Some(idx),
+        "item at idx {idx} url={:?} not findable via url_index (got {found:?})",
+        it.url
+      );
+    }
+  }
+
+  #[test]
+  fn n2_invariants_hold_after_push_sequence() {
+    // Witness: a stream of mixed arxiv/non-arxiv pushes leaves both
+    // indices consistent and complete.
+    let mut s = ItemStore::default();
+    for url in [
+      "https://arxiv.org/abs/2401.00001",
+      "https://example.com/a",
+      "https://arxiv.org/abs/2401.00002",
+      "https://example.com/b",
+      "https://arxiv.org/abs/2401.00003",
+    ] {
+      s.push(item(url));
+      check_invariants(&s);
+    }
+    assert_eq!(s.len(), 5);
+    assert_eq!(s.arxiv_id_index.len(), 3);
+    assert_eq!(s.url_index.len(), 5);
+  }
+
+  #[test]
+  fn n2_replace_at_with_different_url_drops_stale_index_entry() {
+    // The replace_at branch at lines 107-111 cleans up the old key.
+    // Without that, the old URL would still resolve to the slot — a
+    // stale entry. This test exercises the cleanup branch directly.
+    let mut s = ItemStore::default();
+    s.push(item("https://old"));
+    s.push(item("https://keep"));
+    s.replace_at(0, item("https://new"));
+    check_invariants(&s);
+    // Old URL no longer resolves anywhere.
+    assert!(s.find_by_url("https://old").is_none(), "stale url_index entry");
+    // New URL resolves to slot 0.
+    assert_eq!(s.find_index_by_url("https://new"), Some(0));
+    // Sibling untouched.
+    assert_eq!(s.find_index_by_url("https://keep"), Some(1));
+  }
+
+  #[test]
+  fn n2_replace_at_arxiv_to_non_arxiv_drops_arxiv_entry() {
+    // Cross the arxiv boundary: replacing an arxiv item with a non-arxiv
+    // item must remove the arxiv_id_index entry for the old item.
+    let mut s = ItemStore::default();
+    s.push(item("https://arxiv.org/abs/2401.99999"));
+    s.replace_at(0, item("https://blog.example.com/post"));
+    check_invariants(&s);
+    assert!(s.find_by_arxiv_id("2401.99999").is_none(), "stale arxiv entry");
+    assert!(s.find_by_url("https://blog.example.com/post").is_some());
+  }
+
+  #[test]
+  fn n2_replace_at_non_arxiv_to_arxiv_inserts_arxiv_entry() {
+    // Other direction: starting non-arxiv, replacement is arxiv. The
+    // arxiv_id_index must gain the new entry. Previously there'd be no
+    // arxiv_id_index entry at all for slot 0, so this catches "forgot to
+    // insert on the new-key side" bugs.
+    let mut s = ItemStore::default();
+    s.push(item("https://blog.example.com/post"));
+    s.replace_at(0, item("https://arxiv.org/abs/2402.55555"));
+    check_invariants(&s);
+    assert_eq!(s.find_index_by_arxiv_id("2402.55555"), Some(0));
+  }
+
+  #[test]
+  fn n2_invariants_hold_through_mixed_sequence() {
+    // The hard test: push some, replace some (mixing same-URL and
+    // different-URL), sort, push more, replace again. Invariant must
+    // hold after every step — bugs that only show up in sequences are
+    // why this exists separately from the per-op tests.
+    let mut s = ItemStore::default();
+    s.push(item("https://arxiv.org/abs/2401.00001"));
+    s.push(item("https://b"));
+    s.push(item("https://arxiv.org/abs/2401.00002"));
+    check_invariants(&s);
+
+    // Same-URL replace (title update, common case).
+    let mut upd = item("https://b");
+    upd.title = "updated".into();
+    s.replace_at(1, upd);
+    check_invariants(&s);
+
+    // Different-URL replace (rare but legal).
+    s.replace_at(0, item("https://arxiv.org/abs/2401.00009"));
+    check_invariants(&s);
+    assert!(s.find_by_arxiv_id("2401.00001").is_none());
+    assert_eq!(s.find_index_by_arxiv_id("2401.00009"), Some(0));
+
+    // Sort: positions move; rebuild_indices runs internally.
+    s.sort_by(|x, y| x.url.cmp(&y.url));
+    check_invariants(&s);
+
+    // Push and replace after sort — exercises the post-sort indexing
+    // path and proves the prior sort didn't leak any entries.
+    s.push(item("https://example.com/late"));
+    check_invariants(&s);
+    s.replace_at(s.len() - 1, item("https://arxiv.org/abs/2403.00000"));
+    check_invariants(&s);
+  }
+
+  #[test]
+  fn n2_clear_drops_all_indices() {
+    let mut s = ItemStore::default();
+    s.push(item("https://arxiv.org/abs/2401.00001"));
+    s.push(item("https://b"));
+    s.clear();
+    check_invariants(&s);
+    assert_eq!(s.len(), 0);
+    assert!(s.url_index.is_empty());
+    assert!(s.arxiv_id_index.is_empty());
+  }
+
+  #[test]
+  fn n2_from_items_builds_invariants_from_scratch() {
+    // Witness for the cache-load path: from_items takes an arbitrary Vec
+    // and must produce an invariant-clean ItemStore via rebuild_indices.
+    let v = vec![
+      item("https://arxiv.org/abs/2401.00001"),
+      item("https://blog/post"),
+      item("https://arxiv.org/abs/2401.00002"),
+    ];
+    let s = ItemStore::from_items(v);
+    check_invariants(&s);
+    assert_eq!(s.len(), 3);
+    assert_eq!(s.find_index_by_arxiv_id("2401.00001"), Some(0));
+    assert_eq!(s.find_index_by_arxiv_id("2401.00002"), Some(2));
+  }
 }
