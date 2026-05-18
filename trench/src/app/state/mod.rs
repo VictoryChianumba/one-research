@@ -14,7 +14,7 @@ mod settings;
 mod theme_picker;
 
 pub use chat::ChatState;
-pub use discovery::DiscoveryState;
+pub use discovery::DiscoveryModel;
 pub use feed::{AppView, FeedTab, FilterState, ItemCounts, NavDirection};
 pub use help::HelpState;
 pub use notes::{

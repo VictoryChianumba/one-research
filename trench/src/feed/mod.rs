@@ -13,7 +13,10 @@
 
 use std::collections::HashSet;
 
-use crate::app::{DiscoveryState, FeedTab, FilterState};
+use crate::app::{DiscoveryModel, FeedTab, FilterState};
+// C7 PR 1: `DiscoveryState` was renamed to `DiscoveryModel` (ADR-005 §S1).
+// The field still lives at `App.feed.discovery` in PR 1 — only the type
+// name changed. PR 2 moves the field to `App.discovery`.
 use crate::ui::Viewport;
 
 /// Owned state for the feed pane. Renders take `&FeedModel`, never `&mut`
@@ -48,9 +51,9 @@ pub struct FeedModel {
   pub filter_cursor: usize,
   pub active_filters: FilterState,
 
-  // Discovery sub-state (Q4 sub-model decision; lifted as DiscoveryModel
-  // in a later slice if it grows enough surface to deserve its own seam).
-  pub discovery: DiscoveryState,
+  // Discovery sub-state. Lifted out to `App.discovery: DiscoveryModel`
+  // in C7 PR 2 (ADR-005 §S2). PR 1 just renames the type in place.
+  pub discovery: DiscoveryModel,
 }
 
 impl FeedModel {
@@ -364,7 +367,7 @@ impl Default for FeedModel {
       filter_focus: false,
       filter_cursor: 0,
       active_filters: FilterState::new(),
-      discovery: DiscoveryState::default(),
+      discovery: DiscoveryModel::default(),
     }
   }
 }
