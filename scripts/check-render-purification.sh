@@ -212,7 +212,54 @@ for tag in "| 1 |" "| 2 |" "| 3 |" "| 4 |"; do
   fi
 done
 
+# ── Workspace-wide render purity (ADR-001 D4) ──────────────────────────
+
+# I12. No new render fn in trench/src/ui/ may take `&mut App`.  ADR-001 D4
+#      says renders are pure functions of `&Model + &Context`.  Today's
+#      nine offenders (the baseline below) are tolerated as a shrinking
+#      ratchet — each subsequent cleanup PR removes one name from the
+#      baseline as it flips the signature to `&App`.  Adding a tenth is
+#      the regression vector this guards.
+#
+#      Caveat: the grep is single-line; if a future render fn folds its
+#      signature across multiple lines (rustfmt sometimes does for long
+#      signatures), I12 may miss it.  Code review backstop today; tighten
+#      with a rustsyn-aware checker if regressions in that shape appear.
+
+i12_baseline=(
+  dispatch_feed_pane
+  draw
+  draw_bottom_pane_feed
+  draw_details_panel
+  draw_feed
+  draw_help_overlay
+  draw_main
+  draw_reader_popup
+  draw_repo_viewer
+)
+i12_current=$(grep -rhE 'fn [a-z_]+\([^)]*&\s*mut\s+App\b' trench/src/ui/ 2>/dev/null \
+  | sed -E 's/.*fn ([a-z_]+).*/\1/' | sort -u)
+i12_baseline_sorted=$(printf '%s\n' "${i12_baseline[@]}" | sort -u)
+
+i12_new=$(comm -23 <(echo "$i12_current") <(echo "$i12_baseline_sorted") || true)
+if [[ -n "$i12_new" ]]; then
+  echo "FAIL: render fn(s) in trench/src/ui/ newly take &mut App (ADR-001 D4):"
+  echo "$i12_new" | sed 's/^/  /'
+  echo "  Render-time mutation must move into Model::pre_draw or"
+  echo "  App::apply_frame_layout.  If this is intentional, add the name to"
+  echo "  the I12 baseline in scripts/check-render-purification.sh with a"
+  echo "  one-line comment explaining why."
+  fail=1
+fi
+
+i12_cleared=$(comm -13 <(echo "$i12_current") <(echo "$i12_baseline_sorted") || true)
+if [[ -n "$i12_cleared" ]]; then
+  echo "INFO: render fn(s) in I12 baseline no longer take &mut App — tighten the ratchet:"
+  echo "$i12_cleared" | sed 's/^/  /'
+  echo "  Remove from scripts/check-render-purification.sh I12 baseline."
+fi
+
 if [[ "$fail" -eq 0 ]]; then
-  echo "OK: render-purification invariants hold (feed + reader + notes + discovery)"
+  echo "OK: render-purification invariants hold (feed + reader + notes + discovery + I12 floor)"
 fi
 exit $fail
