@@ -1,6 +1,6 @@
 # ADR-005 — Discovery-pane slice (Slice 5 of render purification)
 
-- **Status:** Proposed (2026-05-18). PR 1 lands this ADR + the rename `DiscoveryState` → `DiscoveryModel` + CONTEXT.md vocabulary + smoke tests. PR 2 moves the field from `App.feed.discovery` to `App.discovery`. PR 3 pulls gesture methods onto `DiscoveryModel`. PR 4 lands tripwires K1-K3 + flips status to Accepted.
+- **Status:** Accepted (2026-05-18). All 4 PRs landed: PR 1 = ADR + rename + smoke tests, PR 2 = field migration (`App.feed.discovery` → `App.discovery`) + threaded `&mut DiscoveryModel` through 8 feed-render fn signatures, PR 3 = gesture methods on `DiscoveryModel` + 4 App wrappers deleted, PR 4 = K1-K4 tripwires in `scripts/check-render-purification.sh` + this status flip.
 - **Date:** 2026-05-18
 - **Owner:** Victory Chianumba
 - **Supersedes:** none

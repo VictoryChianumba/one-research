@@ -12,7 +12,7 @@ ci () {
 
   # Architectural tripwires. Cheap grep checks that catch regressions
   # before the test suite would.
-  #   - check-render-purification.sh: ADR-001/2/3 (per-pane composition root)
+  #   - check-render-purification.sh: ADR-001/2/3/5 (per-pane composition root)
   #   - check-ingestion-seam.sh:      ADR-004 (Source / EnrichmentSource seam)
   scripts/check-render-purification.sh
   scripts/check-ingestion-seam.sh

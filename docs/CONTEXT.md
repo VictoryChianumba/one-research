@@ -93,7 +93,7 @@ The refactor is incremental. Lazy rollout — a pane is refactored when a featur
 | **Voice** | Pending | Separate slice after slice 2. `VoiceModel` on `App`. Trigger: ElevenLabs credits + feature ask. |
 | **Notes** | Slice 3 accepted (2026-05-18) | ADR-003. 4 PRs landed: PR 1 skeletons + ADR + vocabulary, PR 2 state migration (11 fields → `App.notes`), PR 3 gesture methods on `NotesPaneModel`, PR 4 tripwires I8-I11 in `scripts/check-render-purification.sh`. |
 | **Ingestion seam** | C10 accepted (2026-05-18) | ADR-004. 3 PRs landed: Source/EnrichmentSource traits + FetchContext + RetryPolicy (PR 1); 5 Source impls + 2 EnrichmentSource impls + orchestrator + `fetch_arxiv_with_retry` deleted (PR 2); J1-J5 tripwires + ADR Accepted (PR 3). |
-| **Discovery** | Slice 5 in flight (2026-05-18) | ADR-005. PR 1 (rename + ADR + smoke tests) and PR 2 (field migration + 8 method signatures threaded `&mut DiscoveryModel`) landed. PR 3 (gesture methods on `DiscoveryModel`) and PR 4 (tripwires K1-K3 + Accepted) outstanding. Trigger: audit candidate C7 + size threshold (~1,000 LOC of agent code crossed the "lift when grown enough" line). |
+| **Discovery** | Slice 5 accepted (2026-05-18) | ADR-005. 4 PRs landed: PR 1 (rename `DiscoveryState`→`DiscoveryModel` + ADR + smoke tests), PR 2 (field migration + 8 method signatures threaded `&mut DiscoveryModel`), PR 3 (gesture methods on `DiscoveryModel` + 4 App wrappers deleted), PR 4 (K1-K4 tripwires in `scripts/check-render-purification.sh` + ADR Accepted). Trigger: audit candidate C7 + size threshold (~1,000 LOC of agent code crossed the "lift when grown enough" line). |
 | **Chat** | Legacy | Lazy. No pressure to refactor. |
 | **Repo Viewer** | Legacy | Lazy. |
 | **Settings overlay** | Legacy | Lazy. Already partly migrated to `Action::DismissTopModal` / `Action::OpenSettings`. |
@@ -107,6 +107,6 @@ The refactor is incremental. Lazy rollout — a pane is refactored when a featur
 - `docs/adr/ADR-002-reader-slice.md` — slice 2 reader-pane extension.
 - `docs/adr/ADR-003-notes-slice.md` — slice 3 notes-dock consolidation (Accepted 2026-05-18; 4 PRs landed).
 - `docs/adr/ADR-004-ingestion-seam.md` — C10 `Source` + `EnrichmentSource` + `FetchContext` (Accepted 2026-05-18; 3 PRs landed).
-- `docs/adr/ADR-005-discovery-slice.md` — slice 5 discovery-pane lift (Proposed 2026-05-18; PR 1 landed).
+- `docs/adr/ADR-005-discovery-slice.md` — slice 5 discovery-pane lift (Accepted 2026-05-18; 4 PRs landed).
 - `docs/audits/` — periodic architectural audits with letter-graded scorecards. Latest: `2026-05-18-architectural-audit.md` (C+, unchanged from 2026-05-16). Run `/improve-codebase-architecture` to produce a new one.
 - `CLAUDE.md` — project-wide rules. CONTEXT.md is the *language* layer above those.
