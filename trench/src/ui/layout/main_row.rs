@@ -93,13 +93,13 @@ pub fn draw_main_row(
       "Secondary",
       &t,
     );
-    let (left_reader_rect, left_notes_rect) = if app.notes_active {
+    let (left_reader_rect, left_notes_rect) = if app.notes.primary_visible {
       let (reader, notes) = split_reader_note_dock(left_rect);
       (reader, Some(notes))
     } else {
       (left_rect, None)
     };
-    let (right_reader_rect, right_notes_rect) = if app.secondary_notes_active {
+    let (right_reader_rect, right_notes_rect) = if app.notes.secondary_visible {
       let (reader, notes) = split_reader_note_dock(right_rect);
       (reader, Some(notes))
     } else {
@@ -243,7 +243,7 @@ pub fn draw_main_row(
   }
 
   // ── Reader: always full-width or 60/40 split, regardless of terminal width ─
-  if app.reader.active && !app.notes_active {
+  if app.reader.active && !app.notes.primary_visible {
     let (workspace_area, body_area) = reader_workspace_split(area);
     draw_reader_workspace_header(frame, app, workspace_area, "Reader");
     let rows = Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
@@ -334,8 +334,8 @@ pub fn draw_main_row(
 
   // ── Narrow mode (< 100 cols): vertical stack — feed top, details/notes bottom ──
   if area.width < 100 {
-    let bottom_title = if app.notes_active {
-      app.notes_mode.title()
+    let bottom_title = if app.notes.primary_visible {
+      app.notes.primary.mode.title()
     } else if app.feed.filter_focus {
       "Filters"
     } else {
@@ -355,7 +355,7 @@ pub fn draw_main_row(
     log::debug!("draw_item_table (narrow): {}ms", t.elapsed().as_millis());
 
     let mut details_rect: Option<Rect> = None;
-    if app.notes_active {
+    if app.notes.primary_visible {
       let t = std::time::Instant::now();
       draw_notes_surface(
         frame,
@@ -381,7 +381,7 @@ pub fn draw_main_row(
       feed: Some(feed_rect),
       reader: None,
       secondary_reader: None,
-      notes: if app.notes_active { Some(bottom_rect) } else { None },
+      notes: if app.notes.primary_visible { Some(bottom_rect) } else { None },
       secondary_notes: None,
       details: details_rect,
     };
@@ -397,13 +397,13 @@ pub fn draw_main_row(
     ..area
   };
   let inner_w = area.width.saturating_sub(2);
-  let right_w = if app.notes_active {
+  let right_w = if app.notes.primary_visible {
     (inner_w * 40 / 100).max(1)
   } else {
     RIGHT_COL_WIDTH.min(inner_w.saturating_sub(2))
   };
-  let right_title = if app.notes_active {
-    app.notes_mode.title()
+  let right_title = if app.notes.primary_visible {
+    app.notes.primary.mode.title()
   } else if app.feed.filter_focus {
     "Filters"
   } else {
@@ -418,7 +418,7 @@ pub fn draw_main_row(
   log::debug!("draw_item_table: {}ms", t.elapsed().as_millis());
 
   let mut details_rect: Option<Rect> = None;
-  if app.notes_active {
+  if app.notes.primary_visible {
     let t = std::time::Instant::now();
     draw_notes_surface(
       frame,
@@ -444,7 +444,7 @@ pub fn draw_main_row(
     feed: Some(feed_rect),
     reader: None,
     secondary_reader: None,
-    notes: if app.notes_active { Some(right_rect) } else { None },
+    notes: if app.notes.primary_visible { Some(right_rect) } else { None },
     secondary_notes: None,
     details: details_rect,
   }

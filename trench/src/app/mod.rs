@@ -91,18 +91,9 @@ pub struct App {
   /// Sources tags itself here.
   pub modals: crate::surfaces::overlays::ModalStack,
 
-  // Embedded notes pane
-  pub notes_app: Option<notes::app::App>,
-  pub notes_active: bool,
-  pub notes_tabs: Vec<NotesTab>,
-  pub notes_active_tab: usize,
-  pub notes_mode: NotesMode,
-  pub notes_context: Option<NotesContext>,
-  pub secondary_notes_active: bool,
-  pub secondary_notes_tabs: Vec<NotesTab>,
-  pub secondary_notes_active_tab: usize,
-  pub secondary_notes_mode: NotesMode,
-  pub secondary_notes_context: Option<NotesContext>,
+  // Embedded notes pane — composition root per ADR-003.
+  // Owns the shared backend + primary/secondary instances + visibility.
+  pub notes: NotesPaneModel,
 
   // Embedded chat pane
   pub chat: ChatState,
@@ -233,17 +224,7 @@ impl App {
       theme_picker: ThemePickerState::default(),
       sources_popup: crate::surfaces::overlays::SourcesSurface::new(),
       modals: crate::surfaces::overlays::ModalStack::new(),
-      notes_app: None,
-      notes_active: false,
-      notes_tabs: Vec::new(),
-      notes_active_tab: 0,
-      notes_mode: NotesMode::Library,
-      notes_context: None,
-      secondary_notes_active: false,
-      secondary_notes_tabs: Vec::new(),
-      secondary_notes_active_tab: 0,
-      secondary_notes_mode: NotesMode::Library,
-      secondary_notes_context: None,
+      notes: NotesPaneModel::default(),
       chat: ChatState::default(),
       reader: crate::reader::ReaderPaneModel::new(),
       reader_popup: crate::reader::ReaderPopupModel::new(),

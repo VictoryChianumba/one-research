@@ -247,7 +247,7 @@ pub(super) fn handle_reader_pane(key: KeyEvent, app: &mut App) -> bool {
           app.reader.dual_active = false;
           app.reader_bottom_open = false;
           app.reader_bottom_focused = false;
-          app.secondary_notes_active = false;
+          app.notes.secondary_visible = false;
           app.reader.focused = FocusedReader::Primary;
           app.focus.focused_pane = PaneId::Reader;
         }
@@ -302,11 +302,12 @@ pub(super) fn handle_reader_pane(key: KeyEvent, app: &mut App) -> bool {
           app.reader.dual_active = false;
           app.reader_bottom_open = false;
           app.reader_bottom_focused = false;
-          app.notes_active = app.secondary_notes_active;
-          app.notes_tabs = std::mem::take(&mut app.secondary_notes_tabs);
-          app.notes_active_tab = app.secondary_notes_active_tab;
-          app.secondary_notes_active = false;
-          app.secondary_notes_active_tab = 0;
+          app.notes.primary_visible = app.notes.secondary_visible;
+          if let Some(sec) = app.notes.secondary.take() {
+            app.notes.primary.tabs = sec.tabs;
+            app.notes.primary.active_tab = sec.active_tab;
+          }
+          app.notes.secondary_visible = false;
           app.reader.focused = FocusedReader::Primary;
           app.focus.focused_pane =
             if app.reader.active { PaneId::Reader } else { PaneId::Feed };
@@ -356,7 +357,7 @@ pub(super) fn reader_back(app: &mut App, side: FocusedReader) -> bool {
         app.reader.dual_active = false;
         app.reader.secondary.tabs.clear();
         app.reader.secondary.active_tab = 0;
-        app.secondary_notes_active = false;
+        app.notes.secondary_visible = false;
         app.reader_bottom_open = false;
         app.reader_bottom_focused = false;
         app.reader.focused = FocusedReader::Primary;
@@ -370,11 +371,12 @@ pub(super) fn reader_back(app: &mut App, side: FocusedReader) -> bool {
         app.reader.dual_active = false;
         app.reader_bottom_open = false;
         app.reader_bottom_focused = false;
-        app.notes_active = app.secondary_notes_active;
-        app.notes_tabs = std::mem::take(&mut app.secondary_notes_tabs);
-        app.notes_active_tab = app.secondary_notes_active_tab;
-        app.secondary_notes_active = false;
-        app.secondary_notes_active_tab = 0;
+        app.notes.primary_visible = app.notes.secondary_visible;
+        if let Some(sec) = app.notes.secondary.take() {
+          app.notes.primary.tabs = sec.tabs;
+          app.notes.primary.active_tab = sec.active_tab;
+        }
+        app.notes.secondary_visible = false;
         app.reader.focused = FocusedReader::Primary;
         app.focus.focused_pane =
           if app.reader.active { PaneId::Reader } else { PaneId::Feed };
@@ -403,8 +405,8 @@ pub(super) fn close_all_readers(app: &mut App) {
   app.reader.primary.active_tab = 0;
   app.reader.secondary.tabs.clear();
   app.reader.secondary.active_tab = 0;
-  app.notes_active = false;
-  app.secondary_notes_active = false;
+  app.notes.primary_visible = false;
+  app.notes.secondary_visible = false;
   app.reader.focused = FocusedReader::Primary;
   app.focus.focused_pane = PaneId::Feed;
 }

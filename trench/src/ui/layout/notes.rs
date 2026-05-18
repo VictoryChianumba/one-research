@@ -20,7 +20,7 @@ fn notes_browser_visible<'a>(
   app: &'a App,
   side: FocusedReader,
 ) -> Vec<&'a notes::Note> {
-  let Some(notes_app) = app.notes_app.as_ref() else {
+  let Some(notes_app) = app.notes.app.as_ref() else {
     return Vec::new();
   };
   match app.notes_mode_for_side(side) {
@@ -44,7 +44,7 @@ fn notes_browser_selected_index(
   app: &App,
   visible: &[&notes::Note],
 ) -> Option<usize> {
-  let current_id = app.notes_app.as_ref()?.current_note_id.as_ref()?;
+  let current_id = app.notes.app.as_ref()?.current_note_id.as_ref()?;
   visible.iter().position(|note| &note.note_id == current_id)
 }
 
@@ -379,14 +379,16 @@ pub fn draw_notes_surface(
   }
   let is_focused = app.focus.focused_pane == note_pane_for_side(side);
   // Inline the field access so Rust's split-borrow rules can keep the
-  // `tabs` borrow disjoint from the later `app.notes_app.as_mut()` —
-  // saves a per-draw `Vec<NotesTab>` clone.
-  let (tabs, active) = match side {
-    FocusedReader::Primary => (&app.notes_tabs, app.notes_active_tab),
-    FocusedReader::Secondary => {
-      (&app.secondary_notes_tabs, app.secondary_notes_active_tab)
-    }
+  // `tabs` borrow disjoint from the later `app.notes.app.as_mut()` —
+  // saves a per-draw `Vec<NotesTab>` clone. Secondary may not exist
+  // yet (Option<NotesInstanceModel>); bail in that case — layout
+  // should already have given us a 0-sized rect via the visibility
+  // gate upstream, but this is defense-in-depth.
+  let Some(inst) = app.notes.instance(side) else {
+    return;
   };
+  let tabs = &inst.tabs;
+  let active = inst.active_tab;
   let show_tabs = tabs.len() > 1;
   let rows = Layout::vertical(if show_tabs {
     vec![
@@ -432,16 +434,16 @@ pub fn draw_notes_surface(
   };
   let content_area = rows[content_row];
 
-  let editor_active = app.notes_app.as_ref().is_some_and(|notes_app| {
+  let editor_active = app.notes.app.as_ref().is_some_and(|notes_app| {
     notes_app.notes_state == notes::app::NotesState::Editor
   });
   let popup_active = app
-    .notes_app
+    .notes.app
     .as_ref()
     .is_some_and(|notes_app| !notes_app.active_popup.is_none());
 
   if editor_active {
-    if let Some(notes_app) = app.notes_app.as_mut() {
+    if let Some(notes_app) = app.notes.app.as_mut() {
       notes_app.draw_editor_surface(frame, content_area);
       if popup_active {
         notes_app.draw_popup_overlay(frame, content_area);
@@ -453,7 +455,7 @@ pub fn draw_notes_surface(
   if preview_when_unfocused && !is_focused {
     draw_note_preview(frame, app, content_area, &tabs, active, theme);
     if popup_active {
-      if let Some(notes_app) = app.notes_app.as_mut() {
+      if let Some(notes_app) = app.notes.app.as_mut() {
         notes_app.draw_popup_overlay(frame, content_area);
       }
     }
@@ -529,7 +531,7 @@ pub fn draw_notes_surface(
   }
 
   if popup_active {
-    if let Some(notes_app) = app.notes_app.as_mut() {
+    if let Some(notes_app) = app.notes.app.as_mut() {
       notes_app.draw_popup_overlay(frame, content_area);
     }
   }
@@ -584,12 +586,12 @@ fn draw_note_preview(
   t: &crate::theme::Theme,
 ) {
   let selected = app
-    .notes_app
+    .notes.app
     .as_ref()
     .and_then(|notes_app| notes_app.get_current_note())
     .or_else(|| {
       tabs.get(active).and_then(|tab| {
-        app.notes_app.as_ref().and_then(|na| na.get_note(&tab.note_id))
+        app.notes.app.as_ref().and_then(|na| na.get_note(&tab.note_id))
       })
     });
   draw_notes_browser_preview(frame, area, selected, t);

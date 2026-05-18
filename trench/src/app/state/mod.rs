@@ -17,7 +17,9 @@ pub use chat::ChatState;
 pub use discovery::DiscoveryState;
 pub use feed::{AppView, FeedTab, FilterState, ItemCounts, NavDirection};
 pub use help::HelpState;
-pub use notes::{NotesContext, NotesMode, NotesTab};
+pub use notes::{
+  NotesContext, NotesInstanceModel, NotesMode, NotesPaneModel, NotesTab,
+};
 pub use panes::{FocusedReader, PANE_COUNT, PaneId, PaneInfo};
 pub use popups::{
   DiscoverResult, QuitPopupKind, QuitPopupState, TagPickerState,

@@ -128,9 +128,9 @@ fn footer_command_line(app: &App) -> Line<'static> {
     return Line::from(spans);
   }
 
-  if (app.focus.focused_pane == PaneId::Notes && app.notes_active)
+  if (app.focus.focused_pane == PaneId::Notes && app.notes.primary_visible)
     || (app.focus.focused_pane == PaneId::SecondaryNotes
-      && app.secondary_notes_active)
+      && app.notes.secondary_visible)
   {
     let side = if app.focus.focused_pane == PaneId::SecondaryNotes {
       FocusedReader::Secondary

@@ -100,6 +100,60 @@ pub struct NotesPaneModel {
   pub secondary_visible: bool,
 }
 
+impl NotesPaneModel {
+  /// Reference to the instance at `side`. Primary always exists;
+  /// secondary returns `None` when it's never been opened. Collapses
+  /// the `app.notes_mode_for_side` style accessor onto the data.
+  pub fn instance(
+    &self,
+    side: super::FocusedReader,
+  ) -> Option<&NotesInstanceModel> {
+    match side {
+      super::FocusedReader::Primary => Some(&self.primary),
+      super::FocusedReader::Secondary => self.secondary.as_ref(),
+    }
+  }
+
+  /// Mutable counterpart of [`instance`]. Same Option-shape for
+  /// secondary.
+  pub fn instance_mut(
+    &mut self,
+    side: super::FocusedReader,
+  ) -> Option<&mut NotesInstanceModel> {
+    match side {
+      super::FocusedReader::Primary => Some(&mut self.primary),
+      super::FocusedReader::Secondary => self.secondary.as_mut(),
+    }
+  }
+
+  /// Lazily-allocate secondary and return a mutable reference. Use when
+  /// a gesture wants to open secondary notes for the first time —
+  /// avoids the Option dance at call sites.
+  pub fn instance_or_init_mut(
+    &mut self,
+    side: super::FocusedReader,
+  ) -> &mut NotesInstanceModel {
+    match side {
+      super::FocusedReader::Primary => &mut self.primary,
+      super::FocusedReader::Secondary => {
+        self.secondary.get_or_insert_with(NotesInstanceModel::default)
+      }
+    }
+  }
+
+  /// Visibility flag for the given side. Centralizes the
+  /// `notes_visible / secondary_notes_visible` dispatch so call sites
+  /// don't `match` on side.
+  pub fn is_visible(&self, side: super::FocusedReader) -> bool {
+    match side {
+      super::FocusedReader::Primary => self.primary_visible,
+      super::FocusedReader::Secondary => {
+        self.secondary.is_some() && self.secondary_visible
+      }
+    }
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
