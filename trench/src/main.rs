@@ -603,6 +603,13 @@ fn migrate_legacy_config_dir() {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+  // Activate tread's bench sink if TREAD_BENCH=<path> is set.  Without
+  // this call the JSONL writer stays inert when tread is embedded in
+  // trench (its `init()` is only invoked from tread's standalone main).
+  // Cheap no-op when the env var isn't set.
+  tread::bench::init();
+  tread::bench::emit_us("trench_main_entered", 0);
+
   // --bench-render: TestBackend timing harness. Runs before any terminal
   // setup, log file rotation, or alt-screen entry — the bench needs a
   // clean stdout for `key=value` output and has no use for the normal
@@ -1047,6 +1054,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
       if let Some(rx) = app.tread_fetch_rx.as_ref() {
         match rx.try_recv() {
           Ok(result) => {
+            log::info!("[DIAG-7e21] tread_drain: result received");
+            tread::bench::emit_us("trench_tread_drain", 0);
             app.tread_fetch_rx = None;
             app.fulltext_loading = false;
             let Some(pending) = app.pending_tread_fetch.take() else {
@@ -1086,6 +1095,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
               }
             };
+            let t_init = std::time::Instant::now();
             let reader = tread::Reader::init(
               paper,
               None,
@@ -1095,6 +1105,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
               app.kitty_supported,
               Some(app.voice_controller.clone()),
             );
+            log::info!(
+              "[DIAG-7e21] Reader::init took {}µs",
+              t_init.elapsed().as_micros()
+            );
+            tread::bench::emit_us("trench_reader_init", t_init.elapsed().as_micros());
             app.apply_open_in_reader(action::Action::OpenInReader {
               target: pending.target,
               mode: pending.mode,
@@ -1103,6 +1118,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
               notes_context: pending.notes_context,
               reader,
             });
+            tread::bench::emit_us("trench_reader_opened", 0);
             app.clear_notification();
             app.mark_dirty();
           }

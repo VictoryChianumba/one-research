@@ -762,6 +762,8 @@ pub(super) fn spawn_paper_open(
 ) {
   let kitty_supported = app.kitty_supported;
   if let Some(id) = tread::extract_arxiv_id(&item.url) {
+    log::info!("[DIAG-7e21] click→spawn_tread id={id} title={}", item.title);
+    tread::bench::emit_us("trench_click_arxiv", 0);
     let (tx, rx) = mpsc::channel();
     let notes_context = app.pending_fulltext_context.take();
     app.tread_fetch_rx = Some(rx);
@@ -776,6 +778,8 @@ pub(super) fn spawn_paper_open(
     app.fulltext_loading = true;
     crate::services::spawn_tread_fetch(id, kitty_supported, tx);
   } else {
+    log::info!("[DIAG-7e21] click→spawn_fulltext url={}", item.url);
+    tread::bench::emit_us("trench_click_fulltext", 0);
     app.fulltext_for_secondary =
       matches!(target, crate::action::ReaderTarget::Secondary);
     app.fulltext_new_tab = matches!(mode, crate::action::OpenMode::NewTab);
