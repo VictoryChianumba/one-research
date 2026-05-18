@@ -6,6 +6,8 @@
 //! into feed_store / history_store / tag_store if cross-shard
 //! coordination becomes painful.
 
+pub mod item_store;
 pub mod workspace_store;
 
+pub use item_store::ItemStore;
 pub use workspace_store::Workspace;
