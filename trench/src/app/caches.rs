@@ -124,28 +124,9 @@ impl App {
     self.mutate_search_query(|q| q.clear());
   }
 
-  /// Mirror of `push_search_char` for the discovery palette.
-  pub fn push_discovery_char(&mut self, c: char) {
-    self.discovery.query.push(c);
-    self.discovery.query_lower = self.discovery.query.to_lowercase();
-  }
-
-  pub fn pop_discovery_char(&mut self) {
-    self.discovery.query.pop();
-    self.discovery.query_lower = self.discovery.query.to_lowercase();
-  }
-
-  pub fn clear_discovery_query(&mut self) {
-    self.discovery.query.clear();
-    self.discovery.query_lower.clear();
-  }
-
-  /// Set the discovery query to an arbitrary string (used by slash-palette
-  /// completion). Refreshes the lowercased mirror.
-  pub fn set_discovery_query(&mut self, s: String) {
-    self.discovery.query = s;
-    self.discovery.query_lower = self.discovery.query.to_lowercase();
-  }
+  // Discovery search-bar gestures live on `DiscoveryModel` directly
+  // after C7 PR 3 (ADR-005 §S5). Call sites use `app.discovery.push_char(c)`
+  // / `pop_char()` / `clear_query()` / `set_query(s)`.
 
   pub(crate) fn set_workflow_state_for_url(
     &mut self,

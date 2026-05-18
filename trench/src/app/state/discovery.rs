@@ -43,6 +43,40 @@ pub struct DiscoveryModel {
   pub palette: crate::primitives::ListState,
 }
 
+impl DiscoveryModel {
+  // ── Search-bar gestures ───────────────────────────────────────────────
+  //
+  // The four query mutators below all keep `query_lower` in lock-step with
+  // `query` so the per-frame palette filter pass (drawn at 60Hz) can do an
+  // ASCII compare without re-running `to_lowercase()` over a heap-allocated
+  // copy of the query each frame. Lifted from the `App` wrappers in
+  // `app/caches.rs` in C7 PR 3 (ADR-005 §S5).
+
+  /// Append a character to the search query.
+  pub fn push_char(&mut self, c: char) {
+    self.query.push(c);
+    self.query_lower = self.query.to_lowercase();
+  }
+
+  /// Pop the trailing character from the search query (no-op when empty).
+  pub fn pop_char(&mut self) {
+    self.query.pop();
+    self.query_lower = self.query.to_lowercase();
+  }
+
+  /// Clear the search query and its lowercase mirror.
+  pub fn clear_query(&mut self) {
+    self.query.clear();
+    self.query_lower.clear();
+  }
+
+  /// Replace the search query (used by slash-palette tab-completion).
+  pub fn set_query(&mut self, s: String) {
+    self.query = s;
+    self.query_lower = self.query.to_lowercase();
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -89,5 +123,53 @@ mod tests {
     let m = DiscoveryModel::default();
     assert_eq!(m.list.selected(), 0);
     assert_eq!(m.palette.selected(), 0);
+  }
+
+  #[test]
+  fn push_char_appends_and_mirrors_lowercase() {
+    // Invariant: `query_lower` always tracks `query`. Render hot path
+    // skips the per-frame `to_lowercase` heap alloc by reading the mirror.
+    let mut m = DiscoveryModel::default();
+    m.push_char('A');
+    m.push_char('B');
+    assert_eq!(m.query, "AB");
+    assert_eq!(m.query_lower, "ab");
+  }
+
+  #[test]
+  fn pop_char_shortens_and_mirrors() {
+    let mut m = DiscoveryModel::default();
+    m.set_query("Hello".to_string());
+    m.pop_char();
+    assert_eq!(m.query, "Hell");
+    assert_eq!(m.query_lower, "hell");
+  }
+
+  #[test]
+  fn pop_char_on_empty_is_a_noop() {
+    // Regression guard: pop on empty must not panic or desync the mirror.
+    let mut m = DiscoveryModel::default();
+    m.pop_char();
+    assert!(m.query.is_empty());
+    assert!(m.query_lower.is_empty());
+  }
+
+  #[test]
+  fn clear_query_resets_both_fields() {
+    let mut m = DiscoveryModel::default();
+    m.set_query("HasContent".to_string());
+    m.clear_query();
+    assert!(m.query.is_empty());
+    assert!(m.query_lower.is_empty());
+  }
+
+  #[test]
+  fn set_query_replaces_existing_content() {
+    // Tab-completion path: arbitrary string replaces whatever was typed.
+    let mut m = DiscoveryModel::default();
+    m.set_query("first".to_string());
+    m.set_query("/search".to_string());
+    assert_eq!(m.query, "/search");
+    assert_eq!(m.query_lower, "/search");
   }
 }

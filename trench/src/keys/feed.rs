@@ -27,7 +27,7 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
     if let KeyCode::Char(c) = key.code {
       if c != 'q' {
         app.discovery.search_focused = true;
-        app.push_discovery_char(c);
+        app.discovery.push_char(c);
         return;
       }
     }
@@ -609,7 +609,7 @@ fn handle_discovery_search_bar(key: KeyEvent, app: &mut App) -> bool {
         &app.discovery.query,
         app.discovery.palette.selected(),
       ) {
-        app.set_discovery_query(completion);
+        app.discovery.set_query(completion);
         app.discovery.palette.reset();
       }
     }
@@ -619,7 +619,7 @@ fn handle_discovery_search_bar(key: KeyEvent, app: &mut App) -> bool {
         app.discovery.palette.reset();
         if query.starts_with('/') {
           app.discovery.search_focused = false;
-          app.clear_discovery_query();
+          app.discovery.clear_query();
           let cmd = crate::commands::parser::parse_slash_command(&query);
           crate::commands::dispatch::dispatch_slash_command(app, cmd);
         } else {
@@ -630,17 +630,17 @@ fn handle_discovery_search_bar(key: KeyEvent, app: &mut App) -> bool {
     }
     KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
       app.discovery.force_new = true;
-      app.clear_discovery_query();
+      app.discovery.clear_query();
       app.discovery.palette.reset();
     }
     KeyCode::Backspace => {
-      app.pop_discovery_char();
+      app.discovery.pop_char();
       if !app.discovery.query.starts_with('/') {
         app.discovery.palette.reset();
       }
     }
     KeyCode::Char(c) => {
-      app.push_discovery_char(c);
+      app.discovery.push_char(c);
       app.discovery.palette.reset();
     }
     _ => {}
