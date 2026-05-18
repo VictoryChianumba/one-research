@@ -30,6 +30,11 @@ When you change behaviour described here, update this file in the same commit.
 | **ReaderTarget** | Discriminator on `Action::OpenInReader` naming which reader surface receives an item: `Primary`, `Secondary`, `Popup`. |
 | **NotesPaneModel** | Composition-root model for the notes dock. Owns the shared `notes::app::App` persistence backend, the primary `NotesInstanceModel` (always allocated), an optional secondary, and two visibility flags. Sibling to `ReaderPaneModel`. Introduced by slice 3 (`ADR-003`). |
 | **NotesInstanceModel** | One notes context (primary or secondary). Owns tabs, active tab, `NotesMode`, and the optional `NotesContext` (paper anchoring). Per-instance — primary and secondary can be in different modes and tied to different papers. Pure content; visibility lives on the parent `NotesPaneModel`. |
+| **Source** | Trait implemented by bulk-ingestion modules (`ArxivSource`, `HuggingFaceSource`, `RssSource`, `OpenReviewSource`, `CoreSource`). One `fetch(&FetchContext) -> Result<Vec<FeedItem>>` method plus `name()` + `host_group()` for the orchestrator's scheduling. Lives in `trench/src/ingestion/pipeline.rs`. Introduced by C10 (`ADR-004`). |
+| **EnrichmentSource** | Sibling trait for the post-fetch enrichment phase (`SemanticScholarEnrichment`, `HuggingFaceRepoEnrichment`). One `enrich(&mut [FeedItem], &FetchContext)` method — best-effort, no `Result`. Runs single-threaded after the parallel fetch scope joins. `Send` only (not `Sync`) — see ADR-004 §D4. |
+| **FetchContext** | Per-refresh context passed to every `Source::fetch` / `EnrichmentSource::enrich` call. Carries `&Config`, `&Path` (cache_dir), and convenience methods `http()` and `with_retry(policy, make)` that forward to `trench_http`. |
+| **RetryPolicy** | HTTP retry envelope (`backoffs_ms` + `retriable: fn(u16) -> bool`). Lives in `crates/http`. `RetryPolicy::arxiv()` matches the deleted inline `fetch_arxiv_with_retry` constants (3000ms / 6000ms backoff, retries 429 \| 503). `RetryPolicy::none()` for one-shot reads. |
+| **host group** | Scheduling tag returned by `Source::host_group()`. Sources sharing a tag run serially within one thread; different groups run in parallel. Today's groups: `"arxiv"` (arxiv + huggingface — same `export.arxiv.org` envelope), `"openreview"`, `"core"`, `"rss"`. |
 
 ### Term hygiene
 
@@ -85,7 +90,8 @@ The refactor is incremental. Lazy rollout — a pane is refactored when a featur
 | **Reader** | Slice 2 accepted (2026-05-16) | ADR-002. 6 PRs landed. PR 5 scoped down from "full signature flip" to "pre_draw landing" to avoid the per-frame allocation regression slice 1 PR 4c introduced — full flip remains available if a testability driver forces it. |
 | **Popup reader** | Slice 2 accepted | Folded into ADR-002 as `ReaderPopupModel`. |
 | **Voice** | Pending | Separate slice after slice 2. `VoiceModel` on `App`. Trigger: ElevenLabs credits + feature ask. |
-| **Notes** | Slice 3 in flight (2026-05-18) | ADR-003. PR 1 lands skeletons + ADR + vocabulary. PRs 2-4 migrate state, lift gestures, tripwire-lock. Trigger: audit-grade-alone (proactive cleanup, same justification shape as ADR-002). |
+| **Notes** | Slice 3 accepted (2026-05-18) | ADR-003. 4 PRs landed: PR 1 skeletons + ADR + vocabulary, PR 2 state migration (11 fields → `App.notes`), PR 3 gesture methods on `NotesPaneModel`, PR 4 tripwires I8-I11 in `scripts/check-render-purification.sh`. |
+| **Ingestion seam** | C10 PR 1 landed (2026-05-18) | ADR-004. `Source` / `EnrichmentSource` traits + `FetchContext` + `RetryPolicy` skeletons in place. PR 2 migrates 5 sources + 2 enrichments + orchestrator + deletes `fetch_arxiv_with_retry`. PR 3 wires `scripts/check-ingestion-seam.sh` + flips ADR-004 to Accepted. |
 | **Chat** | Legacy | Lazy. No pressure to refactor. |
 | **Repo Viewer** | Legacy | Lazy. |
 | **Settings overlay** | Legacy | Lazy. Already partly migrated to `Action::DismissTopModal` / `Action::OpenSettings`. |
@@ -97,6 +103,7 @@ The refactor is incremental. Lazy rollout — a pane is refactored when a featur
 
 - `docs/adr/ADR-001-render-purification.md` — the parent per-pane refactor decision (slice 1, feed).
 - `docs/adr/ADR-002-reader-slice.md` — slice 2 reader-pane extension.
-- `docs/adr/ADR-003-notes-slice.md` — slice 3 notes-dock consolidation (in flight; PR 1 lands skeletons).
+- `docs/adr/ADR-003-notes-slice.md` — slice 3 notes-dock consolidation (Accepted 2026-05-18; 4 PRs landed).
+- `docs/adr/ADR-004-ingestion-seam.md` — C10 `Source` + `EnrichmentSource` + `FetchContext` (Proposed 2026-05-18; PR 1 landed).
 - `docs/audits/` — periodic architectural audits with letter-graded scorecards. Latest: `2026-05-18-architectural-audit.md` (C+, unchanged from 2026-05-16). Run `/improve-codebase-architecture` to produce a new one.
 - `CLAUDE.md` — project-wide rules. CONTEXT.md is the *language* layer above those.

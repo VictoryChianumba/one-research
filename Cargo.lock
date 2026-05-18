@@ -3780,6 +3780,7 @@ dependencies = [
 name = "trench-http"
 version = "0.1.19"
 dependencies = [
+ "log",
  "reqwest 0.12.28",
 ]
 

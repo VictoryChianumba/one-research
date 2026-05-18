@@ -6,3 +6,4 @@ rust-version.workspace = true
 
 [dependencies]
 reqwest = { version = "0.12", features = ["blocking", "json"] }
+log = "0.4"
