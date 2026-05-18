@@ -193,27 +193,12 @@ fn dirs_home() -> Option<PathBuf> {
 }
 
 pub fn load() -> HashMap<String, WorkflowState> {
-  let path = match state_path() {
-    Some(p) => p,
-    None => return HashMap::new(),
-  };
-
-  let bytes = match fs::read(&path) {
-    Ok(b) => b,
-    Err(_) => return HashMap::new(),
-  };
-
-  // Tolerant load: parse per-key so unknown variants (e.g. legacy "skimmed")
-  // fall back to Inbox instead of wiping the entire map.
+  let Some(path) = state_path() else { return HashMap::new() };
+  // Tolerant load: read as a raw value map first via the seam so legacy
+  // variants (e.g. "skimmed") fall back per-key to Inbox instead of
+  // wiping the entire map.
   let raw: HashMap<String, serde_json::Value> =
-    match serde_json::from_slice(&bytes) {
-      Ok(m) => m,
-      Err(e) => {
-        quarantine_corrupted(&path, "trench/state", &e);
-        return HashMap::new();
-      }
-    };
-
+    load_json(&path, "trench/state");
   raw
     .into_iter()
     .map(|(k, v)| {
@@ -225,25 +210,9 @@ pub fn load() -> HashMap<String, WorkflowState> {
 }
 
 pub fn save(state: &HashMap<String, WorkflowState>) {
-  let path = match state_path() {
-    Some(p) => p,
-    None => return,
-  };
-
-  // Create parent dirs if needed — silently ignore failure
-  if let Some(parent) = path.parent() {
-    let _ = fs::create_dir_all(parent);
-  }
-
-  if let Ok(json) = serde_json::to_vec(state) {
-    if let Err(e) = atomic_write(&path, &json) {
-      log::error!(
-        "trench/state: atomic_write failed at {}: {e}",
-        path.display()
-      );
-    }
-    set_private(&path);
-  }
+  let Some(path) = state_path() else { return };
+  save_json(state, &path, "trench/state");
+  set_private(&path);
 }
 
 // ── UI state (last_read, etc.) ─────────────────────────────────────────────
@@ -271,37 +240,14 @@ fn ui_path() -> Option<PathBuf> {
 }
 
 pub fn load_ui() -> UiState {
-  let path = match ui_path() {
-    Some(p) => p,
-    None => return UiState::default(),
-  };
-  let bytes = match fs::read(&path) {
-    Ok(b) => b,
-    Err(_) => return UiState::default(),
-  };
-  match serde_json::from_slice(&bytes) {
-    Ok(s) => s,
-    Err(e) => {
-      quarantine_corrupted(&path, "trench/ui", &e);
-      UiState::default()
-    }
-  }
+  let Some(path) = ui_path() else { return UiState::default() };
+  load_json(&path, "trench/ui")
 }
 
 pub fn save_ui(state: &UiState) {
-  let path = match ui_path() {
-    Some(p) => p,
-    None => return,
-  };
-  if let Some(parent) = path.parent() {
-    let _ = fs::create_dir_all(parent);
-  }
-  if let Ok(json) = serde_json::to_vec(state) {
-    if let Err(e) = atomic_write(&path, &json) {
-      log::error!("trench/ui: atomic_write failed at {}: {e}", path.display());
-    }
-    set_private(&path);
-  }
+  let Some(path) = ui_path() else { return };
+  save_json(state, &path, "trench/ui");
+  set_private(&path);
 }
 
 #[cfg(test)]

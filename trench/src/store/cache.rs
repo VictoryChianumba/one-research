@@ -1,4 +1,3 @@
-use std::fs;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
@@ -23,23 +22,8 @@ fn cache_path() -> Option<PathBuf> {
 }
 
 pub fn load() -> Vec<FeedItem> {
-  let path = match cache_path() {
-    Some(p) => p,
-    None => return Vec::new(),
-  };
-
-  let bytes = match fs::read(&path) {
-    Ok(b) => b,
-    Err(_) => return Vec::new(),
-  };
-
-  let mut items: Vec<FeedItem> = match serde_json::from_slice(&bytes) {
-    Ok(v) => v,
-    Err(e) => {
-      super::quarantine_corrupted(&path, "trench/cache", &e);
-      return Vec::new();
-    }
-  };
+  let Some(path) = cache_path() else { return Vec::new() };
+  let mut items: Vec<FeedItem> = super::load_json(&path, "trench/cache");
   // Defense-in-depth: items persisted before sanitize-at-ingestion shipped
   // may have raw escape sequences baked into their string fields. Idempotent
   // re-sanitize protects against terminal-hijack via the cache.
@@ -53,24 +37,12 @@ pub fn load() -> Vec<FeedItem> {
 /// thread and by `flush_blocking` on shutdown. UI-thread callers should
 /// prefer `queue_save` to avoid hitching during a refresh batch.
 pub fn save(items: &[FeedItem]) {
-  let path = match cache_path() {
-    Some(p) => p,
-    None => return,
-  };
-
-  if let Some(parent) = path.parent() {
-    let _ = fs::create_dir_all(parent);
-  }
-
-  if let Ok(json) = serde_json::to_vec(items) {
-    if let Err(e) = super::atomic_write(&path, &json) {
-      log::error!(
-        "trench/cache: atomic_write failed at {}: {e}",
-        path.display()
-      );
-    }
-    crate::store::set_private(&path);
-  }
+  let Some(path) = cache_path() else { return };
+  super::save_json(&items, &path, "trench/cache");
+  // Belt-and-suspenders re-apply of 0o600 — `atomic_write` already produces
+  // owner-only files, but the redundancy here is intentional defence in
+  // depth against any future change that drops the mode bit.
+  crate::store::set_private(&path);
 }
 
 enum WriterMsg {
