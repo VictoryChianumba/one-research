@@ -1,6 +1,6 @@
 # ADR-008 — `FrameLayout` carries layout-derived inputs into a layout-aware `apply_frame_layout` hook
 
-- **Status:** Proposed (2026-05-18). PR 1 lands this ADR + `FrameLayout` struct + `App::apply_frame_layout` hook (empty body) + CONTEXT.md vocabulary + smoke tests. PR 2 wires the hook at the layout pass and migrates `reader.rs:424-428` "Intentional render-time mutation" into it. PR 3 lands tripwires N1-N3 + flips status to Accepted.
+- **Status:** Accepted (2026-05-18). All 3 PRs landed: PR 1 = ADR + `FrameLayout` + empty `apply_frame_layout` + 3 smoke tests + CONTEXT.md vocabulary, PR 2 = wired the hook + migrated the marker site (5 files, +112 / −30), PR 3 = N1-N3 tripwires in `scripts/check-frame-layout.sh` + ci.sh wired + this status flip.
 - **Date:** 2026-05-18
 - **Owner:** Victory Chianumba
 - **Supersedes:** none

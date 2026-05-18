@@ -359,6 +359,10 @@ pub fn draw_help_overlay(frame: &mut Frame, app: &mut App) {
 
   let total_lines = body_lines.len();
   let max_scroll = total_lines.saturating_sub(body_area.height as usize);
+  // SEAM-EXEMPT: help popup's scroll bound is sized against `body_area`
+  // — a Rect local to this render fn that no other code path consumes.
+  // Lifting into FrameLayout would mean adding a field + helper for
+  // one in-popup mutation that has no cross-pane analog (ADR-008 §S2).
   app.help.scroll.set_viewport(body_area.height as usize);
   app.help.scroll.set_max(max_scroll);
   let scroll = app.help.scroll.offset() as u16;
