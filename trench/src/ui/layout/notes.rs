@@ -438,7 +438,8 @@ pub fn draw_notes_surface(
     notes_app.notes_state == notes::app::NotesState::Editor
   });
   let popup_active = app
-    .notes.app
+    .notes
+    .app
     .as_ref()
     .is_some_and(|notes_app| !notes_app.active_popup.is_none());
 
@@ -586,7 +587,8 @@ fn draw_note_preview(
   t: &crate::theme::Theme,
 ) {
   let selected = app
-    .notes.app
+    .notes
+    .app
     .as_ref()
     .and_then(|notes_app| notes_app.get_current_note())
     .or_else(|| {

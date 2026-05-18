@@ -8,6 +8,11 @@
 //! the content produced; `set_viewport` is called when the visible window
 //! resizes. `set_max` clamps `offset` if the content shrank below it.
 
+// Tested forward-design: paging/scroll-to-edge helpers are exercised by
+// the in-file unit tests but not yet wired from pane key handlers. See
+// audit C11 (2026-05-18).
+#![allow(dead_code)]
+
 #[derive(Debug, Clone, Default)]
 pub struct ScrollState {
   offset: usize,

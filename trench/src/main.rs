@@ -185,9 +185,9 @@ mod panic_msg_tests {
           panic!("simulated worker failure");
         }));
       // The closure body is unconditional `panic!`, so the closure's return
-      // type is `!` and `outcome` is provably `Err(_)` — let-else makes that
-      // explicit and avoids an irrefutable-pattern lint.
-      let Err(payload) = outcome else { unreachable!() };
+      // type is `!` and `outcome` is provably `Err(_)`. Rust 2024 sees
+      // through `Result<!, _>` and `unwrap_err()` is the lint-clean form.
+      let payload = outcome.unwrap_err();
       let msg = panic_msg(payload);
       let _ = tx_panic.send(Err(format!("panicked: {msg}")));
     })

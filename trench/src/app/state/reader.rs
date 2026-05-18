@@ -7,6 +7,9 @@ use super::NotesContext;
 /// into `tread::PaperData::from_plain_lines` and `arxiv_id` stays `None`.
 pub struct ReaderTab {
   pub title: String,
+  /// Used by the planned `:reload` command in tread to refetch arXiv
+  /// sources. Slice 2 follow-up.
+  #[allow(dead_code)]
   pub arxiv_id: Option<String>,
   pub notes_context: Option<NotesContext>,
   pub reader: tread::Reader,

@@ -10,6 +10,11 @@
 //! Ready state carries it. The primitive only distinguishes
 //! "Disconnected" from "Ready" because the former never produced a value.
 
+// Tested forward-design: methods like `is_idle`, `is_ready`, `result` are
+// exercised by the in-file unit tests but not yet wired from main render
+// paths. See audit C11 (downgrade to "nuance", 2026-05-18).
+#![allow(dead_code)]
+
 use std::sync::mpsc;
 
 /// Async load state machine. Default is `Idle`.

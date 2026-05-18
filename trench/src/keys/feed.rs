@@ -2,8 +2,8 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::sync::mpsc;
 
 use super::super::{
-  do_refresh, kbd_scroll_ok, open_url, spawn_ai_discovery,
-  spawn_fulltext_fetch, spawn_repo_open, spawn_tread_fetch, truncate_for_notif,
+  do_refresh, kbd_scroll_ok, open_url, spawn_ai_discovery, spawn_repo_open,
+  truncate_for_notif,
 };
 use super::remember_fulltext_paper_context;
 use crate::app::{App, AppView, FeedTab, PaneId, RepoContext, RepoPane};

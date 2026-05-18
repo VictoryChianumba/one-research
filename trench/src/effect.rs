@@ -21,6 +21,10 @@ pub enum Effect {
 
   /// An item's workflow state transitioned (Inbox → Read, etc.).
   /// Observer invalidates: visible_cache, counts_cache.
+  /// Fields carried for future cache-invalidation precision (per-URL /
+  /// per-state); observers today drain the whole cache. ADR-001 Effect
+  /// vocabulary — read by the typed envelope, not the consumer match.
+  #[allow(dead_code)]
   WorkflowStateChanged { url: String, state: WorkflowState },
 
   /// History was mutated — entry added, removed, or modified in place.

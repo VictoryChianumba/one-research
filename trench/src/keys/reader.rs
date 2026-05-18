@@ -1,9 +1,6 @@
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
-use std::sync::mpsc;
 
-use super::super::{
-  spawn_ai_discovery, spawn_fulltext_fetch, truncate_for_notif,
-};
+use super::super::{spawn_ai_discovery, truncate_for_notif};
 use super::remember_fulltext_paper_context;
 use crate::app::{App, FeedTab, FocusedReader, PaneId};
 

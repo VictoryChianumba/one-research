@@ -22,6 +22,9 @@ pub enum ReaderTarget {
   /// Embedded secondary reader pane (visible when split or dual is active).
   Secondary,
   /// Floating popup reader (`Ldr+Enter`).
+  /// Load-bearing vocabulary per CONTEXT.md / ADR-002 — kept while
+  /// async-load lifecycle migrates onto `OpenInReader` (Slice 2 follow-up).
+  #[allow(dead_code)]
   Popup,
 }
 
@@ -35,6 +38,9 @@ pub enum OpenMode {
 
 pub enum Action {
   /// Top of the modal stack should be dismissed (Esc, q, etc.).
+  /// Load-bearing vocabulary per CONTEXT.md / ADR-002 — settings overlay
+  /// is partly migrated to this verb; full migration is a Slice 2 follow-up.
+  #[allow(dead_code)]
   DismissTopModal,
   /// Generic "open settings view" — used by Sources to leave back to
   /// Settings on Esc/q.

@@ -9,6 +9,11 @@
 //! primitive — surfaces that need it own the anchor as a separate field
 //! and call `set_selected` for direct cursor placement.
 
+// Tested forward-design: `page_down`/`page_up`/`go_to_top`/`go_to_bottom`
+// etc. are exercised by the in-file unit tests but not yet wired into
+// pane-level key handlers. See audit C11 (2026-05-18).
+#![allow(dead_code)]
+
 #[derive(Debug, Clone, Default)]
 pub struct ListState {
   count: usize,

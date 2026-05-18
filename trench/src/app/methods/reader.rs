@@ -61,7 +61,9 @@ impl App {
     side: FocusedReader,
   ) -> Option<NotesContext> {
     let tab = match side {
-      FocusedReader::Primary => self.reader.primary.tabs.get(self.reader.primary.active_tab),
+      FocusedReader::Primary => {
+        self.reader.primary.tabs.get(self.reader.primary.active_tab)
+      }
       FocusedReader::Secondary => {
         self.reader.secondary.tabs.get(self.reader.secondary.active_tab)
       }
@@ -74,12 +76,19 @@ impl App {
   /// sites also need the per-tab `ImageState` for `tread::after_draw`
   /// — use `reader_active_tab_mut()` for both at once.
   pub fn reader_editor_mut(&mut self) -> Option<&mut tread::Reader> {
-    self.reader.primary.tabs.get_mut(self.reader.primary.active_tab).map(|t| &mut t.reader)
+    self
+      .reader
+      .primary
+      .tabs
+      .get_mut(self.reader.primary.active_tab)
+      .map(|t| &mut t.reader)
   }
 
   pub fn reader_secondary_editor_mut(&mut self) -> Option<&mut tread::Reader> {
     self
-      .reader.secondary.tabs
+      .reader
+      .secondary
+      .tabs
       .get_mut(self.reader.secondary.active_tab)
       .map(|t| &mut t.reader)
   }

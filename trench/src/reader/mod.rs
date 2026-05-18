@@ -22,11 +22,16 @@ pub struct ReaderInstanceModel {
 }
 
 impl ReaderInstanceModel {
+  /// Slice 2 stub: callers use `ReaderInstanceModel::default()` today;
+  /// `new()` lives here for symmetry with sibling models and future use.
+  #[allow(dead_code)]
   pub fn new() -> Self {
     Self::default()
   }
 
   /// Whether this instance currently holds at least one paper.
+  /// Slice 2 stub: tested in this module, not yet called from render path.
+  #[allow(dead_code)]
   pub fn is_loaded(&self) -> bool {
     !self.tabs.is_empty()
   }
@@ -118,11 +123,16 @@ pub struct ReaderPaneModel {
 }
 
 impl ReaderPaneModel {
+  /// Slice 2 stub — see [`ReaderInstanceModel::new`] for rationale.
+  #[allow(dead_code)]
   pub fn new() -> Self {
     Self::default()
   }
 
   /// Reference to whichever instance currently has focus.
+  /// Slice 2 stub: focus dispatch is still inline in render today;
+  /// these helpers will replace those when the dual-reader gestures land.
+  #[allow(dead_code)]
   pub fn focused_instance(&self) -> &ReaderInstanceModel {
     match self.focused {
       FocusedReader::Primary => &self.primary,
@@ -140,6 +150,8 @@ impl ReaderPaneModel {
 
   /// Set focus to `target`.  Returns the previous focus so callers can
   /// branch on "actually changed" without re-reading.
+  /// Slice 2 stub — see [`focused_instance`] for rationale.
+  #[allow(dead_code)]
   pub fn set_focus(&mut self, target: FocusedReader) -> FocusedReader {
     let prev = self.focused;
     self.focused = target;
@@ -147,6 +159,8 @@ impl ReaderPaneModel {
   }
 
   /// Swap focus between primary and secondary.  Returns the new focus.
+  /// Slice 2 stub — see [`focused_instance`] for rationale.
+  #[allow(dead_code)]
   pub fn toggle_focus(&mut self) -> FocusedReader {
     self.focused = match self.focused {
       FocusedReader::Primary => FocusedReader::Secondary,
@@ -182,9 +196,7 @@ impl Default for ReaderPaneModel {
 #[derive(Default)]
 pub struct ReaderPopupModel {
   pub active: bool,
-  pub rx: Option<
-    std::sync::mpsc::Receiver<Result<tread::PaperData, String>>,
-  >,
+  pub rx: Option<std::sync::mpsc::Receiver<Result<tread::PaperData, String>>>,
   pub editor: Option<tread::Reader>,
   pub image_state: tread::ImageState,
   pub burst: tread::BurstTracker,
@@ -198,6 +210,8 @@ pub struct ReaderPopupModel {
 }
 
 impl ReaderPopupModel {
+  /// Slice 2 stub — see [`ReaderInstanceModel::new`] for rationale.
+  #[allow(dead_code)]
   pub fn new() -> Self {
     Self::default()
   }
@@ -205,6 +219,9 @@ impl ReaderPopupModel {
   /// Whether the popup is currently displayed *or* loading.  Equivalent
   /// to the historical `app.reader_popup_active` flag but derives from
   /// the data instead of trusting the caller to keep the flag in sync.
+  /// Slice 2 stub: callers still read `self.active` directly; this
+  /// derives-from-data helper takes over when the flag is removed.
+  #[allow(dead_code)]
   pub fn is_open(&self) -> bool {
     self.active || self.editor.is_some() || self.rx.is_some()
   }
@@ -230,6 +247,8 @@ impl ReaderPopupModel {
 /// alongside `&mut ReaderPaneModel` / `&mut ReaderPopupModel`.  Lands
 /// properly in PR 5 once the render flip happens; PR 1 ships the
 /// shell so call sites have something to import.
+/// Load-bearing vocabulary per CONTEXT.md; constructed by PR 5.
+#[allow(dead_code)]
 pub struct ReaderContext<'a> {
   pub workspace: &'a crate::data::workspace_store::Workspace,
   pub theme: ui_theme::Theme,
