@@ -33,7 +33,7 @@ mod view_models;
 mod workflows;
 use services::{
   spawn_ai_discovery, spawn_discovery, spawn_fetch, spawn_fulltext_fetch,
-  spawn_repo_dir, spawn_repo_file, spawn_repo_open,
+  spawn_repo_dir, spawn_repo_file, spawn_repo_open, spawn_tread_fetch,
 };
 
 use app::{App, FocusedReader, PaneId, RepoFetchResult};
@@ -950,46 +950,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                   "reader_open: {} blocks from fetcher",
                   fetched_paper.blocks.len()
                 );
-                // arxiv URLs get the rich LaTeX path via fetch_paper —
-                // structured math, tables, figures.  ~2s blocking; v2
-                // can background on a worker.  Non-arxiv keeps the
-                // PaperData the fetcher already produced (HTML walked
-                // by from_html, or summary plain-text).  Inline figure
-                // support follows the host terminal capability.
+                // arxiv URLs get the rich LaTeX path via `tread::fetch_paper`
+                // — structured math, tables, figures — which used to block
+                // the UI for ~2s here.  Spawn it on a worker instead and
+                // park the open-reader context in `app.pending_tread_fetch`;
+                // the drain block below picks it up on a later loop tick.
+                // Non-arxiv URLs still complete inline because the fulltext
+                // result IS the final paper.
                 let notes_context = app.pending_fulltext_context.take();
                 let title = app.last_read.clone().unwrap_or_default();
                 let detected_arxiv_id = notes_context
                   .as_ref()
                   .and_then(|ctx| tread::extract_arxiv_id(&ctx.paper.url));
                 let kitty_supported = app.kitty_supported;
-                let (arxiv_id, paper) = if let Some(id) = detected_arxiv_id {
-                  match tread::fetch_paper(&id, kitty_supported) {
-                    Ok(p) => (Some(id), p),
-                    Err(e) => {
-                      log::warn!(
-                        "tread::fetch_paper failed for {id}, using fetcher result: {e}"
-                      );
-                      (
-                        notes_context.as_ref().map(|ctx| ctx.paper.id.clone()),
-                        fetched_paper,
-                      )
-                    }
-                  }
-                } else {
-                  (
-                    notes_context.as_ref().map(|ctx| ctx.paper.id.clone()),
-                    fetched_paper,
-                  )
-                };
-                let reader = tread::Reader::init(
-                  paper,
-                  None,
-                  arxiv_id.clone(),
-                  80,
-                  24,
-                  kitty_supported,
-                  Some(app.voice_controller.clone()),
-                );
                 let target = if app.fulltext_for_secondary {
                   action::ReaderTarget::Secondary
                 } else {
@@ -1000,6 +973,40 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 } else {
                   action::OpenMode::ReplaceActive
                 };
+                app.fulltext_for_secondary = false;
+                app.fulltext_new_tab = false;
+
+                if let Some(id) = detected_arxiv_id {
+                  // arxiv path: defer.  Stays in `fulltext_loading=true`
+                  // so the user keeps seeing the loading indicator until
+                  // the tread fetch completes.
+                  let (tread_tx, tread_rx) = std::sync::mpsc::channel();
+                  spawn_tread_fetch(id.clone(), kitty_supported, tread_tx);
+                  app.tread_fetch_rx = Some(tread_rx);
+                  app.pending_tread_fetch = Some(crate::app::PendingTreadFetch {
+                    arxiv_id: id,
+                    title,
+                    notes_context,
+                    fallback_paper: fetched_paper,
+                    target,
+                    mode,
+                  });
+                  app.fulltext_loading = true;
+                  app.mark_dirty();
+                  continue;
+                }
+
+                // Non-arxiv path: complete immediately with fulltext data.
+                let arxiv_id = notes_context.as_ref().map(|ctx| ctx.paper.id.clone());
+                let reader = tread::Reader::init(
+                  fetched_paper,
+                  None,
+                  arxiv_id.clone(),
+                  80,
+                  24,
+                  kitty_supported,
+                  Some(app.voice_controller.clone()),
+                );
                 app.apply_open_in_reader(action::Action::OpenInReader {
                   target,
                   mode,
@@ -1008,8 +1015,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                   notes_context,
                   reader,
                 });
-                app.fulltext_for_secondary = false;
-                app.fulltext_new_tab = false;
                 app.clear_notification();
               }
               Err(e) => {
@@ -1028,6 +1033,98 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             app.pending_fulltext_context = None;
             app
               .set_notification("Fetch error: thread disconnected".to_string());
+            app.mark_dirty();
+          }
+          Err(std::sync::mpsc::TryRecvError::Empty) => {}
+        }
+      }
+
+      // ── Drain tread (arxiv rich LaTeX) fetch ──────────────────────────
+      // Stage 2 of the arxiv path: fulltext yielded an arxiv URL, we
+      // spawned `tread::fetch_paper` on a worker, and now its result
+      // is ready.  Completes the deferred reader open with the rich
+      // paper data (or falls back to the fulltext result on error).
+      if let Some(rx) = app.tread_fetch_rx.as_ref() {
+        match rx.try_recv() {
+          Ok(result) => {
+            app.tread_fetch_rx = None;
+            app.fulltext_loading = false;
+            let Some(pending) = app.pending_tread_fetch.take() else {
+              log::warn!(
+                "tread drain: result arrived but no pending context — dropping"
+              );
+              app.mark_dirty();
+              continue;
+            };
+            let paper = match result {
+              Ok(p) => {
+                log::debug!(
+                  "tread drain: {} blocks for {}",
+                  p.blocks.len(),
+                  pending.arxiv_id
+                );
+                p
+              }
+              Err(e) => {
+                log::warn!(
+                  "tread drain: fetch_paper failed for {}, using fulltext fallback: {e}",
+                  pending.arxiv_id
+                );
+                pending.fallback_paper
+              }
+            };
+            let reader = tread::Reader::init(
+              paper,
+              None,
+              Some(pending.arxiv_id.clone()),
+              80,
+              24,
+              app.kitty_supported,
+              Some(app.voice_controller.clone()),
+            );
+            app.apply_open_in_reader(action::Action::OpenInReader {
+              target: pending.target,
+              mode: pending.mode,
+              title: pending.title,
+              arxiv_id: Some(pending.arxiv_id),
+              notes_context: pending.notes_context,
+              reader,
+            });
+            app.clear_notification();
+            app.mark_dirty();
+          }
+          Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+            log::debug!("tread drain: channel disconnected");
+            app.tread_fetch_rx = None;
+            app.fulltext_loading = false;
+            // Try the fulltext fallback before giving up so the user
+            // still gets a reader, just with less rich content.
+            if let Some(pending) = app.pending_tread_fetch.take() {
+              let reader = tread::Reader::init(
+                pending.fallback_paper,
+                None,
+                Some(pending.arxiv_id.clone()),
+                80,
+                24,
+                app.kitty_supported,
+                Some(app.voice_controller.clone()),
+              );
+              app.apply_open_in_reader(action::Action::OpenInReader {
+                target: pending.target,
+                mode: pending.mode,
+                title: pending.title,
+                arxiv_id: Some(pending.arxiv_id),
+                notes_context: pending.notes_context,
+                reader,
+              });
+              app.set_notification(
+                "Rich-LaTeX fetch failed; using fulltext fallback".to_string(),
+              );
+            } else {
+              app.set_notification(
+                "Fetch error: tread thread disconnected".to_string(),
+              );
+            }
             app.mark_dirty();
           }
           Err(std::sync::mpsc::TryRecvError::Empty) => {}

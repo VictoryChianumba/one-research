@@ -145,6 +145,16 @@ pub struct App {
   pub fulltext_rx: Option<Receiver<Result<tread::PaperData, String>>>,
   pub fulltext_loading: bool,
   pub pending_fulltext_context: Option<NotesContext>,
+  // Stage 2 of the arxiv path: after fulltext drains we kick off the
+  // rich-LaTeX `tread::fetch_paper` on its own worker.  This receiver
+  // is the channel from that worker; `pending_tread_fetch` holds the
+  // context we need to finish opening the reader once it returns
+  // (target pane, mode, title, notes context, plus the fulltext
+  // result we'll fall back to if the arxiv fetch errors).  Both are
+  // populated together in main.rs's fulltext drain Ok branch and
+  // cleared together by the tread drain Ok / Err / Disconnect branches.
+  pub tread_fetch_rx: Option<Receiver<Result<tread::PaperData, String>>>,
+  pub pending_tread_fetch: Option<PendingTreadFetch>,
   // Background repo fetch (repo viewer)
   pub repo_fetch_rx: Option<Receiver<RepoFetchResult>>,
 
@@ -187,6 +197,24 @@ pub struct App {
 // Filter panel cursor positions are computed dynamically in
 // `toggle_filter_at_cursor` based on the current source / tag counts. Static
 // offsets aren't used anymore.
+
+/// Deferred-state for the arxiv "rich LaTeX" leg of opening a paper.
+///
+/// We can't carry the in-flight `tread::PaperData` directly across the
+/// fulltext-drain → tread-drain boundary because the future caller
+/// needs more than just the paper: which pane, which tab mode, the
+/// title for the status line, the optional notes context, and a
+/// fulltext-derived `PaperData` to fall back on if the arxiv fetch
+/// errors out.  Saved when the fulltext drain spawns the tread worker
+/// and consumed by the tread drain on the next loop tick(s).
+pub struct PendingTreadFetch {
+  pub arxiv_id: String,
+  pub title: String,
+  pub notes_context: Option<NotesContext>,
+  pub fallback_paper: tread::PaperData,
+  pub target: crate::action::ReaderTarget,
+  pub mode: crate::action::OpenMode,
+}
 
 impl App {
   pub fn new() -> Self {
@@ -245,6 +273,8 @@ impl App {
       fulltext_rx: None,
       fulltext_loading: false,
       pending_fulltext_context: None,
+      tread_fetch_rx: None,
+      pending_tread_fetch: None,
       repo_fetch_rx: None,
       last_scroll_time: None,
       scroll_debounce_ms: 50,

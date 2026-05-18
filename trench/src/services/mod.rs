@@ -16,5 +16,5 @@ pub mod repo_load;
 
 pub(crate) use discovery::{spawn_ai_discovery, spawn_discovery};
 pub(crate) use ingestion::spawn_fetch;
-pub(crate) use reader_load::spawn_fulltext_fetch;
+pub(crate) use reader_load::{spawn_fulltext_fetch, spawn_tread_fetch};
 pub(crate) use repo_load::{spawn_repo_dir, spawn_repo_file, spawn_repo_open};
