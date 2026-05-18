@@ -481,27 +481,40 @@ fn handle_history_tab(key: KeyEvent, app: &mut App) -> bool {
       app.feed.history_list.reset();
       true
     }
+    // C1: inside handle_history_tab the active tab is `History` by
+    // construction (the dispatch in handle_feed_view guards on
+    // feed_tab == History). The match in `App::set_active_selected_index`
+    // would always pick the History arm, so we collapse it inline:
+    // set the count from `filtered_history()` and update `history_list`
+    // directly. Saves a redundant filtered_history call on the sites
+    // where `len` is already in scope.
     KeyCode::Char('j') | KeyCode::Down => {
       let len = app.filtered_history().len();
       if len > 0 {
         let next = (app.feed.history_list.selected() + 1).min(len - 1);
-        app.set_active_selected_index(next);
+        app.feed.history_list.set_count(len);
+        app.feed.history_list.set_selected(next);
       }
       true
     }
     KeyCode::Char('k') | KeyCode::Up => {
       let next = app.feed.history_list.selected().saturating_sub(1);
-      app.set_active_selected_index(next);
+      let len = app.filtered_history().len();
+      app.feed.history_list.set_count(len);
+      app.feed.history_list.set_selected(next);
       true
     }
     KeyCode::Char('g') => {
-      app.set_active_selected_index(0);
+      let len = app.filtered_history().len();
+      app.feed.history_list.set_count(len);
+      app.feed.history_list.set_selected(0);
       true
     }
     KeyCode::Char('G') => {
       let len = app.filtered_history().len();
       if len > 0 {
-        app.set_active_selected_index(len - 1);
+        app.feed.history_list.set_count(len);
+        app.feed.history_list.set_selected(len - 1);
       }
       true
     }
@@ -518,7 +531,8 @@ fn handle_history_tab(key: KeyEvent, app: &mut App) -> bool {
       crate::store::history::save(&app.workspace.history);
       let len = app.filtered_history().len();
       if len > 0 && app.feed.history_list.selected() >= len {
-        app.set_active_selected_index(len - 1);
+        app.feed.history_list.set_count(len);
+        app.feed.history_list.set_selected(len - 1);
       }
       true
     }
