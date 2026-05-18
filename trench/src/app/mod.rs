@@ -211,7 +211,14 @@ pub struct PendingTreadFetch {
   pub arxiv_id: String,
   pub title: String,
   pub notes_context: Option<NotesContext>,
-  pub fallback_paper: tread::PaperData,
+  /// Optional fulltext-derived `PaperData` to fall back on when the
+  /// tread fetch errors out.  `Some` on the original two-stage path
+  /// (where fulltext fired first and its result is still in memory).
+  /// `None` on the arxiv-shortcut path where we skip fulltext entirely
+  /// and go straight to tread — a tread error there shows a
+  /// notification and leaves the reader closed; the user can re-click
+  /// to retry.
+  pub fallback_paper: Option<tread::PaperData>,
   pub target: crate::action::ReaderTarget,
   pub mode: crate::action::OpenMode,
 }

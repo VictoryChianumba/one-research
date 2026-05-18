@@ -987,7 +987,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     arxiv_id: id,
                     title,
                     notes_context,
-                    fallback_paper: fetched_paper,
+                    fallback_paper: Some(fetched_paper),
                     target,
                     mode,
                   });
@@ -1067,10 +1067,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
               }
               Err(e) => {
                 log::warn!(
-                  "tread drain: fetch_paper failed for {}, using fulltext fallback: {e}",
+                  "tread drain: fetch_paper failed for {}: {e}",
                   pending.arxiv_id
                 );
-                pending.fallback_paper
+                match pending.fallback_paper {
+                  Some(p) => p,
+                  None => {
+                    // arxiv-shortcut path skipped the fulltext stage,
+                    // so we have nothing to render.  Tell the user and
+                    // bail; a re-click will retry.
+                    app.set_notification(format!(
+                      "Failed to fetch paper {}: {e}",
+                      pending.arxiv_id
+                    ));
+                    app.mark_dirty();
+                    continue;
+                  }
+                }
               }
             };
             let reader = tread::Reader::init(
@@ -1098,28 +1111,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             app.tread_fetch_rx = None;
             app.fulltext_loading = false;
             // Try the fulltext fallback before giving up so the user
-            // still gets a reader, just with less rich content.
+            // still gets a reader, just with less rich content.  On
+            // the arxiv-shortcut path there is no fallback — surface
+            // an error and leave the reader closed.
             if let Some(pending) = app.pending_tread_fetch.take() {
-              let reader = tread::Reader::init(
-                pending.fallback_paper,
-                None,
-                Some(pending.arxiv_id.clone()),
-                80,
-                24,
-                app.kitty_supported,
-                Some(app.voice_controller.clone()),
-              );
-              app.apply_open_in_reader(action::Action::OpenInReader {
-                target: pending.target,
-                mode: pending.mode,
-                title: pending.title,
-                arxiv_id: Some(pending.arxiv_id),
-                notes_context: pending.notes_context,
-                reader,
-              });
-              app.set_notification(
-                "Rich-LaTeX fetch failed; using fulltext fallback".to_string(),
-              );
+              if let Some(fallback) = pending.fallback_paper {
+                let reader = tread::Reader::init(
+                  fallback,
+                  None,
+                  Some(pending.arxiv_id.clone()),
+                  80,
+                  24,
+                  app.kitty_supported,
+                  Some(app.voice_controller.clone()),
+                );
+                app.apply_open_in_reader(action::Action::OpenInReader {
+                  target: pending.target,
+                  mode: pending.mode,
+                  title: pending.title,
+                  arxiv_id: Some(pending.arxiv_id),
+                  notes_context: pending.notes_context,
+                  reader,
+                });
+                app.set_notification(
+                  "Rich-LaTeX fetch failed; using fulltext fallback".to_string(),
+                );
+              } else {
+                app.set_notification(format!(
+                  "Failed to fetch paper {}: tread thread disconnected",
+                  pending.arxiv_id
+                ));
+              }
             } else {
               app.set_notification(
                 "Fetch error: tread thread disconnected".to_string(),
