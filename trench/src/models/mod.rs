@@ -1,4 +1,5 @@
 pub mod categories;
+pub mod fixtures;
 pub mod item;
 pub use categories::*;
 pub use item::*;

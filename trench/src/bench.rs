@@ -17,9 +17,7 @@ use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 
 use crate::app::App;
-use crate::models::{
-  ContentType, FeedItem, SignalLevel, SourcePlatform, WorkflowState,
-};
+use crate::models::fixtures;
 
 const WARMUP_FRAMES: usize = 5;
 
@@ -90,7 +88,7 @@ pub fn run(opts: BenchOptions) -> Result<(), Box<dyn std::error::Error>> {
 
 fn run_feed(opts: BenchOptions) -> Result<(), Box<dyn std::error::Error>> {
   let mut app = App::new();
-  app.workspace.items = (0..opts.n).map(synthetic_item).collect();
+  app.workspace.items = (0..opts.n).map(fixtures::variant).collect();
   app.rebuild_indices();
 
   let backend = TestBackend::new(opts.width, opts.height);
@@ -135,75 +133,6 @@ fn emit_summary(opts: &BenchOptions, samples: &mut [u128]) {
   println!("max_us={}", max);
 }
 
-/// Deterministic FeedItem factory. Index-keyed so re-running with the same
-/// `--n` produces the same items, isolating run-to-run timing variance to
-/// the renderer rather than the input.
-///
-/// Spreads items across all platforms / workflow states / content types so
-/// the renderer exercises every styling branch (signal-tier highlighting,
-/// workflow-state column, source badge), not just the dominant case.
-fn synthetic_item(idx: usize) -> FeedItem {
-  let title = format!(
-    "Synthetic Paper {idx:05}: Studies on Benchmark-Driven Foo with Bar"
-  );
-  let summary = format!(
-    "Abstract for synthetic item {idx}. We explore the implications of \
-     benchmark-driven design in a system with N items. Results show that the \
-     approach scales linearly with N under the conditions tested, with \
-     constant factors comparable to baseline implementations."
-  );
-  let authors = vec![
-    format!("Alice {:03}", idx % 100),
-    format!("Bob {:03}", (idx + 7) % 100),
-    format!("Carol {:03}", (idx + 13) % 100),
-  ];
-  let platform = match idx % 5 {
-    0 => SourcePlatform::ArXiv,
-    1 => SourcePlatform::HuggingFace,
-    2 => SourcePlatform::Blog,
-    3 => SourcePlatform::OpenReview,
-    _ => SourcePlatform::Rss,
-  };
-  let content = match idx % 5 {
-    0 => ContentType::Paper,
-    1 => ContentType::Thread,
-    2 => ContentType::Article,
-    3 => ContentType::Repo,
-    _ => ContentType::Digest,
-  };
-  let state = match idx % 4 {
-    0 => WorkflowState::Inbox,
-    1 => WorkflowState::Queued,
-    2 => WorkflowState::DeepRead,
-    _ => WorkflowState::Archived,
-  };
-  let signal = match idx % 3 {
-    0 => SignalLevel::Primary,
-    1 => SignalLevel::Secondary,
-    _ => SignalLevel::Tertiary,
-  };
-  let mut item = FeedItem {
-    id: format!("bench-{idx}"),
-    title,
-    source_platform: platform,
-    content_type: content,
-    domain_tags: vec!["ml".into(), "nlp".into()],
-    signal,
-    published_at: "2026-05-17T00:00:00Z".into(),
-    authors,
-    summary_short: summary,
-    workflow_state: state,
-    url: format!("https://arxiv.org/abs/2605.{idx:05}"),
-    upvote_count: (idx as u32 * 3) % 50,
-    github_repo: None,
-    github_owner: None,
-    github_repo_name: None,
-    benchmark_results: vec![],
-    full_content: None,
-    source_name: "bench".into(),
-    title_lower: String::new(),
-    authors_lower: Vec::new(),
-  };
-  item.sanitize_in_place();
-  item
-}
+// Synthetic FeedItem factory lives in `crate::models::fixtures` so the
+// bench and future tests can share it. See that module for the variant
+// shape (deterministic, spreads enum coverage).
