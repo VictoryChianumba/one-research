@@ -36,6 +36,7 @@ When you change behaviour described here, update this file in the same commit.
 | **FetchContext** | Per-refresh context passed to every `Source::fetch` / `EnrichmentSource::enrich` call. Carries `&Config`, `&Path` (cache_dir), and convenience methods `http()` and `with_retry(policy, make)` that forward to `trench_http`. |
 | **RetryPolicy** | HTTP retry envelope (`backoffs_ms` + `retriable: fn(u16) -> bool`). Lives in `crates/http`. `RetryPolicy::arxiv()` matches the deleted inline `fetch_arxiv_with_retry` constants (3000ms / 6000ms backoff, retries 429 \| 503). `RetryPolicy::none()` for one-shot reads. |
 | **host group** | Scheduling tag returned by `Source::host_group()`. Sources sharing a tag run serially within one thread; different groups run in parallel. Today's groups: `"arxiv"` (arxiv + huggingface — same `export.arxiv.org` envelope), `"openreview"`, `"core"`, `"rss"`. |
+| **`load_json<T>` / `save_json<T>`** | Typed envelope for the persistent-state IO pattern (`trench/src/store/mod.rs`). `load_json` reads JSON or returns `T::default()` (quarantining corrupted files via `quarantine_corrupted`); `save_json` atomically serialises via `atomic_write`, logging on failure. Each store wrapper (`cache`, `discovery_cache`, `enrichment_cache`, `history`, `session`, `tags`, plus `state.json` / `ui.json`) reduces to a 3-5 line shell around these — post-load transforms (sanitize, sort, backfill) stay in the per-module wrapper. Introduced by C8 (`ADR-006`). |
 
 ### Term hygiene
 
@@ -93,6 +94,7 @@ The refactor is incremental. Lazy rollout — a pane is refactored when a featur
 | **Voice** | Pending | Separate slice after slice 2. `VoiceModel` on `App`. Trigger: ElevenLabs credits + feature ask. |
 | **Notes** | Slice 3 accepted (2026-05-18) | ADR-003. 4 PRs landed: PR 1 skeletons + ADR + vocabulary, PR 2 state migration (11 fields → `App.notes`), PR 3 gesture methods on `NotesPaneModel`, PR 4 tripwires I8-I11 in `scripts/check-render-purification.sh`. |
 | **Ingestion seam** | C10 accepted (2026-05-18) | ADR-004. 3 PRs landed: Source/EnrichmentSource traits + FetchContext + RetryPolicy (PR 1); 5 Source impls + 2 EnrichmentSource impls + orchestrator + `fetch_arxiv_with_retry` deleted (PR 2); J1-J5 tripwires + ADR Accepted (PR 3). |
+| **Store seam** | C8 in flight (2026-05-18) | ADR-006. PR 1 lands `load_json<T>` / `save_json<T>` in `store/mod.rs` + ADR + smoke tests. PRs 2-3 migrate the 8 store sites and lock in tripwires. Trigger: audit candidate C8 — 7 store files repeat the same 5-step load shape. |
 | **Discovery** | Slice 5 accepted (2026-05-18) | ADR-005. 4 PRs landed: PR 1 (rename `DiscoveryState`→`DiscoveryModel` + ADR + smoke tests), PR 2 (field migration + 8 method signatures threaded `&mut DiscoveryModel`), PR 3 (gesture methods on `DiscoveryModel` + 4 App wrappers deleted), PR 4 (K1-K4 tripwires in `scripts/check-render-purification.sh` + ADR Accepted). Trigger: audit candidate C7 + size threshold (~1,000 LOC of agent code crossed the "lift when grown enough" line). |
 | **Chat** | Legacy | Lazy. No pressure to refactor. |
 | **Repo Viewer** | Legacy | Lazy. |
@@ -108,5 +110,6 @@ The refactor is incremental. Lazy rollout — a pane is refactored when a featur
 - `docs/adr/ADR-003-notes-slice.md` — slice 3 notes-dock consolidation (Accepted 2026-05-18; 4 PRs landed).
 - `docs/adr/ADR-004-ingestion-seam.md` — C10 `Source` + `EnrichmentSource` + `FetchContext` (Accepted 2026-05-18; 3 PRs landed).
 - `docs/adr/ADR-005-discovery-slice.md` — slice 5 discovery-pane lift (Accepted 2026-05-18; 4 PRs landed).
+- `docs/adr/ADR-006-store-seam.md` — C8 `load_json<T>` + `save_json<T>` (Proposed 2026-05-18; PR 1 landed).
 - `docs/audits/` — periodic architectural audits with letter-graded scorecards. Latest: `2026-05-18-architectural-audit.md` (C+, unchanged from 2026-05-16). Run `/improve-codebase-architecture` to produce a new one.
 - `CLAUDE.md` — project-wide rules. CONTEXT.md is the *language* layer above those.

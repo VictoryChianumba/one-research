@@ -129,6 +129,56 @@ pub(crate) fn quarantine_corrupted(
   }
 }
 
+// ── Store seam (ADR-006) ───────────────────────────────────────────────
+//
+// One typed envelope for the read-or-default / serialize-or-log pattern
+// duplicated across 8 sites pre-PR 2. Per-module wrappers stay in their
+// own files for the post-load transforms (sort, sanitize, `title_lower`
+// backfill, etc.) — the bytes-and-JSON layer collapses here.
+
+/// Load JSON from `path`, returning `T::default()` on read or parse error.
+/// Parse errors quarantine the corrupted file via `quarantine_corrupted`
+/// so the next save doesn't clobber the only recovery copy.
+pub fn load_json<T>(path: &Path, label: &str) -> T
+where
+  T: serde::de::DeserializeOwned + Default,
+{
+  let bytes = match fs::read(path) {
+    Ok(b) => b,
+    Err(_) => return T::default(),
+  };
+  match serde_json::from_slice(&bytes) {
+    Ok(v) => v,
+    Err(e) => {
+      quarantine_corrupted(path, label, &e);
+      T::default()
+    }
+  }
+}
+
+/// Atomically serialize `value` to `path`. Creates parent dirs first;
+/// logs on serialize or write failure. The 0o600 mode is inherited from
+/// `atomic_write`'s pre-rename `set_permissions`, so callers that want
+/// the redundant `set_private` post-step still call it themselves.
+pub fn save_json<T>(value: &T, path: &Path, label: &str)
+where
+  T: serde::Serialize,
+{
+  if let Some(parent) = path.parent() {
+    let _ = fs::create_dir_all(parent);
+  }
+  match serde_json::to_vec(value) {
+    Ok(json) => {
+      if let Err(e) = atomic_write(path, &json) {
+        log::error!("{label}: atomic_write failed at {}: {e}", path.display());
+      }
+    }
+    Err(e) => {
+      log::error!("{label}: serialize failed: {e}");
+    }
+  }
+}
+
 fn state_path() -> Option<PathBuf> {
   let mut p = dirs_home()?;
   p.push(".config");
@@ -299,5 +349,82 @@ mod atomic_write_tests {
     let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
     assert_eq!(mode, 0o600, "atomic_write should produce 0600");
     let _ = fs::remove_dir_all(&dir);
+  }
+}
+
+#[cfg(test)]
+mod store_seam_tests {
+  //! ADR-006 seam round-trip + degraded-path coverage. Every per-module
+  //! wrapper inherits these guarantees implicitly after PR 2, so a
+  //! regression in `load_json` / `save_json` fails one well-known place.
+  use super::{load_json, save_json};
+  use std::collections::HashMap;
+  use std::fs;
+  use std::sync::atomic::{AtomicU32, Ordering};
+
+  static N: AtomicU32 = AtomicU32::new(0);
+  fn fresh_path(name: &str) -> std::path::PathBuf {
+    // Two-axis unique key (pid + counter) so parallel test runs and
+    // re-runs in the same process don't share a path. Counter increments
+    // per call, not per test, so any test calling fresh_path twice still
+    // gets two distinct paths.
+    let n = N.fetch_add(1, Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!(
+      "trench_store_seam_{}_{}_{}",
+      std::process::id(),
+      n,
+      name,
+    ));
+    let _ = fs::create_dir_all(&dir);
+    dir.join(format!("{name}.json"))
+  }
+
+  #[test]
+  fn round_trip_preserves_value() {
+    // The contract is: save → load returns equal data. If this fails,
+    // every store wrapper post-PR-2 is broken.
+    let path = fresh_path("rt");
+    let original: HashMap<String, u32> =
+      [("alpha".to_string(), 1), ("beta".to_string(), 2)].into_iter().collect();
+    save_json(&original, &path, "test/round_trip");
+    let loaded: HashMap<String, u32> = load_json(&path, "test/round_trip");
+    assert_eq!(loaded, original);
+    let _ = fs::remove_file(&path);
+  }
+
+  #[test]
+  fn missing_path_returns_default() {
+    // First-run / never-saved file: load must return T::default() and
+    // not panic, log an error, or attempt to quarantine a nonexistent
+    // file. This is the "fresh install" path every store hits at
+    // startup before any save.
+    let path = fresh_path("missing");
+    assert!(!path.exists());
+    let loaded: Vec<u32> = load_json(&path, "test/missing");
+    assert!(loaded.is_empty());
+  }
+
+  #[test]
+  fn corrupt_file_quarantines_and_returns_default() {
+    // Quarantine seam: a partially-written or hand-edited file with
+    // invalid JSON must (1) NOT be returned, (2) be renamed out of the
+    // way so the next save doesn't clobber the recovery copy. The
+    // returned value falls back to T::default().
+    let path = fresh_path("corrupt");
+    fs::write(&path, b"{not valid json").unwrap();
+    let loaded: HashMap<String, u32> = load_json(&path, "test/corrupt");
+    assert!(loaded.is_empty(), "corrupt file must not propagate as data");
+    // Original path is moved out of the way; a `.broken-<...>` sidecar
+    // appears in the same directory.
+    assert!(!path.exists(), "corrupt file should have been quarantined");
+    if let Some(dir) = path.parent() {
+      let broken_count = fs::read_dir(dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_name().to_string_lossy().contains(".json.broken-"))
+        .count();
+      assert_eq!(broken_count, 1, "exactly one quarantine sidecar expected");
+    }
+    let _ = fs::remove_dir_all(path.parent().unwrap());
   }
 }
