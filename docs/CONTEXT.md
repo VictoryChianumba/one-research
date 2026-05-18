@@ -95,5 +95,5 @@ The refactor is incremental. Lazy rollout — a pane is refactored when a featur
 
 - `docs/adr/ADR-001-render-purification.md` — the parent per-pane refactor decision (slice 1, feed).
 - `docs/adr/ADR-002-reader-slice.md` — slice 2 reader-pane extension.
-- `docs/audits/` — periodic architectural audits with letter-graded scorecards. Latest: `2026-05-16-architectural-audit.md`. Run `/improve-codebase-architecture` to produce a new one.
+- `docs/audits/` — periodic architectural audits with letter-graded scorecards. Latest: `2026-05-18-architectural-audit.md` (C+, unchanged from 2026-05-16). Run `/improve-codebase-architecture` to produce a new one.
 - `CLAUDE.md` — project-wide rules. CONTEXT.md is the *language* layer above those.
