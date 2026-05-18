@@ -316,29 +316,17 @@ pub(crate) fn force_refresh(app: &mut App) {
 }
 
 /// Returns true if enough time has elapsed since the last keyboard scroll.
-/// Updates `last_scroll_time` on success.
+/// Updates the gate's internal timer on success. Delegates to
+/// `DebounceState::try_kbd_scroll` (ADR-009).
 pub(crate) fn kbd_scroll_ok(app: &mut app::App) -> bool {
-  let now = std::time::Instant::now();
-  if let Some(last) = app.last_scroll_time {
-    if last.elapsed().as_millis() < app.scroll_debounce_ms as u128 {
-      return false;
-    }
-  }
-  app.last_scroll_time = Some(now);
-  true
+  app.debounce.try_kbd_scroll()
 }
 
 /// Returns true if enough time has elapsed since the last mouse scroll.
-/// Uses a higher debounce threshold to tame trackpad inertia.
+/// Uses a higher debounce threshold to tame trackpad inertia. Delegates
+/// to `DebounceState::try_mouse_scroll` (ADR-009).
 fn mouse_scroll_ok(app: &mut app::App) -> bool {
-  let now = std::time::Instant::now();
-  if let Some(last) = app.last_mouse_scroll_time {
-    if last.elapsed().as_millis() < app.mouse_scroll_debounce_ms as u128 {
-      return false;
-    }
-  }
-  app.last_mouse_scroll_time = Some(now);
-  true
+  app.debounce.try_mouse_scroll()
 }
 
 fn handle_mouse(

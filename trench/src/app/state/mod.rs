@@ -2,6 +2,7 @@
 //! `crate::app::ChatState` (and friends) keep working without `state::` qualifier.
 
 mod chat;
+mod debounce;
 mod discovery;
 mod feed;
 mod help;
@@ -14,6 +15,7 @@ mod settings;
 mod theme_picker;
 
 pub use chat::ChatState;
+pub use debounce::DebounceState;
 pub use discovery::DiscoveryModel;
 pub use feed::{AppView, FeedTab, FilterState, ItemCounts, NavDirection};
 pub use help::HelpState;

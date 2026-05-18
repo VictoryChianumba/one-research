@@ -39,6 +39,7 @@ When you change behaviour described here, update this file in the same commit.
 | **`load_json<T>` / `save_json<T>`** | Typed envelope for the persistent-state IO pattern (`trench/src/store/mod.rs`). `load_json` reads JSON or returns `T::default()` (quarantining corrupted files via `quarantine_corrupted`); `save_json` atomically serialises via `atomic_write`, logging on failure. Each store wrapper (`cache`, `discovery_cache`, `enrichment_cache`, `history`, `session`, `tags`, plus `state.json` / `ui.json`) reduces to a 3-5 line shell around these — post-load transforms (sanitize, sort, backfill) stay in the per-module wrapper. Introduced by C8 (`ADR-006`). |
 | **ItemStore** | Coordinated triple `items: Vec<FeedItem>` + `url_index: HashMap<String, usize>` + `arxiv_id_index: HashMap<String, usize>`, encapsulating the invariant that both indices map into `items`. Lives at `trench/src/data/item_store.rs`. Mutation goes through methods (`push`, `replace_at`, `sort_by`, `rebuild_indices`); reads go through methods (`find_by_url`, `find_by_arxiv_id`, `get`, `iter`). Field access is module-private. Replaces `Workspace`'s three `pub` fields after C9 PR 2. Introduced by `ADR-007`. |
 | **FrameLayout** | Per-frame struct (`trench/src/ui/layout/frame_layout.rs`) carrying post-layout `Rect`s that `App::apply_frame_layout` needs to size scroll bounds and viewport caps. Empty-body PR-1 scaffolding; PR 2 wires the last `// Intentional render-time mutation` site (reader-bottom feed-mode auto-scroll). Sibling to `pre_draw_update` — pre runs before layout, `apply_frame_layout` runs after. Introduced by `ADR-008`. |
+| **DebounceState** | Cluster struct (`trench/src/app/state/debounce.rs`) holding the keyboard- and mouse-scroll rate gates. Owns the read-update protocol via `try_kbd_scroll` / `try_mouse_scroll`. Pilot cluster for `ADR-009`'s App-field grouping; replaces 4 flat `App` fields (`last_scroll_time` + 3 siblings). |
 
 ### Term hygiene
 
@@ -117,5 +118,6 @@ The refactor is incremental. Lazy rollout — a pane is refactored when a featur
 - `docs/adr/ADR-006-store-seam.md` — C8 `load_json<T>` + `save_json<T>` (Accepted 2026-05-18; 3 PRs landed).
 - `docs/adr/ADR-007-item-store.md` — C9 `ItemStore` encapsulating Workspace's item triple (Accepted 2026-05-18; 3 PRs landed).
 - `docs/adr/ADR-008-frame-layout.md` — C6 `FrameLayout` + `apply_frame_layout` hook (Accepted 2026-05-18; 3 PRs landed).
+- `docs/adr/ADR-009-app-field-grouping.md` — N5 cluster flat `App` fields into named state structs (Proposed 2026-05-19; PR 1 = `DebounceState` pilot).
 - `docs/audits/` — periodic architectural audits with letter-graded scorecards. Latest: `2026-05-18-architectural-audit.md` (C+, unchanged from 2026-05-16). Run `/improve-codebase-architecture` to produce a new one.
 - `CLAUDE.md` — project-wide rules. CONTEXT.md is the *language* layer above those.

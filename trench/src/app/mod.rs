@@ -165,11 +165,11 @@ pub struct App {
   // Background repo fetch (repo viewer)
   pub repo_fetch_rx: Option<Receiver<RepoFetchResult>>,
 
-  // Scroll debounce — prevents key-repeat and trackpad inertia flooding
-  pub last_scroll_time: Option<Instant>,
-  pub scroll_debounce_ms: u64,
-  pub last_mouse_scroll_time: Option<Instant>,
-  pub mouse_scroll_debounce_ms: u64,
+  /// Scroll debounce gates (keyboard + mouse). ADR-009 pilot cluster:
+  /// the four flat fields this replaces moved into `DebounceState`,
+  /// which owns the cooldown protocol via `try_kbd_scroll` /
+  /// `try_mouse_scroll`.
+  pub debounce: DebounceState,
 
   // Leader key
   pub leader_active: bool,
@@ -293,10 +293,7 @@ impl App {
       tread_fetch_rx: None,
       pending_tread_fetch: None,
       repo_fetch_rx: None,
-      last_scroll_time: None,
-      scroll_debounce_ms: 50,
-      last_mouse_scroll_time: None,
-      mouse_scroll_debounce_ms: 80,
+      debounce: DebounceState::default(),
       leader_active: false,
       leader_activated_at: None,
       leader_timeout_ms: 1000,
