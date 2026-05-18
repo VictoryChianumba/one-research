@@ -2,8 +2,8 @@ use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use std::sync::mpsc;
 
 use crate::app::{
-  App, AppView, CustomThemeEditorMode, FeedTab, FocusedReader, NavDirection,
-  NotesMode, NotesTab, PaneId, QuitPopupKind,
+  App, AppView, CloseTabOutcome, CustomThemeEditorMode, FeedTab, FocusedReader,
+  NavDirection, NotesMode, NotesTab, PaneId, QuitPopupKind,
 };
 
 use super::{get_pane_by_number, spawn_fulltext_fetch, truncate_for_notif};
@@ -25,9 +25,6 @@ use reader::{
 use repo::handle_repo_viewer;
 use settings::handle_settings_view;
 use sources::handle_sources_popup;
-
-const NOTES_MODE_ORDER: [NotesMode; 3] =
-  [NotesMode::PaperNotes, NotesMode::Library, NotesMode::Capture];
 
 /// Top-level key dispatcher — called once per key press event from the main loop.
 pub fn dispatch(key: KeyEvent, app: &mut App) {
@@ -52,7 +49,7 @@ pub fn dispatch(key: KeyEvent, app: &mut App) {
                 app.reader_bottom_focused = false;
                 app.reader.secondary.tabs.clear();
                 app.reader.secondary.active_tab = 0;
-                app.notes.secondary_visible = false;
+                app.notes.set_visible(FocusedReader::Secondary, false);
               } else if app.reader.split_active {
                 app.reader.split_active = false;
               }
@@ -258,19 +255,35 @@ fn open_notes(app: &mut App) {
   }
 
   // Drop tabs whose note no longer exists (deleted notes, stale ui.json).
-  if let Some(na) = app.notes.app.as_ref() {
-    app.notes.primary.tabs.retain(|t| na.get_note_title(&t.note_id).is_some());
-    app.notes.primary.active_tab =
-      app.notes.primary.active_tab.min(app.notes.primary.tabs.len().saturating_sub(1));
-    if let Some(sec) = app.notes.secondary.as_mut() {
-      sec.tabs.retain(|t| na.get_note_title(&t.note_id).is_some());
-      sec.active_tab = sec.active_tab.min(sec.tabs.len().saturating_sub(1));
-    }
+  if app.notes.app.is_some() {
+    // Build a snapshot of valid IDs first so the prune closure doesn't
+    // need to re-borrow `app.notes.app` while `app.notes.prune_tabs`
+    // holds &mut self on the pane model.
+    let valid: std::collections::HashSet<String> = app
+      .notes
+      .app
+      .as_ref()
+      .map(|na| {
+        let mut out = std::collections::HashSet::new();
+        for inst in std::iter::once(&app.notes.primary)
+          .chain(app.notes.secondary.as_ref())
+        {
+          for tab in &inst.tabs {
+            if na.get_note_title(&tab.note_id).is_some() {
+              out.insert(tab.note_id.clone());
+            }
+          }
+        }
+        out
+      })
+      .unwrap_or_default();
+    app.notes.prune_tabs(|id| valid.contains(id));
   }
 
   // Phase 1: find linked notes and collect titles (releases borrow before switch).
   let linked = app
-    .notes.app
+    .notes
+    .app
     .as_ref()
     .map(|na| {
       context
@@ -292,7 +305,7 @@ fn open_notes(app: &mut App) {
     activate_notes_mode(app, side, NotesMode::Library);
   }
 
-  set_notes_side_active(app, side, true);
+  app.notes.set_visible(side, true);
   app.focus.focused_pane = note_pane_for_side(app, side);
 }
 
@@ -354,7 +367,8 @@ fn sync_notes_tabs_for_paper_mode(
   context: &crate::app::NotesContext,
 ) {
   let linked = app
-    .notes.app
+    .notes
+    .app
     .as_ref()
     .map(|na| na.find_notes_for_paper(&context.paper.id))
     .unwrap_or_default();
@@ -369,7 +383,8 @@ fn sync_notes_tabs_for_paper_mode(
       continue;
     }
     let title = app
-      .notes.app
+      .notes
+      .app
       .as_ref()
       .and_then(|na| na.get_note_title(note_id))
       .unwrap_or_default();
@@ -386,7 +401,8 @@ fn sync_notes_tab_selection_to_current_note(
   side: FocusedReader,
 ) {
   let current_id = app
-    .notes.app
+    .notes
+    .app
     .as_ref()
     .and_then(|notes_app| notes_app.current_note_id.clone());
   let Some(current_id) = current_id else {
@@ -436,12 +452,10 @@ fn activate_notes_mode(app: &mut App, side: FocusedReader, mode: NotesMode) {
 }
 
 fn cycle_notes_mode(app: &mut App, side: FocusedReader, direction: isize) {
-  let current = NOTES_MODE_ORDER
-    .iter()
-    .position(|mode| *mode == app.notes_mode_for_side(side))
-    .unwrap_or(0) as isize;
-  let next = (current + direction).rem_euclid(NOTES_MODE_ORDER.len() as isize);
-  activate_notes_mode(app, side, NOTES_MODE_ORDER[next as usize]);
+  // The model owns the rotation; the orchestrator owns the side
+  // effects on the persistence backend.
+  let next = app.notes.next_mode(side, direction);
+  activate_notes_mode(app, side, next);
 }
 
 fn begin_capture_note(app: &mut App, side: FocusedReader) {
@@ -493,7 +507,8 @@ fn move_notes_browser_selection(
   }
 
   let current_idx = app
-    .notes.app
+    .notes
+    .app
     .as_ref()
     .and_then(|notes_app| {
       notes_app.current_note_id.as_ref().and_then(|current_id| {
@@ -574,23 +589,10 @@ fn mutate_note_links_for_context(
   app.set_notification(format!("{action} current paper in note."));
 }
 
-fn notes_side_active(app: &App, side: FocusedReader) -> bool {
-  match side {
-    FocusedReader::Primary => app.notes.primary_visible,
-    FocusedReader::Secondary => app.notes.secondary_visible,
-  }
-}
-
-fn set_notes_side_active(app: &mut App, side: FocusedReader, active: bool) {
-  match side {
-    FocusedReader::Primary => app.notes.primary_visible = active,
-    FocusedReader::Secondary => app.notes.secondary_visible = active,
-  }
-}
-
-fn any_notes_active(app: &App) -> bool {
-  app.notes.primary_visible || app.notes.secondary_visible
-}
+// Visibility helpers moved onto `NotesPaneModel`. The free-function
+// wrappers (notes_side_active / set_notes_side_active / any_notes_active)
+// collapsed into `NotesPaneModel::is_visible / set_visible / any_visible`
+// in PR 3; call sites read `app.notes.is_visible(side)` etc.
 
 fn note_side_for_focus(app: &App) -> FocusedReader {
   match app.focus.focused_pane {
@@ -850,8 +852,8 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
   match key.code {
     KeyCode::Char('n') => {
       let side = note_side_for_focus(app);
-      if notes_side_active(app, side) {
-        set_notes_side_active(app, side, false);
+      if app.notes.is_visible(side) {
+        app.notes.set_visible(side, false);
         app.focus.focused_pane = focus_fallback_after_notes(app, side);
       } else {
         open_notes(app);
@@ -865,8 +867,7 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
           if app.reader.active { PaneId::Reader } else { PaneId::Feed };
       } else {
         ensure_chat(app);
-        app.notes.primary_visible = false;
-        app.notes.secondary_visible = false;
+        app.notes.hide_all();
         app.chat.active = true;
         app.focus.focused_pane = PaneId::Chat;
       }
@@ -1045,7 +1046,7 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
         if let Some(na) = app.notes.app.as_mut() {
           let _ = na.persist_state();
         }
-        set_notes_side_active(app, side, false);
+        app.notes.set_visible(side, false);
         app.focus.focused_pane = focus_fallback_after_notes(app, side);
       }
       PaneId::SecondaryReader | PaneId::Reader => {
@@ -1103,7 +1104,7 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
     // Ldr+[ / Ldr+] — cycle tabs in focused pane
     KeyCode::Char('[') => {
       if let Some(side) =
-        focused_note_side(app).filter(|side| notes_side_active(app, *side))
+        focused_note_side(app).filter(|side| app.notes.is_visible(*side))
       {
         notes_prev_tab(app, side);
       } else if app.reader.active {
@@ -1112,7 +1113,7 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
     }
     KeyCode::Char(']') => {
       if let Some(side) =
-        focused_note_side(app).filter(|side| notes_side_active(app, *side))
+        focused_note_side(app).filter(|side| app.notes.is_visible(*side))
       {
         notes_next_tab(app, side);
       } else if app.reader.active {
@@ -1121,7 +1122,7 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
     }
     // Ldr+w — close current tab (collapse pane when last tab)
     KeyCode::Char('w') => match app.focus.focused_pane {
-      PaneId::Notes | PaneId::SecondaryNotes if any_notes_active(app) => {
+      PaneId::Notes | PaneId::SecondaryNotes if app.notes.any_visible() => {
         let side = focused_note_side(app).unwrap_or(FocusedReader::Primary);
         notes_close_active_tab(app, side);
       }
@@ -1131,7 +1132,7 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
           app.reader.dual_active = false;
           app.reader_bottom_open = false;
           app.reader_bottom_focused = false;
-          app.notes.secondary_visible = false;
+          app.notes.set_visible(FocusedReader::Secondary, false);
           app.reader.focused = FocusedReader::Primary;
           app.focus.focused_pane = PaneId::Reader;
         }
@@ -1145,7 +1146,7 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
             app.reader_bottom_focused = false;
             app.reader.secondary.tabs.clear();
             app.reader.secondary.active_tab = 0;
-            app.notes.secondary_visible = false;
+            app.notes.set_visible(FocusedReader::Secondary, false);
           } else if app.reader.split_active {
             app.reader.split_active = false;
           }
@@ -1158,75 +1159,39 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
   }
 }
 
+// Tab-navigation orchestrators. The model owns the data move; these
+// wrappers add the backend sync (`focus_note` + drop back to List).
+
 fn notes_prev_tab(app: &mut App, side: FocusedReader) {
-  let Some(inst) = app.notes.instance(side) else {
-    return;
-  };
-  let active = inst.active_tab;
-  if inst.tabs.is_empty() {
-    return;
+  if let Some(note_id) = app.notes.prev_tab(side) {
+    sync_notes_backend_to_active(app, &note_id);
   }
-  notes_switch_tab(app, side, active.saturating_sub(1));
 }
 
 fn notes_next_tab(app: &mut App, side: FocusedReader) {
-  let Some(inst) = app.notes.instance(side) else {
-    return;
-  };
-  if inst.tabs.is_empty() {
-    return;
-  }
-  let active = inst.active_tab;
-  let len = inst.tabs.len();
-  notes_switch_tab(app, side, (active + 1).min(len - 1));
-}
-
-fn notes_tabs_len(app: &App, side: FocusedReader) -> usize {
-  app.notes.instance(side).map(|i| i.tabs.len()).unwrap_or(0)
-}
-
-fn notes_switch_tab(app: &mut App, side: FocusedReader, idx: usize) {
-  let note_id = if let Some(inst) = app.notes.instance_mut(side) {
-    inst.active_tab = idx;
-    inst.tabs.get(idx).map(|t| t.note_id.clone())
-  } else {
-    None
-  };
-  if let Some(note_id) = note_id {
-    if let Some(na) = app.notes.app.as_mut() {
-      na.focus_note(&note_id);
-      na.notes_state = notes::app::NotesState::List;
-    }
+  if let Some(note_id) = app.notes.next_tab(side) {
+    sync_notes_backend_to_active(app, &note_id);
   }
 }
 
 fn notes_close_active_tab(app: &mut App, side: FocusedReader) {
-  let became_empty = {
-    let Some(inst) = app.notes.instance_mut(side) else {
-      return;
-    };
-    if inst.tabs.is_empty() {
-      return;
+  match app.notes.close_active_tab(side) {
+    CloseTabOutcome::NoOp => {}
+    CloseTabOutcome::BecameEmpty => {
+      app.notes.set_visible(side, false);
+      app.focus.focused_pane = focus_fallback_after_notes(app, side);
     }
-    inst.active_tab = inst.active_tab.min(inst.tabs.len() - 1);
-    inst.tabs.remove(inst.active_tab);
-    inst.tabs.is_empty()
-  };
-
-  if became_empty {
-    set_notes_side_active(app, side, false);
-    app.focus.focused_pane = focus_fallback_after_notes(app, side);
-    return;
+    CloseTabOutcome::Switched(note_id) => {
+      sync_notes_backend_to_active(app, &note_id);
+    }
   }
+}
 
-  let idx = {
-    let Some(inst) = app.notes.instance_mut(side) else {
-      return;
-    };
-    inst.active_tab = inst.active_tab.min(inst.tabs.len() - 1);
-    inst.active_tab
-  };
-  notes_switch_tab(app, side, idx);
+fn sync_notes_backend_to_active(app: &mut App, note_id: &str) {
+  if let Some(na) = app.notes.app.as_mut() {
+    na.focus_note(note_id);
+    na.notes_state = notes::app::NotesState::List;
+  }
 }
 
 /// Spawns a fulltext fetch for the selected item, using flags already set on app.
@@ -1275,7 +1240,7 @@ fn handle_chat_pane(key: KeyEvent, app: &mut App) -> bool {
 
 fn handle_notes_pane(key: KeyEvent, app: &mut App) -> bool {
   let Some(side) =
-    focused_note_side(app).filter(|side| notes_side_active(app, *side))
+    focused_note_side(app).filter(|side| app.notes.is_visible(*side))
   else {
     return false;
   };
@@ -1362,7 +1327,7 @@ fn handle_notes_pane(key: KeyEvent, app: &mut App) -> bool {
       if let Err(e) = notes_app.persist_state() {
         log::error!("notes: failed to persist state: {e}");
       }
-      set_notes_side_active(app, side, false);
+      app.notes.set_visible(side, false);
       app.focus.focused_pane = focus_fallback_after_notes(app, side);
     }
   }
@@ -1371,21 +1336,14 @@ fn handle_notes_pane(key: KeyEvent, app: &mut App) -> bool {
     app.notes.app.as_mut().and_then(|na| na.last_created_note_id.take())
   {
     let title = app
-      .notes.app
+      .notes
+      .app
       .as_ref()
       .and_then(|na| na.get_note_title(&note_id))
       .unwrap_or_default();
-    {
-      let inst = app.notes.instance_or_init_mut(side);
-      if !inst.tabs.iter().any(|t| t.note_id == note_id) {
-        inst.tabs.push(NotesTab { note_id: note_id.clone(), title });
-      }
-      if let Some(idx) =
-        inst.tabs.iter().position(|t| t.note_id == note_id)
-      {
-        inst.active_tab = idx;
-      }
-    }
+    app
+      .notes
+      .add_or_focus_tab(side, NotesTab { note_id: note_id.clone(), title });
     if app.notes_mode_for_side(side) == NotesMode::Capture {
       app.set_notes_mode_for_side(side, NotesMode::PaperNotes);
     }

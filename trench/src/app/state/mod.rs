@@ -18,7 +18,8 @@ pub use discovery::DiscoveryState;
 pub use feed::{AppView, FeedTab, FilterState, ItemCounts, NavDirection};
 pub use help::HelpState;
 pub use notes::{
-  NotesContext, NotesInstanceModel, NotesMode, NotesPaneModel, NotesTab,
+  CloseTabOutcome, NotesContext, NotesInstanceModel, NotesMode, NotesPaneModel,
+  NotesTab,
 };
 pub use panes::{FocusedReader, PANE_COUNT, PaneId, PaneInfo};
 pub use popups::{
@@ -26,8 +27,8 @@ pub use popups::{
 };
 pub use reader::ReaderTab;
 pub use repo::{
-  RepoContext, RepoEnterTarget, RepoFetchResult, RepoFileFetched,
-  RepoFileKind, RepoPane,
+  RepoContext, RepoEnterTarget, RepoFetchResult, RepoFileFetched, RepoFileKind,
+  RepoPane,
 };
 pub use settings::SettingsEditState;
 pub use theme_picker::{
