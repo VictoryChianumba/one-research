@@ -203,4 +203,37 @@ mod tests {
       "FetchContext::http must alias trench_http::client (singleton invariant)"
     );
   }
+
+  // ── Method-signature contract (N1, ADR-004) ─────────────────────────
+  //
+  // The object-safety tests above lock the *trait shape* — that
+  // `Box<dyn Source>` and `Box<dyn EnrichmentSource>` exist. These tests
+  // lock the *method-call shape* — that `fetch(&ctx)` returns
+  // `Result<Vec<FeedItem>, String>` and `enrich(&mut [FeedItem], &ctx)`
+  // mutates in place. A rename like `fetch(&ctx, n: u8)` only breaks
+  // impls, not the dyn cast — these call sites are what catches it.
+
+  #[test]
+  fn source_fetch_call_shape_through_context() {
+    let cfg = Config::default();
+    let dir = std::path::PathBuf::from("/tmp");
+    let ctx = FetchContext { config: &cfg, cache_dir: &dir };
+    let source: Box<dyn Source> = Box::new(FakeSource);
+    let result = source.fetch(&ctx);
+    let items = result.expect("FakeSource always returns Ok");
+    assert!(items.is_empty(), "FakeSource is a no-op");
+  }
+
+  #[test]
+  fn enrichment_enrich_call_shape_mutates_in_place() {
+    let cfg = Config::default();
+    let dir = std::path::PathBuf::from("/tmp");
+    let ctx = FetchContext { config: &cfg, cache_dir: &dir };
+    let mut items: Vec<FeedItem> = Vec::new();
+    let enrich: Box<dyn EnrichmentSource> = Box::new(FakeEnrichment);
+    enrich.enrich(&mut items, &ctx);
+    // FakeEnrichment is a no-op; the assert documents the contract —
+    // enrich neither adds nor removes items, only mutates in place.
+    assert!(items.is_empty(), "FakeEnrichment must not add items");
+  }
 }

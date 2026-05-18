@@ -161,4 +161,105 @@ mod tests {
     let n = RetryPolicy::none();
     assert_eq!(n.backoffs_ms.len() + 1, 1, "none policy = 1 attempt total");
   }
+
+  // ── with_retry behavioural tests (N1, ADR-004) ───────────────────────
+  //
+  // The constants tests above lock the *intent* (which codes retry, what
+  // the backoff curve is). These tests lock the *loop behaviour* — that
+  // with_retry actually retries on retriable codes, exhausts at N
+  // attempts, and short-circuits on non-retriable codes.
+  //
+  // Stub server: a real TcpListener on 127.0.0.1:0 serving exactly
+  // `script.len()` HTTP responses. Test uses backoffs of `vec![1, 1]`
+  // so the suite runs in milliseconds (production constants are 3s/6s;
+  // arxiv_defaults_match_history above guards those).
+
+  fn stub_server(script: Vec<u16>) -> (u16, std::thread::JoinHandle<()>) {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let handle = std::thread::spawn(move || {
+      for code in script {
+        let (mut stream, _) = listener.accept().expect("accept");
+        // Drain request headers — read until \r\n\r\n or the buffer fills.
+        let mut buf = [0u8; 1024];
+        let _ = stream.read(&mut buf);
+        let reason = match code {
+          200 => "OK",
+          404 => "Not Found",
+          429 => "Too Many Requests",
+          503 => "Service Unavailable",
+          _ => "Test",
+        };
+        let body = "ok";
+        let resp = format!(
+          "HTTP/1.1 {code} {reason}\r\n\
+           Content-Length: {len}\r\n\
+           Connection: close\r\n\r\n{body}",
+          len = body.len()
+        );
+        let _ = stream.write_all(resp.as_bytes());
+      }
+    });
+    (port, handle)
+  }
+
+  /// Policy with the right retriable predicate but fast backoffs, so the
+  /// behaviour tests run in milliseconds rather than the production 3s/6s.
+  fn fast_503_policy() -> RetryPolicy {
+    RetryPolicy { backoffs_ms: vec![1, 1], retriable: |c| c == 503 }
+  }
+
+  #[test]
+  fn with_retry_recovers_after_two_503s() {
+    let (port, server) = stub_server(vec![503, 503, 200]);
+    let policy = fast_503_policy();
+    let result = with_retry(client(), &policy, |c| {
+      c.get(format!("http://127.0.0.1:{port}/"))
+    });
+    let resp = result.expect("third attempt should succeed");
+    assert_eq!(resp.status().as_u16(), 200);
+    server.join().unwrap();
+  }
+
+  #[test]
+  fn with_retry_surfaces_last_error_after_exhausting_attempts() {
+    let (port, server) = stub_server(vec![503, 503, 503]);
+    let policy = fast_503_policy();
+    let result = with_retry(client(), &policy, |c| {
+      c.get(format!("http://127.0.0.1:{port}/"))
+    });
+    let err = result.expect_err("all attempts should fail with 503");
+    assert!(err.contains("503"), "expected last-error to mention 503, got: {err}");
+    server.join().unwrap();
+  }
+
+  #[test]
+  fn with_retry_short_circuits_on_non_retriable_status() {
+    // Server serves exactly ONE response. If with_retry tried again the
+    // second attempt would hit a closed listener and the test would fail
+    // with a connection-refused error rather than the expected 404.
+    let (port, server) = stub_server(vec![404]);
+    let policy = fast_503_policy();
+    let result = with_retry(client(), &policy, |c| {
+      c.get(format!("http://127.0.0.1:{port}/"))
+    });
+    let err = result.expect_err("404 is non-retriable");
+    assert!(err.contains("404"), "expected 404 error, got: {err}");
+    server.join().unwrap();
+  }
+
+  #[test]
+  fn with_retry_none_policy_does_not_retry() {
+    // Mirror of the short-circuit test, but via the none() policy: even
+    // a normally-retriable 503 should fail immediately.
+    let (port, server) = stub_server(vec![503]);
+    let policy = RetryPolicy::none();
+    let result = with_retry(client(), &policy, |c| {
+      c.get(format!("http://127.0.0.1:{port}/"))
+    });
+    let err = result.expect_err("none() policy = no retries");
+    assert!(err.contains("503"));
+    server.join().unwrap();
+  }
 }
