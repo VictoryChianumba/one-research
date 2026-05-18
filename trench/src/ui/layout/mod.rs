@@ -10,6 +10,7 @@ mod details;
 mod feed;
 mod filter;
 mod footer;
+mod frame_layout;
 mod main_row;
 mod modals;
 mod notes;
@@ -17,6 +18,8 @@ mod popups;
 mod reader;
 mod title;
 mod widgets;
+
+pub use frame_layout::FrameLayout;
 
 use footer::draw_footer;
 use main_row::draw_main_row;

@@ -74,12 +74,24 @@ impl App {
     }
 
     // reader_bottom_scroll.max: details mode allows unbounded scroll
-    // (same paragraph-clipping pattern); feed mode's max is set by
-    // the feed-pane render path because it needs viewport_rows
-    // (handled in B2).
+    // (same paragraph-clipping pattern). The feed-mode counterpart
+    // requires viewport_rows from the bottom-drawer list area, which
+    // isn't known until layout — see `apply_frame_layout` (C6 / ADR-008)
+    // for that branch.
     if self.reader_bottom_open && self.reader_bottom_details {
       self.reader_bottom_scroll.set_max(usize::MAX);
     }
+  }
+
+  /// Per-frame post-layout hook (ADR-008). Runs between the layout pass
+  /// and the render pass, with `FrameLayout` carrying the post-layout
+  /// `Rect`s that layout-derived mutations need.
+  ///
+  /// PR 1 lands the empty body — no callers yet. PR 2 will wire the
+  /// reader-bottom feed-mode auto-scroll (currently the lone surviving
+  /// `// Intentional render-time mutation` site in `ui/layout/reader.rs`).
+  pub fn apply_frame_layout(&mut self, _layout: &crate::ui::FrameLayout) {
+    // Intentionally empty for PR 1.
   }
 
   /// URL-shaped key identifying the currently-shown details subject.
