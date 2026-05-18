@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 #
-# Slice-1 render-purification invariants (ADR-001).
+# Render-purification invariants for the per-pane composition-root
+# refactor: ADR-001 (feed, slice 1), ADR-002 (reader, slice 2),
+# ADR-003 (notes, slice 3).
 #
-# Fails CI if any of the locked-down properties regress.  Currently
-# checks the feed pane (slice 1).  As more panes complete their slice,
-# they extend this script with their own checks.
+# Fails CI if any of the locked-down properties regress.  Each slice
+# extends this script with its own checks when it lands.
 #
 # Exit codes:
 #   0  all invariants hold
@@ -105,7 +106,72 @@ for f in trench/src/ui/layout/main_row.rs trench/src/ui/layout/reader.rs; do
   fi
 done
 
+
+# ── Slice 3 (notes pane) ────────────────────────────────────────────────
+
+# I8.  The 11 bifurcated notes_* / secondary_notes_* fields migrated by
+#      Slice 3 PR 2 must stay off App's top level.  If a future PR
+#      re-introduces any of them — say, as a "temporary" shortcut beside
+#      app.notes — the bifurcation is back and the slice is undone.
+#      Scoped to the App struct body via awk because `notes_context` is
+#      also a legitimate field on `PendingTreadFetch` (a transient
+#      pending-fetch struct, unrelated to slice 3).
+app_struct_body=$(awk '/^pub struct App \{/,/^\}/' "$app_mod")
+for field in \
+  "pub notes_app:" \
+  "pub notes_active:" \
+  "pub notes_tabs:" \
+  "pub notes_active_tab:" \
+  "pub notes_mode:" \
+  "pub notes_context:" \
+  "pub secondary_notes_active:" \
+  "pub secondary_notes_tabs:" \
+  "pub secondary_notes_active_tab:" \
+  "pub secondary_notes_mode:" \
+  "pub secondary_notes_context:" \
+; do
+  if echo "$app_struct_body" | grep -qF "$field"; then
+    echo "FAIL: ${app_mod} App still declares '${field}' — Slice 3 PR 2 migrated this into App.notes (ADR-003)"
+    fail=1
+  fi
+done
+
+# I9.  NotesPaneModel must be wired on App as the single composition root
+#      for notes state.
+if ! grep -qF "pub notes: NotesPaneModel" "$app_mod"; then
+  echo "FAIL: ${app_mod} missing slice-3 model field 'pub notes: NotesPaneModel' (ADR-003 §D1)"
+  fail=1
+fi
+
+# I10. NotesInstanceModel stays pure content — no visibility field.
+#      Visibility is a pane-level concern (lives on NotesPaneModel as
+#      primary_visible / secondary_visible) per ADR-003 §S3.  If an
+#      instance grows a `visible: bool`, that decision must be revisited
+#      in a new ADR, not slipped in.
+notes_state="trench/src/app/state/notes.rs"
+inst_body=$(awk '/^pub struct NotesInstanceModel/,/^\}/' "$notes_state")
+if echo "$inst_body" | grep -qE '\bvisible\b'; then
+  echo "FAIL: ${notes_state} — NotesInstanceModel grew a visibility field (ADR-003 §S3)"
+  fail=1
+fi
+
+# I11. Render paths reach notes state via app.notes.* only.  The 11
+#      migrated field names must not reappear as App-level shortcuts.
+#      App-level method wrappers like app.notes_mode_for_side(...) are
+#      explicitly allowed (ADR-003 §S4) — the word-boundary regex on the
+#      11 exact field names excludes method calls.
+for fld in notes_app notes_active notes_tabs notes_active_tab notes_mode notes_context \
+           secondary_notes_active secondary_notes_tabs secondary_notes_active_tab \
+           secondary_notes_mode secondary_notes_context; do
+  hits=$(grep -rnE "\\bapp\\.${fld}\\b" trench/src/ 2>/dev/null | grep -v ':[[:space:]]*//' || true)
+  if [[ -n "$hits" ]]; then
+    echo "FAIL: render path reaches around App.notes via 'app.${fld}' (ADR-003 §I11):"
+    echo "$hits" | sed 's/^/  /'
+    fail=1
+  fi
+done
+
 if [[ "$fail" -eq 0 ]]; then
-  echo "OK: render-purification invariants hold (feed + reader)"
+  echo "OK: render-purification invariants hold (feed + reader + notes)"
 fi
 exit $fail

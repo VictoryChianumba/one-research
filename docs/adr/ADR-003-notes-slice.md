@@ -1,6 +1,6 @@
 # ADR-003 — Notes-pane slice (Slice 3 of render purification)
 
-- **Status:** Proposed (2026-05-18). PR 1 lands the empty skeletons + this ADR + CONTEXT.md vocabulary; subsequent PRs migrate state, lift gestures, and tripwire-lock. Status flips to Accepted in PR 4.
+- **Status:** Accepted (2026-05-18). All four PRs have landed: PR 1 (skeletons + this ADR + vocabulary), PR 2 (state migration, 11 fields → `App.notes`), PR 3 (gesture methods on `NotesPaneModel`), PR 4 (tripwires I8/I9/I10/I11 in `scripts/check-render-purification.sh`).
 - **Date:** 2026-05-18
 - **Owner:** Victory Chianumba
 - **Supersedes:** none
