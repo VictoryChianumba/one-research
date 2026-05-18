@@ -1,6 +1,6 @@
 # ADR-007 — `ItemStore` encapsulates Workspace's item triple
 
-- **Status:** Proposed (2026-05-18). PR 1 lands this ADR + `ItemStore` skeleton (`trench/src/data/item_store.rs`) + smoke tests + CONTEXT.md vocabulary. PR 2 migrates `Workspace` to use `ItemStore` for `items + url_index + arxiv_id_index`. PR 3 lands tripwires M1-M4 + flips status to Accepted.
+- **Status:** Accepted (2026-05-18). All 3 PRs landed: PR 1 = ADR + `ItemStore` skeleton + 8 smoke tests + CONTEXT.md vocabulary, PR 2 = Workspace migration (~13 files, +252 / −216), PR 3 = M1-M4 tripwires in `scripts/check-item-store.sh` + ci.sh wired + this status flip.
 - **Date:** 2026-05-18
 - **Owner:** Victory Chianumba
 - **Supersedes:** none
