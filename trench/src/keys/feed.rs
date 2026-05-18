@@ -10,70 +10,15 @@ use crate::app::{App, AppView, FeedTab, PaneId, RepoContext, RepoPane};
 use crate::models::WorkflowState;
 
 pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
-  // Discoveries tab — search bar input (when focused).
+  // C2: gesture-shaped sub-handlers. Each returns `true` when it
+  // consumed the key and the caller should stop, `false` to fall
+  // through. Named gestures replace inline `match key.code` blocks
+  // that read as "Esc + Up + Down + Tab + Enter + ..." without saying
+  // what they're for. Audit candidate from 2026-05-18 §C2.
   if app.feed.feed_tab == FeedTab::Discoveries
     && app.feed.discovery.search_focused
+    && handle_discovery_search_bar(key, app)
   {
-    let palette_active = app.feed.discovery.query.starts_with('/');
-    match key.code {
-      KeyCode::Esc => {
-        app.feed.discovery.search_focused = false;
-        app.feed.discovery.palette.reset();
-      }
-      KeyCode::Up if palette_active => {
-        // Mirror the prior hardcoded `visible=8` until layout starts
-        // pushing viewport size into the palette state (Phase 4).
-        app.feed.discovery.palette.set_viewport(8);
-        app.feed.discovery.palette.move_up();
-      }
-      KeyCode::Down if palette_active => {
-        let count = discovery_palette_count(&app.feed.discovery.query);
-        app.feed.discovery.palette.set_viewport(8);
-        app.feed.discovery.palette.set_count(count);
-        app.feed.discovery.palette.move_down();
-      }
-      KeyCode::Tab if palette_active => {
-        // Complete selected command into the input.
-        if let Some(completion) = discovery_palette_completion(
-          &app.feed.discovery.query,
-          app.feed.discovery.palette.selected(),
-        ) {
-          app.set_discovery_query(completion);
-          app.feed.discovery.palette.reset();
-        }
-      }
-      KeyCode::Enter => {
-        if !app.feed.discovery.query.is_empty() && !app.feed.discovery.loading {
-          let query = app.feed.discovery.query.clone();
-          app.feed.discovery.palette.reset();
-          if query.starts_with('/') {
-            app.feed.discovery.search_focused = false;
-            app.clear_discovery_query();
-            let cmd = crate::commands::parser::parse_slash_command(&query);
-            crate::commands::dispatch::dispatch_slash_command(app, cmd);
-          } else {
-            let config = app.config.clone();
-            spawn_ai_discovery(query, config, app);
-          }
-        }
-      }
-      KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-        app.feed.discovery.force_new = true;
-        app.clear_discovery_query();
-        app.feed.discovery.palette.reset();
-      }
-      KeyCode::Backspace => {
-        app.pop_discovery_char();
-        if !app.feed.discovery.query.starts_with('/') {
-          app.feed.discovery.palette.reset();
-        }
-      }
-      KeyCode::Char(c) => {
-        app.push_discovery_char(c);
-        app.feed.discovery.palette.reset();
-      }
-      _ => {}
-    }
     return;
   }
 
@@ -104,23 +49,7 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
   }
 
   if app.feed.search_active {
-    match key.code {
-      KeyCode::Esc => {
-        app.feed.exit_search();
-        app.clear_search_query();
-        app.reset_active_feed_position();
-      }
-      KeyCode::Enter => {
-        app.feed.exit_search();
-      }
-      KeyCode::Backspace => {
-        app.pop_search_char();
-      }
-      KeyCode::Char(c) => {
-        app.push_search_char(c);
-      }
-      _ => {}
-    }
+    handle_search_bar_input(key, app);
   } else if app.feed.filter_focus {
     match key.code {
       KeyCode::Char('j') | KeyCode::Down => {
@@ -145,73 +74,10 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
       _ => {}
     }
   } else if app.focus.focused_pane == PaneId::Feed {
-    // In State 2 the narrow feed holds focus — use a restricted key set so
+    // In State 2 the narrow feed holds focus — restricted key set so
     // main-feed bindings (Esc → quit, v → repo viewer) don't fire here.
     if app.reader.split_active {
-      // Close description popup first if open.
-      if app.narrow_feed_details_open {
-        match key.code {
-          KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('d') => {
-            app.narrow_feed_details_open = false;
-          }
-          KeyCode::Char('j') | KeyCode::Down => {
-            app.details_scroll.scroll_down(1);
-          }
-          KeyCode::Char('k') | KeyCode::Up => {
-            app.details_scroll.scroll_up(1);
-          }
-          _ => {}
-        }
-        return;
-      }
-      match key.code {
-        KeyCode::Esc | KeyCode::Char('q') => {
-          app.reader.split_active = false;
-          app.narrow_feed_details_open = false;
-          app.focus.focused_pane = PaneId::Reader;
-        }
-        KeyCode::Char('d') => {
-          app.narrow_feed_details_open = true;
-          app.details_scroll.reset();
-        }
-        KeyCode::Char('/') => {
-          app.feed.enter_search();
-          app.clear_search_query();
-          app.reset_active_feed_position();
-        }
-        KeyCode::Char('j') | KeyCode::Down => {
-          if kbd_scroll_ok(app) {
-            app.move_down();
-            app.narrow_feed_details_open = false;
-          }
-        }
-        KeyCode::Char('k') | KeyCode::Up => {
-          if kbd_scroll_ok(app) {
-            app.move_up();
-            app.narrow_feed_details_open = false;
-          }
-        }
-        KeyCode::Enter => {
-          if !app.fulltext_loading {
-            if let Some(item) = app.selected_item().cloned() {
-              app.narrow_feed_details_open = false;
-              remember_fulltext_paper_context(app, &item);
-              app.set_notification(format!(
-                "Fetching: {}…",
-                truncate_for_notif(&item.title, 40)
-              ));
-              app.focus.focused_pane = PaneId::Reader;
-              super::spawn_paper_open(
-                app,
-                item,
-                crate::action::ReaderTarget::Primary,
-                crate::action::OpenMode::ReplaceActive,
-              );
-            }
-          }
-        }
-        _ => {}
-      }
+      handle_narrow_feed_state_2(key, app);
       return;
     }
 
@@ -283,10 +149,9 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
         app.clear_search_query();
         app.reset_active_feed_position();
       }
-      KeyCode::Char('i') => app.set_workflow_state(WorkflowState::Inbox),
-      KeyCode::Char('r') => app.set_workflow_state(WorkflowState::DeepRead),
-      KeyCode::Char('w') => app.set_workflow_state(WorkflowState::Queued),
-      KeyCode::Char('x') => app.set_workflow_state(WorkflowState::Archived),
+      KeyCode::Char('i' | 'r' | 'w' | 'x') => {
+        handle_workflow_gesture(key, app);
+      }
       KeyCode::Char('o') => {
         if let Some(item) = app.selected_item() {
           let url = item.url.clone();
@@ -591,6 +456,193 @@ fn handle_history_tab(key: KeyEvent, app: &mut App) -> bool {
     }
     _ => false,
   }
+}
+
+// ── C2 sub-gesture handlers ───────────────────────────────────────────
+//
+// Each handler is a named gesture that the top-level `handle_feed_view`
+// composes. The functions take `KeyEvent + &mut App` and return a bool:
+// `true` means "consumed; stop dispatching" and `false` means "not my
+// key; fall through." Audit candidate from 2026-05-18 §C2.
+
+/// Workflow-state shortcut keys (i/r/w/x → Inbox/DeepRead/Queued/Archived).
+/// Returns `true` when the key matched a workflow state. Delegates to
+/// `App::set_workflow_state`, which is itself a W3 hybrid orchestrator
+/// (ADR-001 D5): the mutation lives on `FeedModel::set_workflow_state_at_cursor`
+/// taking `(&mut Workspace, &Config, state)`, and `App` owns the cache-
+/// invalidation routing + persistence step.
+fn handle_workflow_gesture(key: KeyEvent, app: &mut App) -> bool {
+  let state = match key.code {
+    KeyCode::Char('i') => WorkflowState::Inbox,
+    KeyCode::Char('r') => WorkflowState::DeepRead,
+    KeyCode::Char('w') => WorkflowState::Queued,
+    KeyCode::Char('x') => WorkflowState::Archived,
+    _ => return false,
+  };
+  app.set_workflow_state(state);
+  true
+}
+
+/// Narrow-feed State-2 keys — fires when the reader is `split_active`
+/// and the narrow feed holds focus. Restricted key set so main-feed
+/// bindings (Esc → quit, v → repo viewer) don't accidentally fire from
+/// the side panel. Two-level: if the description popup is open, only
+/// scroll/dismiss; otherwise full narrow-feed nav + Enter to open in
+/// the side reader.
+fn handle_narrow_feed_state_2(key: KeyEvent, app: &mut App) {
+  if app.narrow_feed_details_open {
+    match key.code {
+      KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('d') => {
+        app.narrow_feed_details_open = false;
+      }
+      KeyCode::Char('j') | KeyCode::Down => {
+        app.details_scroll.scroll_down(1);
+      }
+      KeyCode::Char('k') | KeyCode::Up => {
+        app.details_scroll.scroll_up(1);
+      }
+      _ => {}
+    }
+    return;
+  }
+  match key.code {
+    KeyCode::Esc | KeyCode::Char('q') => {
+      app.reader.split_active = false;
+      app.narrow_feed_details_open = false;
+      app.focus.focused_pane = PaneId::Reader;
+    }
+    KeyCode::Char('d') => {
+      app.narrow_feed_details_open = true;
+      app.details_scroll.reset();
+    }
+    KeyCode::Char('/') => {
+      app.feed.enter_search();
+      app.clear_search_query();
+      app.reset_active_feed_position();
+    }
+    KeyCode::Char('j') | KeyCode::Down => {
+      if kbd_scroll_ok(app) {
+        app.move_down();
+        app.narrow_feed_details_open = false;
+      }
+    }
+    KeyCode::Char('k') | KeyCode::Up => {
+      if kbd_scroll_ok(app) {
+        app.move_up();
+        app.narrow_feed_details_open = false;
+      }
+    }
+    KeyCode::Enter => {
+      if !app.fulltext_loading {
+        if let Some(item) = app.selected_item().cloned() {
+          app.narrow_feed_details_open = false;
+          remember_fulltext_paper_context(app, &item);
+          app.set_notification(format!(
+            "Fetching: {}…",
+            truncate_for_notif(&item.title, 40)
+          ));
+          app.focus.focused_pane = PaneId::Reader;
+          super::spawn_paper_open(
+            app,
+            item,
+            crate::action::ReaderTarget::Primary,
+            crate::action::OpenMode::ReplaceActive,
+          );
+        }
+      }
+    }
+    _ => {}
+  }
+}
+
+/// Generic feed search bar (active for any tab where `feed.search_active`
+/// is true — slash-key prefix in the main feed). Esc exits + clears,
+/// Enter exits (preserves the query), Backspace + char edit the query.
+fn handle_search_bar_input(key: KeyEvent, app: &mut App) {
+  match key.code {
+    KeyCode::Esc => {
+      app.feed.exit_search();
+      app.clear_search_query();
+      app.reset_active_feed_position();
+    }
+    KeyCode::Enter => {
+      app.feed.exit_search();
+    }
+    KeyCode::Backspace => {
+      app.pop_search_char();
+    }
+    KeyCode::Char(c) => {
+      app.push_search_char(c);
+    }
+    _ => {}
+  }
+}
+
+/// Discoveries tab, search bar focused. Handles the palette navigation
+/// (Up/Down/Tab) when the query starts with `/`, plus query Enter,
+/// Backspace, Ctrl+N (force-new), Esc (defocus), and char typing.
+fn handle_discovery_search_bar(key: KeyEvent, app: &mut App) -> bool {
+  let palette_active = app.feed.discovery.query.starts_with('/');
+  match key.code {
+    KeyCode::Esc => {
+      app.feed.discovery.search_focused = false;
+      app.feed.discovery.palette.reset();
+    }
+    KeyCode::Up if palette_active => {
+      // Mirror the prior hardcoded `visible=8` until layout starts
+      // pushing viewport size into the palette state (Phase 4).
+      app.feed.discovery.palette.set_viewport(8);
+      app.feed.discovery.palette.move_up();
+    }
+    KeyCode::Down if palette_active => {
+      let count = discovery_palette_count(&app.feed.discovery.query);
+      app.feed.discovery.palette.set_viewport(8);
+      app.feed.discovery.palette.set_count(count);
+      app.feed.discovery.palette.move_down();
+    }
+    KeyCode::Tab if palette_active => {
+      // Complete selected command into the input.
+      if let Some(completion) = discovery_palette_completion(
+        &app.feed.discovery.query,
+        app.feed.discovery.palette.selected(),
+      ) {
+        app.set_discovery_query(completion);
+        app.feed.discovery.palette.reset();
+      }
+    }
+    KeyCode::Enter => {
+      if !app.feed.discovery.query.is_empty() && !app.feed.discovery.loading {
+        let query = app.feed.discovery.query.clone();
+        app.feed.discovery.palette.reset();
+        if query.starts_with('/') {
+          app.feed.discovery.search_focused = false;
+          app.clear_discovery_query();
+          let cmd = crate::commands::parser::parse_slash_command(&query);
+          crate::commands::dispatch::dispatch_slash_command(app, cmd);
+        } else {
+          let config = app.config.clone();
+          spawn_ai_discovery(query, config, app);
+        }
+      }
+    }
+    KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+      app.feed.discovery.force_new = true;
+      app.clear_discovery_query();
+      app.feed.discovery.palette.reset();
+    }
+    KeyCode::Backspace => {
+      app.pop_discovery_char();
+      if !app.feed.discovery.query.starts_with('/') {
+        app.feed.discovery.palette.reset();
+      }
+    }
+    KeyCode::Char(c) => {
+      app.push_discovery_char(c);
+      app.feed.discovery.palette.reset();
+    }
+    _ => {}
+  }
+  true
 }
 
 fn discovery_palette_filtered(
