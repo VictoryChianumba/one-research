@@ -339,7 +339,7 @@ pub fn draw_library_tab(
   }
 
   if ctx.visible_indices.is_empty() {
-    let msg = if ctx.workspace.items.is_empty() {
+    let msg = if ctx.workspace.items_store.is_empty() {
       "No items yet — fetch a feed first."
     } else {
       "No items match this filter."
@@ -529,16 +529,9 @@ fn draw_history_tab(
       let (content_height, title_lines) = &window_data[i];
       // O(1) hashmap lookup. Was a per-row O(items + discovery_items)
       // chain+find scan against ~3K items.
-      let cached_item = ctx
-        .workspace
-        .url_index
-        .get(&entry.key)
-        .map(|&idx| &ctx.workspace.items[idx])
-        .or_else(|| {
-          discovery
-            .url_index
-            .get(&entry.key)
-            .map(|&idx| &discovery.items[idx])
+      let cached_item =
+        ctx.workspace.items_store.find_by_url(&entry.key).or_else(|| {
+          discovery.url_index.get(&entry.key).map(|&idx| &discovery.items[idx])
         });
       let row_style =
         if is_selected { t.style_selection() } else { Style::default() };

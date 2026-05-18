@@ -141,12 +141,15 @@ impl App {
     if entry.kind != crate::history::HistoryKind::Paper {
       return None;
     }
-    if let Some(&idx) = self.workspace.url_index.get(&entry.key) {
-      return self.workspace.items.get(idx).cloned();
+    if let Some(idx) = self.workspace.items_store.find_index_by_url(&entry.key)
+    {
+      return self.workspace.items_store.get(idx).cloned();
     }
     if let Some(arxiv_id) = crate::models::arxiv_id_from_url(&entry.key) {
-      if let Some(&idx) = self.workspace.arxiv_id_index.get(arxiv_id) {
-        return self.workspace.items.get(idx).cloned();
+      if let Some(idx) =
+        self.workspace.items_store.find_index_by_arxiv_id(arxiv_id)
+      {
+        return self.workspace.items_store.get(idx).cloned();
       }
       if let Some(&idx) = self.discovery.arxiv_id_index.get(arxiv_id) {
         return self.discovery.items.get(idx).cloned();
@@ -221,8 +224,9 @@ impl App {
     if entry.kind != crate::history::HistoryKind::Paper {
       return None;
     }
-    if let Some(&idx) = self.workspace.url_index.get(&entry.key) {
-      let item = self.workspace.items.get(idx)?;
+    if let Some(idx) = self.workspace.items_store.find_index_by_url(&entry.key)
+    {
+      let item = self.workspace.items_store.get(idx)?;
       return Some((
         workspace_feed_tab(item.workflow_state),
         item.workflow_state,
@@ -230,8 +234,10 @@ impl App {
       ));
     }
     if let Some(arxiv_id) = crate::models::arxiv_id_from_url(&entry.key) {
-      if let Some(&idx) = self.workspace.arxiv_id_index.get(arxiv_id) {
-        let item = self.workspace.items.get(idx)?;
+      if let Some(idx) =
+        self.workspace.items_store.find_index_by_arxiv_id(arxiv_id)
+      {
+        let item = self.workspace.items_store.get(idx)?;
         return Some((
           workspace_feed_tab(item.workflow_state),
           item.workflow_state,

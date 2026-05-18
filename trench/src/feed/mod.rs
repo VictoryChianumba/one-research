@@ -245,7 +245,7 @@ impl FeedModel {
     state: crate::models::WorkflowState,
   ) -> Vec<crate::effect::Effect> {
     let mut found = false;
-    for item in workspace.items.iter_mut() {
+    for item in workspace.items_store.iter_mut() {
       if item.url == url {
         item.workflow_state = state;
         found = true;
@@ -414,7 +414,7 @@ pub fn items_for_tab<'a>(
   discovery: &'a DiscoveryModel,
 ) -> &'a [crate::models::FeedItem] {
   match feed.feed_tab {
-    FeedTab::Inbox | FeedTab::Library => &workspace.items,
+    FeedTab::Inbox | FeedTab::Library => workspace.items_store.items(),
     FeedTab::Discoveries => &discovery.items,
     FeedTab::History => &[],
   }
@@ -802,8 +802,8 @@ mod tests {
     use crate::models::WorkflowState;
 
     let mut workspace = Workspace::default();
-    workspace.items.push(mock_item("https://a", WorkflowState::Inbox));
-    workspace.items.push(mock_item("https://b", WorkflowState::Inbox));
+    workspace.items_store.push(mock_item("https://a", WorkflowState::Inbox));
+    workspace.items_store.push(mock_item("https://b", WorkflowState::Inbox));
     let mut model = FeedModel::default();
     let mut discovery = DiscoveryModel::default();
 
@@ -815,7 +815,10 @@ mod tests {
     );
 
     // Item mutated in-place.
-    assert_eq!(workspace.items[1].workflow_state, WorkflowState::DeepRead);
+    assert_eq!(
+      workspace.items_store.get(1).unwrap().workflow_state,
+      WorkflowState::DeepRead
+    );
     // Persisted-state side table updated.
     assert_eq!(
       workspace.persisted_states.get("https://b"),
@@ -860,7 +863,7 @@ mod tests {
     use crate::models::WorkflowState;
 
     let mut workspace = Workspace::default();
-    workspace.items.push(mock_item("https://a", WorkflowState::Inbox));
+    workspace.items_store.push(mock_item("https://a", WorkflowState::Inbox));
     let mut model = FeedModel::default();
     let mut discovery = DiscoveryModel::default();
 
@@ -873,7 +876,10 @@ mod tests {
 
     // Empty Vec means no event; no mutation; no persistence write.
     assert!(effects.is_empty());
-    assert_eq!(workspace.items[0].workflow_state, WorkflowState::Inbox);
+    assert_eq!(
+      workspace.items_store.get(0).unwrap().workflow_state,
+      WorkflowState::Inbox
+    );
     assert!(workspace.persisted_states.is_empty());
   }
 

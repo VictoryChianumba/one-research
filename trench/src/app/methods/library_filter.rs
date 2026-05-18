@@ -192,7 +192,7 @@ impl App {
     }
     let mut names: std::collections::BTreeSet<String> = self
       .workspace
-      .items
+      .items_store
       .iter()
       .map(|item| {
         if item.source_name.is_empty() {

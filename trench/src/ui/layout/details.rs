@@ -239,12 +239,8 @@ fn details_subject<'a>(
       crate::history::HistoryKind::Paper => {
         // O(1) hashmap lookup vs the prior O(N) chain+find scan that
         // ran per row × per frame on the History tab.
-        let item = app
-          .workspace
-          .url_index
-          .get(&entry.key)
-          .map(|&i| &app.workspace.items[i])
-          .or_else(|| {
+        let item =
+          app.workspace.items_store.find_by_url(&entry.key).or_else(|| {
             app
               .discovery
               .url_index

@@ -367,7 +367,9 @@ fn handle_mouse(
           Some(PaneId::Details) => {}
           Some(PaneId::Notes) => {
             if let Some(note_id) = app
-              .notes.primary.tabs
+              .notes
+              .primary
+              .tabs
               .get(app.notes.primary.active_tab)
               .map(|t| t.note_id.clone())
             {
@@ -416,7 +418,9 @@ fn handle_mouse(
           Some(PaneId::Details) => {}
           Some(PaneId::Notes) => {
             if let Some(note_id) = app
-              .notes.primary.tabs
+              .notes
+              .primary
+              .tabs
               .get(app.notes.primary.active_tab)
               .map(|t| t.note_id.clone())
             {
@@ -486,7 +490,9 @@ fn handle_mouse(
             app.reader.focused = FocusedReader::Primary;
             if pane == PaneId::Notes {
               if let Some(note_id) = app
-                .notes.primary.tabs
+                .notes
+                .primary
+                .tabs
                 .get(app.notes.primary.active_tab)
                 .map(|t| t.note_id.clone())
               {
@@ -828,27 +834,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   }
   log::debug!("startup: state/ui load {}ms", t.elapsed().as_millis());
 
-  // 1. Load cache immediately → populate app.workspace.items.
+  // 1. Load cache immediately → populate app.workspace.items_store.
+  // `from_items` runs rebuild_indices internally, so the dedup hot
+  // path in process_incoming gets O(1) lookups from the very first
+  // batch.  Discovery still uses the raw triple — see ADR-007 §S3.
   let t = std::time::Instant::now();
   let cached = store::cache::load();
   if !cached.is_empty() {
-    app.workspace.items = cached;
+    app.workspace.items_store = crate::data::ItemStore::from_items(cached);
   }
-  // Build url_index + arxiv_id_index over the loaded items so the dedup
-  // hot path in process_incoming gets O(1) lookups from the very first
-  // batch. Same for discovery_items, which were loaded in App::new.
-  app.rebuild_indices();
   app.rebuild_discovery_indices();
   log::debug!(
     "startup: cache load + index rebuild {}ms ({} cached items)",
     t.elapsed().as_millis(),
-    app.workspace.items.len()
+    app.workspace.items_store.len()
   );
 
   // 2. Apply persisted states to cached items.
   let t = std::time::Instant::now();
-  for item in &mut app.workspace.items {
-    if let Some(state) = app.workspace.persisted_states.get(&item.url) {
+  // Split borrow: persisted_states is read-only here, items_store is
+  // the mutator — workspace's struct field separation makes this safe.
+  let persisted = app.workspace.persisted_states.clone();
+  for item in app.workspace.items_store.iter_mut() {
+    if let Some(state) = persisted.get(&item.url) {
       item.workflow_state = *state;
     }
   }
@@ -990,21 +998,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                   let (tread_tx, tread_rx) = std::sync::mpsc::channel();
                   spawn_tread_fetch(id.clone(), kitty_supported, tread_tx);
                   app.tread_fetch_rx = Some(tread_rx);
-                  app.pending_tread_fetch = Some(crate::app::PendingTreadFetch {
-                    arxiv_id: id,
-                    title,
-                    notes_context,
-                    fallback_paper: Some(fetched_paper),
-                    target,
-                    mode,
-                  });
+                  app.pending_tread_fetch =
+                    Some(crate::app::PendingTreadFetch {
+                      arxiv_id: id,
+                      title,
+                      notes_context,
+                      fallback_paper: Some(fetched_paper),
+                      target,
+                      mode,
+                    });
                   app.fulltext_loading = true;
                   app.mark_dirty();
                   continue;
                 }
 
                 // Non-arxiv path: complete immediately with fulltext data.
-                let arxiv_id = notes_context.as_ref().map(|ctx| ctx.paper.id.clone());
+                let arxiv_id =
+                  notes_context.as_ref().map(|ctx| ctx.paper.id.clone());
                 let reader = tread::Reader::init(
                   fetched_paper,
                   None,
@@ -1109,7 +1119,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
               "[DIAG-7e21] Reader::init took {}µs",
               t_init.elapsed().as_micros()
             );
-            tread::bench::emit_us("trench_reader_init", t_init.elapsed().as_micros());
+            tread::bench::emit_us(
+              "trench_reader_init",
+              t_init.elapsed().as_micros(),
+            );
             app.apply_open_in_reader(action::Action::OpenInReader {
               target: pending.target,
               mode: pending.mode,
@@ -1150,7 +1163,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                   reader,
                 });
                 app.set_notification(
-                  "Rich-LaTeX fetch failed; using fulltext fallback".to_string(),
+                  "Rich-LaTeX fetch failed; using fulltext fallback"
+                    .to_string(),
                 );
               } else {
                 app.set_notification(format!(

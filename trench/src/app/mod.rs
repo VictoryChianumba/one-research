@@ -235,9 +235,7 @@ impl App {
     Self {
       needs_redraw: true,
       workspace: crate::data::Workspace {
-        items: Vec::new(),
-        url_index: HashMap::new(),
-        arxiv_id_index: HashMap::new(),
+        items_store: crate::data::ItemStore::default(),
         history: crate::store::history::load(),
         item_tags: crate::store::tags::load(),
         persisted_states: HashMap::new(),
@@ -403,21 +401,10 @@ impl App {
     self.needs_redraw = true;
   }
 
-  /// Rebuild the `url_index` and `arxiv_id_index` HashMaps from `self.workspace.items`.
-  /// Call after any bulk mutation that invalidates positions: cache load,
-  /// `items.sort_by`, deletions. The intra-batch dedup in `process_incoming`
-  /// maintains the indices incrementally so this rebuild is rare.
-  pub fn rebuild_indices(&mut self) {
-    self.workspace.url_index.clear();
-    self.workspace.arxiv_id_index.clear();
-    self.workspace.url_index.reserve(self.workspace.items.len());
-    for (idx, item) in self.workspace.items.iter().enumerate() {
-      self.workspace.url_index.insert(item.url.clone(), idx);
-      if let Some(aid) = arxiv_id_from_url(&item.url) {
-        self.workspace.arxiv_id_index.insert(aid.to_string(), idx);
-      }
-    }
-  }
+  // C9 PR 2 (ADR-007): App::rebuild_indices is gone — `ItemStore`
+  // owns the invariant, and `sort_by` rebuilds internally. Cache load
+  // uses `ItemStore::from_items` which calls `rebuild_indices` on the
+  // fresh store.
 
   /// Same as `rebuild_indices` but for `discovery_items`.
   pub fn rebuild_discovery_indices(&mut self) {
@@ -602,13 +589,14 @@ impl App {
   /// escape hatches for the rare external mutation sites that don't fit a
   /// mutator (e.g. config.sources toggling in keys.rs).
   /// Reset the primary items vec and every parallel index/cache that mirrors
-  /// it. Direct `app.workspace.items.clear()` would leave `url_index` /
+  /// it. Direct `app.workspace.items_store.clear()` would leave `url_index` /
   /// `arxiv_id_index` populated with stale offsets and panic on the next
   /// `process_incoming` batch.
   pub fn reset_items(&mut self) {
-    self.workspace.items.clear();
-    self.workspace.url_index.clear();
-    self.workspace.arxiv_id_index.clear();
+    // ItemStore::clear drops items + both indices in lockstep.  Before
+    // C9 this was three separate field-level clears, with the same
+    // invariant-drift risk this whole slice closes.
+    self.workspace.items_store.clear();
     self.route_effects(&[crate::effect::Effect::ItemsChanged]);
   }
 
@@ -640,7 +628,7 @@ impl App {
       .format("%Y-%m-%d")
       .to_string();
     let mut counts = ItemCounts::default();
-    for item in &self.workspace.items {
+    for item in self.workspace.items_store.items() {
       counts.total += 1;
       match item.workflow_state {
         WorkflowState::Inbox => counts.inbox += 1,
@@ -670,8 +658,8 @@ impl App {
 
   pub fn items_for_tab(&self) -> &[FeedItem] {
     match self.feed.feed_tab {
-      FeedTab::Inbox => &self.workspace.items,
-      FeedTab::Library => &self.workspace.items,
+      FeedTab::Inbox => self.workspace.items_store.items(),
+      FeedTab::Library => self.workspace.items_store.items(),
       FeedTab::Discoveries => &self.discovery.items,
       FeedTab::History => &[],
     }
@@ -968,19 +956,25 @@ mod tests {
 
   #[test]
   fn rebuild_indices_maps_every_item() {
+    // Post-C9 (ADR-007), this verifies the App-level integration:
+    // after seeding items_store via from_items, every URL still maps
+    // back to its position. The type-level guarantee lives on
+    // ItemStore — see its own #[cfg(test)] block.
     let mut app = App::new();
-    app.workspace.items = mock_items();
-    let item_count = app.workspace.items.len();
-    app.rebuild_indices();
-    assert_eq!(app.workspace.url_index.len(), item_count);
-    // Every item's URL should resolve back to its position.
-    for (idx, item) in app.workspace.items.iter().enumerate() {
-      assert_eq!(app.workspace.url_index.get(&item.url).copied(), Some(idx));
+    app.workspace.items_store =
+      crate::data::ItemStore::from_items(mock_items());
+    for (idx, item) in app.workspace.items_store.iter().enumerate() {
+      assert_eq!(
+        app.workspace.items_store.find_index_by_url(&item.url),
+        Some(idx),
+      );
     }
-    // arxiv_id_index covers only items whose URL has an arxiv ID.
-    for (idx, item) in app.workspace.items.iter().enumerate() {
+    for (idx, item) in app.workspace.items_store.iter().enumerate() {
       if let Some(aid) = arxiv_id_from_url(&item.url) {
-        assert_eq!(app.workspace.arxiv_id_index.get(aid).copied(), Some(idx));
+        assert_eq!(
+          app.workspace.items_store.find_index_by_arxiv_id(aid),
+          Some(idx),
+        );
       }
     }
   }
@@ -1019,24 +1013,20 @@ mod tests {
     assert!(super::validate_download_name("a/b/c").is_err());
   }
 
-  #[test]
-  fn rebuild_indices_clears_stale_entries() {
-    let mut app = App::new();
-    app.workspace.items = mock_items();
-    app.rebuild_indices();
-    let prior = app.workspace.url_index.len();
-    // Drop half the items, rebuild — the index should shrink to match.
-    app.workspace.items.truncate(prior / 2);
-    app.rebuild_indices();
-    assert_eq!(app.workspace.url_index.len(), prior / 2);
-  }
+  // Note (C9 / ADR-007): the legacy `rebuild_indices_clears_stale_entries`
+  // test asserted that a manual `items.truncate(N)` followed by a
+  // `rebuild_indices()` shrank `url_index` in lockstep. Post-C9 there's
+  // no public API to make `items_store` carry stale entries — the
+  // invariant is type-enforced. The test is superseded by
+  // `ItemStore::tests::rebuild_indices_is_idempotent`.
 
   #[test]
   fn item_counts_breaks_down_workflow_states() {
     let mut app = App::new();
-    app.workspace.items = mock_items();
+    app.workspace.items_store =
+      crate::data::ItemStore::from_items(mock_items());
     let counts = app.item_counts();
-    assert_eq!(counts.total, app.workspace.items.len());
+    assert_eq!(counts.total, app.workspace.items_store.len());
     // Sum invariant: every item lives in exactly one workflow bucket.
     assert_eq!(
       counts.inbox + counts.queued + counts.deep_read + counts.archived,
@@ -1052,7 +1042,8 @@ mod tests {
   #[test]
   fn item_counts_queue_preview_caps_at_two() {
     let mut app = App::new();
-    app.workspace.items = mock_items();
+    app.workspace.items_store =
+      crate::data::ItemStore::from_items(mock_items());
     let counts = app.item_counts();
     assert!(counts.queued >= 2, "fixture must have at least 2 queued items");
     assert_eq!(
@@ -1065,14 +1056,15 @@ mod tests {
   #[test]
   fn invalidate_counts_cache_forces_recompute() {
     let mut app = App::new();
-    app.workspace.items = mock_items();
+    app.workspace.items_store =
+      crate::data::ItemStore::from_items(mock_items());
     // Snapshot the cached total in a scoped block so the Ref drops before
     // we mutate `app.workspace.items` below.
     let before_total = app.item_counts().total;
     // Mutate items directly, bypassing the public mutators that would
     // normally call invalidate_counts_cache. The cache should still hold
     // the stale value until we invalidate by hand.
-    app.workspace.items.clear();
+    app.workspace.items_store.clear();
     let stale_total = app.item_counts().total;
     assert_eq!(stale_total, before_total, "cache survives raw mutation");
     app.invalidate_counts_cache();
@@ -1083,14 +1075,15 @@ mod tests {
   #[test]
   fn filter_source_names_caches_until_invalidated() {
     let mut app = App::new();
-    app.workspace.items = mock_items();
+    app.workspace.items_store =
+      crate::data::ItemStore::from_items(mock_items());
 
     // First call computes and caches.
     let before = app.filter_source_names();
     assert!(!before.is_empty());
 
     // Mutate items directly without invalidation — cache holds stale value.
-    app.workspace.items.clear();
+    app.workspace.items_store.clear();
     let stale = app.filter_source_names();
     assert_eq!(stale, before, "cache survives raw mutation");
 
@@ -1106,24 +1099,26 @@ mod tests {
   #[test]
   fn reset_items_clears_indices() {
     let mut app = App::new();
-    app.workspace.items = mock_items();
-    app.rebuild_indices();
+    app.workspace.items_store =
+      crate::data::ItemStore::from_items(mock_items());
+    // Fixture verification: from_items populated both items and indices.
+    assert!(!app.workspace.items_store.is_empty());
     assert!(
-      !app.workspace.url_index.is_empty(),
-      "fixture must populate url_index"
+      app
+        .workspace
+        .items_store
+        .find_index_by_url("https://arxiv.org/abs/1")
+        .is_some()
+        || app.workspace.items_store.iter().any(|i| !i.url.is_empty()),
+      "fixture must produce indexed items",
     );
 
     app.reset_items();
 
-    assert!(app.workspace.items.is_empty());
-    assert!(
-      app.workspace.url_index.is_empty(),
-      "url_index must be cleared in lockstep"
-    );
-    assert!(
-      app.workspace.arxiv_id_index.is_empty(),
-      "arxiv_id_index must be cleared in lockstep"
-    );
+    // ItemStore::clear collapses items + both indices in lockstep
+    // (ADR-007 §S1) — no separate field-level assertions needed.
+    assert!(app.workspace.items_store.is_empty());
+    assert!(app.workspace.items_store.find_index_by_url("any").is_none());
   }
 
   #[test]

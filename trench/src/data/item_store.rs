@@ -125,6 +125,23 @@ impl ItemStore {
     self.rebuild_indices();
   }
 
+  /// Build an `ItemStore` from an existing `Vec<FeedItem>`. Used by
+  /// cache-load paths and by tests that want to populate the store
+  /// from a fixture in one step.
+  pub fn from_items(items: Vec<FeedItem>) -> Self {
+    let mut s = Self { items, ..Self::default() };
+    s.rebuild_indices();
+    s
+  }
+
+  /// Drop every item and clear both indices. Used by `App::reset_items`
+  /// for the "blow away the corpus on user-triggered hard reload" path.
+  pub fn clear(&mut self) {
+    self.items.clear();
+    self.url_index.clear();
+    self.arxiv_id_index.clear();
+  }
+
   /// Rebuild both indices from `items`. Use after a bulk mutation
   /// (cache load, manual delete sweep) where invariant maintenance
   /// across the operation isn't practical.

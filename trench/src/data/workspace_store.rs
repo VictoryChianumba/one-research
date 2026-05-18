@@ -13,24 +13,19 @@
 
 use std::collections::HashMap;
 
+use crate::data::ItemStore;
 use crate::history::HistoryEntry;
-use crate::models::{FeedItem, WorkflowState};
+use crate::models::WorkflowState;
 use crate::tags::ItemTags;
 
 #[derive(Default)]
 pub struct Workspace {
-  /// Item corpus — currently visible feed items, after ingestion +
-  /// enrichment. Mutated by ingestion completion routing,
-  /// workflow-state changes, and discovery merges.
-  pub items: Vec<FeedItem>,
-
-  /// `url → index in self.items`. Maintained by the dedup loop in
-  /// process_incoming and rebuilt by `rebuild_indices` after sort.
-  pub url_index: HashMap<String, usize>,
-
-  /// `arxiv_id → index in self.items`. Mirror of `url_index` for the
-  /// HF/arXiv-collapse path.
-  pub arxiv_id_index: HashMap<String, usize>,
+  /// Item corpus + dedup indices, encapsulated by `ItemStore` (ADR-007).
+  /// All mutation flows through `ItemStore::push` / `replace_at` /
+  /// `sort_by` / `rebuild_indices`; reads use `find_by_url`,
+  /// `find_by_arxiv_id`, `iter`, etc. The triple-invariant ("both
+  /// indices map into items") lives at the type after C9 PR 2.
+  pub items_store: ItemStore,
 
   /// Activity log — paper opens and discovery queries. Persisted
   /// across runs.

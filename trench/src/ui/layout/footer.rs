@@ -33,7 +33,7 @@ pub fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
       format!(
         "{spin} {prefix}: {}  │  {} items",
         sources,
-        app.workspace.items.len()
+        app.workspace.items_store.len()
       ),
       Style::default().fg(t.warning),
     )))

@@ -88,8 +88,9 @@ pub fn run(opts: BenchOptions) -> Result<(), Box<dyn std::error::Error>> {
 
 fn run_feed(opts: BenchOptions) -> Result<(), Box<dyn std::error::Error>> {
   let mut app = App::new();
-  app.workspace.items = (0..opts.n).map(fixtures::variant).collect();
-  app.rebuild_indices();
+  app.workspace.items_store = crate::data::ItemStore::from_items(
+    (0..opts.n).map(fixtures::variant).collect(),
+  );
 
   let backend = TestBackend::new(opts.width, opts.height);
   let mut terminal = Terminal::new(backend)?;

@@ -190,9 +190,7 @@ fn is_text_entry_context(app: &App) -> bool {
   {
     return true;
   }
-  if app.feed.feed_tab == FeedTab::Discoveries
-    && app.discovery.search_focused
-  {
+  if app.feed.feed_tab == FeedTab::Discoveries && app.discovery.search_focused {
     return true;
   }
   if app.chat.active && app.focus.focused_pane == PaneId::Chat {
@@ -794,36 +792,26 @@ fn find_item_by_url<'a>(
   app: &'a App,
   url: &str,
 ) -> Option<&'a crate::models::FeedItem> {
-  app
-    .workspace
-    .url_index
-    .get(url)
-    .and_then(|&idx| app.workspace.items.get(idx))
-    .or_else(|| {
-      app
-        .discovery
-        .url_index
-        .get(url)
-        .and_then(|&idx| app.discovery.items.get(idx))
-    })
+  app.workspace.items_store.find_by_url(url).or_else(|| {
+    app
+      .discovery
+      .url_index
+      .get(url)
+      .and_then(|&idx| app.discovery.items.get(idx))
+  })
 }
 
 fn find_item_by_arxiv_id<'a>(
   app: &'a App,
   arxiv_id: &str,
 ) -> Option<&'a crate::models::FeedItem> {
-  app
-    .workspace
-    .arxiv_id_index
-    .get(arxiv_id)
-    .and_then(|&idx| app.workspace.items.get(idx))
-    .or_else(|| {
-      app
-        .discovery
-        .arxiv_id_index
-        .get(arxiv_id)
-        .and_then(|&idx| app.discovery.items.get(idx))
-    })
+  app.workspace.items_store.find_by_arxiv_id(arxiv_id).or_else(|| {
+    app
+      .discovery
+      .arxiv_id_index
+      .get(arxiv_id)
+      .and_then(|&idx| app.discovery.items.get(idx))
+  })
 }
 
 fn notes_context_from_history_entry(
