@@ -325,7 +325,10 @@ mod tests {
         panic!("arxiv_id_index entry {aid:?}→{idx} points past end of items")
       });
       let derived = arxiv_id_from_url(&it.url).unwrap_or_else(|| {
-        panic!("arxiv_id_index key {aid:?} points at non-arxiv item {:?}", it.url)
+        panic!(
+          "arxiv_id_index key {aid:?} points at non-arxiv item {:?}",
+          it.url
+        )
       });
       assert_eq!(
         derived, aid,
@@ -336,7 +339,8 @@ mod tests {
     for (idx, it) in s.items.iter().enumerate() {
       let found = s.url_index.get(&it.url).copied();
       assert_eq!(
-        found, Some(idx),
+        found,
+        Some(idx),
         "item at idx {idx} url={:?} not findable via url_index (got {found:?})",
         it.url
       );

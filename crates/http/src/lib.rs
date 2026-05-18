@@ -230,7 +230,10 @@ mod tests {
       c.get(format!("http://127.0.0.1:{port}/"))
     });
     let err = result.expect_err("all attempts should fail with 503");
-    assert!(err.contains("503"), "expected last-error to mention 503, got: {err}");
+    assert!(
+      err.contains("503"),
+      "expected last-error to mention 503, got: {err}"
+    );
     server.join().unwrap();
   }
 
