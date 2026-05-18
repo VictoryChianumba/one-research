@@ -1,6 +1,6 @@
 # ADR-006 — Store seam (`load_json<T>` / `save_json<T>`)
 
-- **Status:** Proposed (2026-05-18). PR 1 lands this ADR + `load_json<T>` / `save_json<T>` skeletons in `store/mod.rs` + smoke tests + CONTEXT.md vocabulary. PR 2 migrates the 7 store sites to the seam. PR 3 lands tripwires L1-L3 + flips status to Accepted.
+- **Status:** Accepted (2026-05-18). All 3 PRs landed: PR 1 = ADR + seam + 3 smoke tests + CONTEXT.md vocabulary, PR 2 = 8-site migration (net −192 LOC), PR 3 = L1-L4 tripwires in `scripts/check-store-seam.sh` + ci.sh wired + this status flip.
 - **Date:** 2026-05-18
 - **Owner:** Victory Chianumba
 - **Supersedes:** none
