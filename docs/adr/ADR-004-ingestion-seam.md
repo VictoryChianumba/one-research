@@ -1,6 +1,6 @@
 # ADR-004 — Ingestion seam (Source + EnrichmentSource + FetchContext)
 
-- **Status:** Proposed (2026-05-18). PR 1 lands the empty `Source` / `EnrichmentSource` traits + `FetchContext` skeleton + `RetryPolicy` in `crates/http` + this ADR + CONTEXT.md vocabulary + smoke tests. PR 2 migrates all five sources + two enrichments + orchestrator rewrite + deletes `fetch_arxiv_with_retry`. PR 3 lands tripwires in `scripts/check-ingestion-seam.sh` and flips status to Accepted.
+- **Status:** Accepted (2026-05-18). All three PRs landed: PR 1 (skeletons + this ADR + `RetryPolicy` + vocabulary), PR 2 (5 `Source` impls + 2 `EnrichmentSource` impls + registry + `spawn_fetch` rewrite + `fetch_arxiv_with_retry` deleted), PR 3 (tripwires J1-J5 in `scripts/check-ingestion-seam.sh`, wired into `ci.sh`).
 - **Date:** 2026-05-18
 - **Owner:** Victory Chianumba
 - **Supersedes:** none
@@ -159,10 +159,10 @@ If reviewer feedback during PR 2 wants a split, fall back to slice-3's 4-PR shap
 
 `scripts/check-ingestion-seam.sh` (sibling to `scripts/check-render-purification.sh`):
 
-- **J1** Every file in `trench/src/ingestion/{arxiv,huggingface,rss,openreview,core}.rs` exports exactly one `impl Source for` block.
-- **J2** `trench/src/ingestion/semantic_scholar.rs` and `trench/src/ingestion/huggingface.rs` together export exactly two `impl EnrichmentSource for` blocks.
-- **J3** No `pub fn fetch_arxiv_with_retry` symbol anywhere in `trench/src/`.
-- **J4** No `crate::http::client()` or `super::http::client()` direct call inside `trench/src/ingestion/*.rs` — must go through `FetchContext::http()`. (Exception: `crates/http` itself.)
+- **J1** Exactly five `impl Source for` blocks under `trench/src/ingestion/` — one per bulk-ingestion module (Arxiv, HuggingFace, Rss, OpenReview, Core). Off-by-one in either direction is a regression.
+- **J2** Exactly two `impl EnrichmentSource for` blocks under `trench/src/ingestion/` — `SemanticScholarEnrichment` and `HuggingFaceRepoEnrichment`.
+- **J3** No `fn fetch_arxiv_with_retry` declaration anywhere in `trench/src/` or `crates/`. The PR-2 deletion stays deleted; docstring references in `///` comments are skipped because they're historical pointers, not symbols.
+- **J4 (scoped)** Inside `impl Source for X { fn fetch ... }` and `impl EnrichmentSource for X { fn enrich ... }` bodies, no direct `crate::http::client()` or `super::http::client()` call — must reach HTTP through `FetchContext::http()` / `FetchContext::with_retry`. **Scoped to trait-impl bodies, not transitively** — legacy free functions (e.g., `arxiv::fetch`, called from the discovery agent which has no `FetchContext`) retain direct `crate::http::client()` calls because the alternative would balloon C10's scope into the discovery layer. The seam lives at the trait-impl boundary; bypass detection is structural, not transitive.
 - **J5** This file's PR cadence table mentions every PR (analogous to I2/I6 ADR cadence checks).
 
 Both scripts wire into `ci.sh` alongside each other.

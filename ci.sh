@@ -10,9 +10,12 @@ ci () {
   cargo upgrade --verbose
   cargo audit
 
-  # Slice-1 render-purification tripwires (ADR-001). Cheap grep checks
-  # that catch regressions before the test suite would.
+  # Architectural tripwires. Cheap grep checks that catch regressions
+  # before the test suite would.
+  #   - check-render-purification.sh: ADR-001/2/3 (per-pane composition root)
+  #   - check-ingestion-seam.sh:      ADR-004 (Source / EnrichmentSource seam)
   scripts/check-render-purification.sh
+  scripts/check-ingestion-seam.sh
 
   cargo +nightly check && cargo +nightly fix --allow-dirty && cargo +nightly clippy --fix --allow-dirty && cargo +nightly fmt --all && cargo +nightly test
   #cargo +nightly fmt --all
