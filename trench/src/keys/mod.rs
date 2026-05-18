@@ -735,6 +735,57 @@ pub(super) fn remember_fulltext_paper_context(
   app.record_paper_open(item);
 }
 
+/// Dispatch a paper-open request to the right background worker for
+/// the given item's URL kind.
+///
+/// arxiv URLs go directly to `spawn_tread_fetch` — the rich-LaTeX
+/// path tread is built for.  Earlier the code ran the fulltext stage
+/// first (an arxiv.org/html/<id> HTTP fetch + HTML parse) and threw
+/// its result away once the tread call returned: a two-round-trip
+/// sandwich that doubled the warm wall.  We skip the wasted leg.
+///
+/// Non-arxiv URLs keep the existing `spawn_fulltext_fetch` path —
+/// readability extraction / cached `content:encoded` / summary
+/// fallback — because there is no rich-LaTeX equivalent for an
+/// arbitrary web page.
+///
+/// `target` and `mode` describe where the resulting reader should
+/// land (Primary vs Secondary pane, NewTab vs ReplaceActive).  For
+/// the non-arxiv branch they're translated back into the legacy
+/// `app.fulltext_for_secondary` / `app.fulltext_new_tab` flags that
+/// main.rs's fulltext drain still consults.
+pub(super) fn spawn_paper_open(
+  app: &mut App,
+  item: crate::models::FeedItem,
+  target: crate::action::ReaderTarget,
+  mode: crate::action::OpenMode,
+) {
+  let kitty_supported = app.kitty_supported;
+  if let Some(id) = tread::extract_arxiv_id(&item.url) {
+    let (tx, rx) = mpsc::channel();
+    let notes_context = app.pending_fulltext_context.take();
+    app.tread_fetch_rx = Some(rx);
+    app.pending_tread_fetch = Some(crate::app::PendingTreadFetch {
+      arxiv_id: id.clone(),
+      title: item.title.clone(),
+      notes_context,
+      fallback_paper: None,
+      target,
+      mode,
+    });
+    app.fulltext_loading = true;
+    crate::services::spawn_tread_fetch(id, kitty_supported, tx);
+  } else {
+    app.fulltext_for_secondary =
+      matches!(target, crate::action::ReaderTarget::Secondary);
+    app.fulltext_new_tab = matches!(mode, crate::action::OpenMode::NewTab);
+    let (tx, rx) = mpsc::channel();
+    app.fulltext_rx = Some(rx);
+    app.fulltext_loading = true;
+    spawn_fulltext_fetch(item, tx);
+  }
+}
+
 fn find_item_by_url<'a>(
   app: &'a App,
   url: &str,
@@ -936,18 +987,19 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
         app.reader_bottom_focused = false;
         app.reader_bottom_details = false;
         app.reader_bottom_scroll.reset();
-        app.fulltext_for_secondary = true;
         if !app.fulltext_loading {
           if let Some(item) = app.selected_item().cloned() {
-            let (tx, rx) = mpsc::channel();
-            app.fulltext_rx = Some(rx);
-            app.fulltext_loading = true;
             remember_fulltext_paper_context(app, &item);
             app.set_notification(format!(
               "Loading: {}…",
               truncate_for_notif(&item.title, 40)
             ));
-            spawn_fulltext_fetch(item, tx);
+            spawn_paper_open(
+              app,
+              item,
+              crate::action::ReaderTarget::Secondary,
+              crate::action::OpenMode::ReplaceActive,
+            );
           }
         }
         app.focus.focused_pane = PaneId::Reader;
@@ -1194,22 +1246,33 @@ fn sync_notes_backend_to_active(app: &mut App, note_id: &str) {
   }
 }
 
-/// Spawns a fulltext fetch for the selected item, using flags already set on app.
+/// Trigger a paper-open in a new tab, picking target and tab-mode from
+/// the legacy `app.fulltext_for_secondary` / `app.fulltext_new_tab`
+/// flags that the caller sets just before invoking us.  Routed through
+/// `spawn_paper_open` so the arxiv-shortcut branch applies here too
+/// (`Ldr+1` / `Ldr+2` on an arxiv item now skip the fulltext stage).
 fn trigger_fulltext_new_tab(app: &mut App) {
   if app.fulltext_loading {
     app.set_notification("Already fetching…".to_string());
     return;
   }
   if let Some(item) = app.selected_item().cloned() {
-    let (tx, rx) = mpsc::channel();
-    app.fulltext_rx = Some(rx);
-    app.fulltext_loading = true;
+    let target = if app.fulltext_for_secondary {
+      crate::action::ReaderTarget::Secondary
+    } else {
+      crate::action::ReaderTarget::Primary
+    };
+    let mode = if app.fulltext_new_tab {
+      crate::action::OpenMode::NewTab
+    } else {
+      crate::action::OpenMode::ReplaceActive
+    };
     remember_fulltext_paper_context(app, &item);
     app.set_notification(format!(
       "Fetching: {}…",
       truncate_for_notif(&item.title, 40)
     ));
-    spawn_fulltext_fetch(item, tx);
+    spawn_paper_open(app, item, target, mode);
   }
 }
 

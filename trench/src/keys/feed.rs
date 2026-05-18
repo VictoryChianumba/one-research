@@ -194,8 +194,6 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
         KeyCode::Enter => {
           if !app.fulltext_loading {
             if let Some(item) = app.selected_item().cloned() {
-              app.fulltext_for_secondary = false;
-              app.fulltext_new_tab = false;
               app.narrow_feed_details_open = false;
               remember_fulltext_paper_context(app, &item);
               app.set_notification(format!(
@@ -203,39 +201,12 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
                 truncate_for_notif(&item.title, 40)
               ));
               app.focus.focused_pane = PaneId::Reader;
-
-              // arxiv shortcut: skip the fulltext HTML stage entirely
-              // and go straight to tread::fetch_paper.  The previous
-              // path ran fulltext (1 HTTP GET + HTML parse) only to
-              // throw its result away when the URL turned out to be
-              // arxiv — that's the "still a bit slow" the user feels
-              // even after we backgrounded the second stage.  Now
-              // arxiv URLs pay exactly one round trip, no sequential
-              // sandwich.
-              let kitty_supported = app.kitty_supported;
-              if let Some(id) = tread::extract_arxiv_id(&item.url) {
-                let (tx, rx) = mpsc::channel();
-                let notes_context = app.pending_fulltext_context.take();
-                app.tread_fetch_rx = Some(rx);
-                app.pending_tread_fetch = Some(crate::app::PendingTreadFetch {
-                  arxiv_id: id.clone(),
-                  title: item.title.clone(),
-                  notes_context,
-                  fallback_paper: None,
-                  target: crate::action::ReaderTarget::Primary,
-                  mode: crate::action::OpenMode::ReplaceActive,
-                });
-                app.fulltext_loading = true;
-                spawn_tread_fetch(id, kitty_supported, tx);
-                return;
-              }
-
-              // Non-arxiv: existing fulltext path (HTML / readability /
-              // summary fallback).
-              let (tx, rx) = mpsc::channel();
-              app.fulltext_rx = Some(rx);
-              app.fulltext_loading = true;
-              spawn_fulltext_fetch(item, tx);
+              super::spawn_paper_open(
+                app,
+                item,
+                crate::action::ReaderTarget::Primary,
+                crate::action::OpenMode::ReplaceActive,
+              );
             }
           }
         }
@@ -291,27 +262,19 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
         if !app.fulltext_loading {
           if let Some(item) = app.selected_item().cloned() {
             remember_fulltext_paper_context(app, &item);
-            {
-              log::debug!(
-                "feed Enter: spawning fulltext fetch for url={}",
-                item.url
-              );
-              let t = std::time::Instant::now();
-              app.fulltext_for_secondary = false;
-              app.fulltext_new_tab = false;
-              app.fulltext_loading = true;
-              app.set_notification(format!(
-                "Fetching: {}…",
-                truncate_for_notif(&item.title, 40)
-              ));
-              let (tx, rx) = mpsc::channel();
-              app.fulltext_rx = Some(rx);
-              spawn_fulltext_fetch(item, tx);
-              log::debug!(
-                "feed Enter: fetch setup took {}µs",
-                t.elapsed().as_micros()
-              );
-            }
+            log::debug!("feed Enter: spawning fetch for url={}", item.url);
+            let t = std::time::Instant::now();
+            app.set_notification(format!(
+              "Fetching: {}…",
+              truncate_for_notif(&item.title, 40)
+            ));
+            super::spawn_paper_open(
+              app,
+              item,
+              crate::action::ReaderTarget::Primary,
+              crate::action::OpenMode::ReplaceActive,
+            );
+            log::debug!("feed Enter: fetch setup took {}µs", t.elapsed().as_micros());
           }
         }
       }
@@ -587,16 +550,16 @@ fn handle_history_tab(key: KeyEvent, app: &mut App) -> bool {
           if let Some(item) = app.history_item(&entry) {
             let _ = app.activate_history_item_target(&entry);
             remember_fulltext_paper_context(app, &item);
-            app.fulltext_for_secondary = false;
-            app.fulltext_new_tab = false;
-            app.fulltext_loading = true;
             app.set_notification(format!(
               "Fetching: {}…",
               truncate_for_notif(&item.title, 40)
             ));
-            let (tx, rx) = mpsc::channel();
-            app.fulltext_rx = Some(rx);
-            spawn_fulltext_fetch(item, tx);
+            super::spawn_paper_open(
+              app,
+              item,
+              crate::action::ReaderTarget::Primary,
+              crate::action::OpenMode::ReplaceActive,
+            );
           }
         }
         HistoryKind::Query => {

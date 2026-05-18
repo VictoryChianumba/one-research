@@ -123,18 +123,22 @@ pub(super) fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
               crate::history::HistoryKind::Paper => {
                 if let Some(item) = app.history_item(&entry) {
                   let _ = app.activate_history_item_target(&entry);
-                  let (tx, rx) = mpsc::channel();
-                  app.fulltext_rx = Some(rx);
-                  app.fulltext_loading = true;
-                  app.fulltext_for_secondary =
-                    app.reader.focused == FocusedReader::Secondary;
-                  app.fulltext_new_tab = false;
+                  let target = if app.reader.focused == FocusedReader::Secondary {
+                    crate::action::ReaderTarget::Secondary
+                  } else {
+                    crate::action::ReaderTarget::Primary
+                  };
                   remember_fulltext_paper_context(app, &item);
                   app.set_notification(format!(
                     "Fetching: {}…",
                     truncate_for_notif(&item.title, 40)
                   ));
-                  spawn_fulltext_fetch(item, tx);
+                  super::spawn_paper_open(
+                    app,
+                    item,
+                    target,
+                    crate::action::OpenMode::ReplaceActive,
+                  );
                   app.reader_bottom_focused = false;
                   app.focus.focused_pane = PaneId::Reader;
                 }
@@ -150,18 +154,22 @@ pub(super) fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
             }
           }
         } else if let Some(item) = app.visible_get(idx).cloned() {
-          let (tx, rx) = mpsc::channel();
-          app.fulltext_rx = Some(rx);
-          app.fulltext_loading = true;
-          app.fulltext_for_secondary =
-            app.reader.focused == FocusedReader::Secondary;
-          app.fulltext_new_tab = false;
+          let target = if app.reader.focused == FocusedReader::Secondary {
+            crate::action::ReaderTarget::Secondary
+          } else {
+            crate::action::ReaderTarget::Primary
+          };
           remember_fulltext_paper_context(app, &item);
           app.set_notification(format!(
             "Fetching: {}…",
             truncate_for_notif(&item.title, 40)
           ));
-          spawn_fulltext_fetch(item, tx);
+          super::spawn_paper_open(
+            app,
+            item,
+            target,
+            crate::action::OpenMode::ReplaceActive,
+          );
           app.reader_bottom_focused = false;
           app.focus.focused_pane = PaneId::Reader;
         }
