@@ -170,12 +170,12 @@ fn filter_summary(app: &App) -> std::cell::Ref<'_, str> {
   // ran every frame regardless of whether active_filters changed.
   // Invalidation hooks fire from `toggle_filter_at_cursor` and
   // `clear_filters` in app.rs.
-  if app.filter_summary_cache.borrow().is_none() {
+  if app.render_caches.filter_summary.borrow().is_none() {
     let summary = compute_filter_summary(app);
-    *app.filter_summary_cache.borrow_mut() = Some(summary);
+    *app.render_caches.filter_summary.borrow_mut() = Some(summary);
   }
-  std::cell::Ref::map(app.filter_summary_cache.borrow(), |opt| {
-    opt.as_deref().expect("filter_summary_cache populated above")
+  std::cell::Ref::map(app.render_caches.filter_summary.borrow(), |opt| {
+    opt.as_deref().expect("render_caches.filter_summary populated above")
   })
 }
 

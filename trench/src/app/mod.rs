@@ -2,7 +2,6 @@ use crate::config::{Config, CustomThemeConfig};
 use crate::ingestion::message::FetchMessage;
 use crate::models::*;
 use chrono::Utc;
-use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::sync::mpsc::Receiver;
@@ -177,22 +176,11 @@ pub struct App {
   // Help overlay
   pub help: HelpState,
 
-  // Cached indices of items visible under the current search/filter.
-  // Keyed by (FeedTab) so a tab switch automatically misses the cache.
-  visible_cache: RefCell<Option<(FeedTab, Vec<usize>)>>,
-  /// Memoized item counts (workflow breakdown + recent-48h + queue preview).
-  /// Invalidated by every items/workflow mutation site.
-  counts_cache: RefCell<Option<ItemCounts>>,
-  /// Memoized sorted unique source-label set used by the filter panel.
-  /// Invalidated alongside `counts_cache`.
-  filter_source_names_cache: RefCell<Option<Vec<String>>>,
-  /// Memoized filter-summary string. Invalidated only by `active_filters`
-  /// mutation — does NOT depend on items or search query.
-  pub filter_summary_cache: RefCell<Option<String>>,
-  /// Memoized `filtered_history` indices into `self.workspace.history`. Invalidated
-  /// by history mutation, search_query mutation, history_filter mutation,
-  /// and active_filters mutation.
-  pub filtered_history_cache: RefCell<Option<Vec<usize>>>,
+  /// Five RefCell-backed memoization caches consulted by the render
+  /// layer.  ADR-009 cluster #5: replaces 5 flat `*_cache` fields and
+  /// the per-cache invalidator methods that lived in `caches.rs`.  The
+  /// effect→cache routing contract moved onto [`RenderCaches::observe`].
+  pub render_caches: RenderCaches,
 }
 
 // Filter panel cursor positions are computed dynamically in
@@ -285,11 +273,7 @@ impl App {
       leader: LeaderState::default(),
       focus: FocusManager::new(),
       help: HelpState::default(),
-      visible_cache: RefCell::new(None),
-      counts_cache: RefCell::new(None),
-      filter_source_names_cache: RefCell::new(None),
-      filter_summary_cache: RefCell::new(None),
-      filtered_history_cache: RefCell::new(None),
+      render_caches: RenderCaches::default(),
     }
   }
 
@@ -443,7 +427,7 @@ impl App {
   /// allocation. Use this everywhere a length-only check is needed.
   pub fn visible_count(&self) -> usize {
     {
-      let cache = self.visible_cache.borrow();
+      let cache = self.render_caches.visible.borrow();
       if let Some((tab, ref indices)) = *cache {
         if tab == self.feed.feed_tab {
           return indices.len();
@@ -462,7 +446,7 @@ impl App {
   pub fn visible_get(&self, idx: usize) -> Option<&FeedItem> {
     // Try the warm-cache fast path first.
     {
-      let cache = self.visible_cache.borrow();
+      let cache = self.render_caches.visible.borrow();
       if let Some((tab, indices)) = cache.as_ref() {
         if *tab == self.feed.feed_tab {
           let item_idx = *indices.get(idx)?;
@@ -481,7 +465,7 @@ impl App {
   /// Items visible after applying search and category filters.
   pub fn visible_items(&self) -> Vec<&FeedItem> {
     {
-      let cache = self.visible_cache.borrow();
+      let cache = self.render_caches.visible.borrow();
       if let Some((tab, ref indices)) = *cache {
         if tab == self.feed.feed_tab {
           let items = self.items_for_tab();
@@ -542,14 +526,14 @@ impl App {
       })
       .map(|(i, _)| i)
       .collect();
-    *self.visible_cache.borrow_mut() =
+    *self.render_caches.visible.borrow_mut() =
       Some((self.feed.feed_tab, indices.clone()));
     indices.iter().map(|&i| &items[i]).collect()
   }
 
   pub fn visible_window(&self, start: usize, end: usize) -> Vec<&FeedItem> {
     {
-      let cache = self.visible_cache.borrow();
+      let cache = self.render_caches.visible.borrow();
       if let Some((tab, indices)) = cache.as_ref() {
         if *tab == self.feed.feed_tab {
           let items = self.items_for_tab();
@@ -596,12 +580,12 @@ impl App {
   /// Fused pass over `self.workspace.items` that produces every counter the dashboard
   /// and chip bar need. Returns a `Ref` so cache hits don't pay a clone.
   pub fn item_counts(&self) -> std::cell::Ref<'_, ItemCounts> {
-    if self.counts_cache.borrow().is_none() {
+    if self.render_caches.counts.borrow().is_none() {
       let counts = self.compute_item_counts();
-      *self.counts_cache.borrow_mut() = Some(counts);
+      *self.render_caches.counts.borrow_mut() = Some(counts);
     }
-    std::cell::Ref::map(self.counts_cache.borrow(), |opt| {
-      opt.as_ref().expect("counts_cache populated above")
+    std::cell::Ref::map(self.render_caches.counts.borrow(), |opt| {
+      opt.as_ref().expect("render_caches.counts populated above")
     })
   }
 
@@ -697,7 +681,7 @@ impl App {
   }
 
   pub fn reset_active_feed_position(&mut self) {
-    self.invalidate_visible_cache();
+    self.render_caches.invalidate_visible();
     self.set_active_selected_index(0);
     self.set_active_list_offset(0);
     self.details_scroll.reset();
@@ -754,7 +738,7 @@ impl App {
 
   /// Mutator chokepoint for `search_query`. Invokes `f` on the query, then
   /// auto-syncs `search_query_lower` and invalidates every cache that depends
-  /// on the query (`visible_cache`, `filtered_history_cache`). All search
+  /// on the query (`render_caches.visible`, `render_caches.filtered_history`). All search
   /// query mutations must go through here so the lowercased mirror and the
   /// memoized visible/filtered-history results stay in sync.
 
@@ -1037,7 +1021,7 @@ mod tests {
   }
 
   #[test]
-  fn invalidate_counts_cache_forces_recompute() {
+  fn invalidate_counts_forces_recompute() {
     let mut app = App::new();
     app.workspace.items_store =
       crate::data::ItemStore::from_items(mock_items());
@@ -1045,12 +1029,12 @@ mod tests {
     // we mutate `app.workspace.items` below.
     let before_total = app.item_counts().total;
     // Mutate items directly, bypassing the public mutators that would
-    // normally call invalidate_counts_cache. The cache should still hold
+    // normally call render_caches.invalidate_counts. The cache should still hold
     // the stale value until we invalidate by hand.
     app.workspace.items_store.clear();
     let stale_total = app.item_counts().total;
     assert_eq!(stale_total, before_total, "cache survives raw mutation");
-    app.invalidate_counts_cache();
+    app.render_caches.invalidate_counts();
     let fresh_total = app.item_counts().total;
     assert_eq!(fresh_total, 0, "post-invalidation, recompute sees empty items");
   }
@@ -1071,7 +1055,7 @@ mod tests {
     assert_eq!(stale, before, "cache survives raw mutation");
 
     // Invalidate; next call recomputes (just the seeds, since items empty).
-    app.invalidate_filter_source_names_cache();
+    app.render_caches.invalidate_filter_source_names();
     let fresh = app.filter_source_names();
     assert!(fresh.contains(&"arxiv".to_string()));
     assert!(fresh.contains(&"hf".to_string()));

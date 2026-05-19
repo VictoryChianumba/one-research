@@ -60,7 +60,7 @@ impl FilterState {
 }
 
 /// Memoized aggregate counts derived from `App.items`. Recomputed lazily on
-/// the first read after `invalidate_counts_cache` clears the cell.
+/// the first read after `render_caches.invalidate_counts` clears the cell.
 #[derive(Default, Clone)]
 pub struct ItemCounts {
   pub inbox: usize,

@@ -39,7 +39,7 @@ impl App {
   }
 
   /// Mutator chokepoint for `history`. Invokes `f`, then invalidates the
-  /// filtered_history_cache so subsequent reads see the updated data.
+  /// render_caches.filtered_history so subsequent reads see the updated data.
 
   /// Pre-draw update: hoists state mutations that were previously
   /// performed inline during render (refactor B — render purification).
@@ -136,11 +136,11 @@ impl App {
   }
 
   pub fn filtered_history(&self) -> Vec<&crate::history::HistoryEntry> {
-    if self.filtered_history_cache.borrow().is_none() {
+    if self.render_caches.filtered_history.borrow().is_none() {
       let indices = self.compute_filtered_history_indices();
-      *self.filtered_history_cache.borrow_mut() = Some(indices);
+      *self.render_caches.filtered_history.borrow_mut() = Some(indices);
     }
-    let cache = self.filtered_history_cache.borrow();
+    let cache = self.render_caches.filtered_history.borrow();
     let indices = cache.as_ref().expect("populated above");
     indices.iter().map(|&i| &self.workspace.history[i]).collect()
   }
@@ -221,7 +221,7 @@ impl App {
         WorkflowState::Inbox => LibraryFilter::All,
       };
     }
-    self.invalidate_visible_cache();
+    self.render_caches.invalidate_visible();
 
     if let Some(pos) =
       self.visible_items().iter().position(|item| item.url == url)

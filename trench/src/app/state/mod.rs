@@ -12,6 +12,7 @@ mod panes;
 mod popups;
 mod reader;
 mod reader_bottom;
+mod render_caches;
 mod repo;
 mod settings;
 mod theme_picker;
@@ -33,6 +34,7 @@ pub use popups::{
 };
 pub use reader::ReaderTab;
 pub use reader_bottom::ReaderBottomState;
+pub use render_caches::RenderCaches;
 pub use repo::{
   RepoContext, RepoEnterTarget, RepoFetchResult, RepoFileFetched, RepoFileKind,
   RepoPane,

@@ -2,96 +2,28 @@ use crate::app::{App, FilterState};
 use crate::effect::Effect;
 use crate::models::WorkflowState;
 
-/// Cache invalidators + the effect-routing observer.
+/// Effect routing + mutator chokepoints.
 ///
-/// Five independent caches:
-/// - `visible_cache`: filtered + searched item indices (per FeedTab)
-/// - `counts_cache`: workflow-state breakdown + recent-48h + queue preview
-/// - `filter_source_names_cache`: sorted unique source-label set
-/// - `filter_summary_cache`: human-readable summary of `active_filters`
-/// - `filtered_history_cache`: indices of history entries visible under
-///   the current time window + search + active filters
+/// Pre-ADR-009 this file owned both the cache fields' invalidator methods
+/// (`invalidate_visible_cache` and four siblings) and the
+/// `observe_effect` translator that mapped each [`Effect`] to the right
+/// invalidations.  ADR-009 cluster #5 moved both onto `RenderCaches`
+/// (see `app/state/render_caches.rs`); this file keeps the App-level
+/// orchestration:
 ///
-/// Phase 3 reframes invalidation: instead of every mutator calling
-/// `invalidate_*` directly, mutators emit [`Effect`] variants and the
-/// observer below translates each effect into the correct invalidations.
-/// This decouples surfaces from cache-implementation details — surfaces
-/// know what semantically happened, not which caches it touched.
-///
-/// The chokepoint mutators (`mutate_search_query`, `mutate_history`,
-/// etc.) remain as the API surface; their bodies progressively migrate
-/// from direct invalidation to effect emission.
+///   - [`App::route_effects`] — drains a `Vec<Effect>` and forwards each
+///     to the observer.  Future non-cache observers (focus, notifications,
+///     audit logs) plug in here alongside the cache observer.
+///   - The `mutate_*` chokepoints below — wrap state mutations with
+///     effect emission so individual call sites don't need to remember
+///     which effect to emit.
 impl App {
-  pub(crate) fn invalidate_visible_cache(&self) {
-    *self.visible_cache.borrow_mut() = None;
-  }
-
-  pub(crate) fn invalidate_counts_cache(&self) {
-    *self.counts_cache.borrow_mut() = None;
-  }
-
-  pub(crate) fn invalidate_filter_source_names_cache(&self) {
-    *self.filter_source_names_cache.borrow_mut() = None;
-  }
-
-  pub(crate) fn invalidate_filter_summary_cache(&self) {
-    *self.filter_summary_cache.borrow_mut() = None;
-  }
-
-  pub(crate) fn invalidate_filtered_history_cache(&self) {
-    *self.filtered_history_cache.borrow_mut() = None;
-  }
-
-  /// Aggregate invalidator for every cache that derives from `app.workspace.items`.
-  pub(crate) fn invalidate_items_derived_caches(&self) {
-    self.invalidate_counts_cache();
-    self.invalidate_filter_source_names_cache();
-  }
-
-  // ── Effect routing ──────────────────────────────────────────────────
-
-  /// Drain a vec of effects, applying each to the cache layer.
-  /// Phase 3 keystone: surfaces emit semantic events, the observer
-  /// translates to invalidations. Future non-cache observers (focus,
-  /// notifications, audit logs) plug in alongside without changing
-  /// the surface emit sites.
+  /// Drain a vec of effects, applying each to every registered observer.
+  /// Today the only observer is [`RenderCaches::observe`]; future
+  /// observers register the same way.
   pub(crate) fn route_effects(&self, effects: &[Effect]) {
     for effect in effects {
-      self.observe_effect(effect);
-    }
-  }
-
-  /// Translate one [`Effect`] into the correct set of cache
-  /// invalidations. The match is the *contract* between effects and
-  /// caches; adding a new cache means updating one match arm, not
-  /// auditing every emit site.
-  fn observe_effect(&self, effect: &Effect) {
-    match effect {
-      Effect::SearchQueryChanged => {
-        self.invalidate_visible_cache();
-        self.invalidate_filtered_history_cache();
-      }
-      Effect::WorkflowStateChanged { .. } => {
-        self.invalidate_visible_cache();
-        self.invalidate_counts_cache();
-      }
-      Effect::HistoryMutated | Effect::HistoryFilterChanged => {
-        self.invalidate_filtered_history_cache();
-      }
-      Effect::LibraryFilterChanged
-      | Effect::SourcesEnabledChanged
-      | Effect::TagsChanged => {
-        self.invalidate_visible_cache();
-      }
-      Effect::FiltersChanged => {
-        self.invalidate_visible_cache();
-        self.invalidate_filter_summary_cache();
-        self.invalidate_filtered_history_cache();
-      }
-      Effect::ItemsChanged => {
-        self.invalidate_visible_cache();
-        self.invalidate_items_derived_caches();
-      }
+      self.render_caches.observe(effect);
     }
   }
 

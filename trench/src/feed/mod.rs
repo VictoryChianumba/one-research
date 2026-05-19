@@ -84,7 +84,7 @@ impl FeedModel {
   }
 
   // ── Tab navigation ────────────────────────────────────────────────────
-  // visible_cache is keyed by `feed_tab`, so a tab switch is a natural
+  // render_caches.visible is keyed by `feed_tab`, so a tab switch is a natural
   // cache miss — these methods do not emit `Effect`s. Callers (key
   // handlers) follow up with `app.reset_active_feed_position()` when the
   // gesture should also reset the active list cursor.

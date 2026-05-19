@@ -1,6 +1,6 @@
 # ADR-009 — Cluster flat `App` fields into named state structs
 
-- **Status:** Proposed (2026-05-19). PR 1 ships ADR + `DebounceState` + 5 smoke tests + 4-field migration. PR 2 ships `LeaderState` + 7 smoke tests + 3-field migration + 6 call-site updates. PR 3 ships `ReaderBottomState` + 2 smoke tests + 5-field migration + ~104 call-site renames (sed-driven mechanical). PR 4 ships `ViewFlags` + 2 smoke tests + 3-field migration; the audit's original 5-field grouping is corrected — the two `fulltext_*` routing flags reclassify into the future `AsyncJobs` cluster.
+- **Status:** Proposed (2026-05-19). PR 1 ships ADR + `DebounceState` + 5 smoke tests + 4-field migration. PR 2 ships `LeaderState` + 7 smoke tests + 3-field migration + 6 call-site updates. PR 3 ships `ReaderBottomState` + 2 smoke tests + 5-field migration + ~104 call-site renames (sed-driven mechanical). PR 4 ships `ViewFlags` + 2 smoke tests + 3-field migration; the audit's original 5-field grouping is corrected — the two `fulltext_*` routing flags reclassify into the future `AsyncJobs` cluster. PR 5 ships `RenderCaches` + 11 behavioural tests (one per `Effect` variant) + 5-field migration + the effect-observer protocol moves onto the struct.
 - **Date:** 2026-05-19
 - **Owner:** Victory Chianumba
 - **Supersedes:** none
@@ -63,7 +63,7 @@ impl DebounceState {
 | Reader-bottom drawer | `reader_bottom_open`, `reader_bottom_focused`, `reader_bottom_details`, `reader_feed_popup_selected`, `reader_bottom_scroll` (5) | `ReaderBottomState` | ✓ PR 3 (2026-05-19) |
 | Async fetch receivers | `fetch_rx`, `fulltext_rx`, `tread_fetch_rx`, `repo_fetch_rx`, `is_loading`, `loading_sources`, `loaded_sources`, `spinner_frame`, `fulltext_loading`, `pending_fulltext_context`, `pending_tread_fetch`, `fulltext_new_tab`, `fulltext_for_secondary` (13) | `AsyncJobs` | pending (reclassified +2 from ViewFlags) |
 | Popup flags | `tab_window_prompt_active`, `abstract_popup_active`, `narrow_feed_details_open` (3) | `ViewFlags` | ✓ PR 4 (2026-05-19) |
-| RefCell caches | `visible_cache`, `counts_cache`, `filter_source_names_cache`, `filter_summary_cache`, `filtered_history_cache` (5) | `RenderCaches` | pending |
+| RefCell caches | `visible_cache`, `counts_cache`, `filter_source_names_cache`, `filter_summary_cache`, `filtered_history_cache` (5) | `RenderCaches` | ✓ PR 5 (2026-05-19) |
 
 Each future cluster lands its own PR with the same shape: ADR section update + struct + smoke tests + migration. **Lazy rollout** — a cluster is migrated when a feature pulls us into it, not on a schedule. Same cadence as ADR-001's slice rollout.
 

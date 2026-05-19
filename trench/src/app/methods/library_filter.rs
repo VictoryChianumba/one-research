@@ -187,7 +187,7 @@ impl App {
   /// first read after invalidation; every other call (per draw frame, per
   /// j/k keystroke in the filter panel) is an O(1) clone of the cached vec.
   pub fn filter_source_names(&self) -> Vec<String> {
-    if let Some(c) = self.filter_source_names_cache.borrow().as_ref() {
+    if let Some(c) = self.render_caches.filter_source_names.borrow().as_ref() {
       return c.clone();
     }
     let mut names: std::collections::BTreeSet<String> = self
@@ -208,13 +208,13 @@ impl App {
       names.insert(seed.to_string());
     }
     let computed: Vec<String> = names.into_iter().collect();
-    *self.filter_source_names_cache.borrow_mut() = Some(computed.clone());
+    *self.render_caches.filter_source_names.borrow_mut() = Some(computed.clone());
     computed
   }
 
   /// Mutator chokepoint for `active_filters`. Invalidates every cache that
-  /// depends on the filter set: visible_cache (filtered items), filter_summary
-  /// (the rendered summary line), filtered_history_cache (filter affects
+  /// depends on the filter set: render_caches.visible (filtered items), filter_summary
+  /// (the rendered summary line), render_caches.filtered_history (filter affects
   /// history view too).
 
   pub fn toggle_filter_at_cursor(&mut self) {
