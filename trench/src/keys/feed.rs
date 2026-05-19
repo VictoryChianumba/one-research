@@ -48,6 +48,15 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
     }
   }
 
+  // Browse tab — own column navigation (h/l/j/k). Tab/BackTab/q/Esc fall
+  // through so global gestures still work. PR 2 will extend this to
+  // handle Enter (spawn fetch / open paper) and `p` (promote category).
+  if app.feed.feed_tab == FeedTab::Browse {
+    if handle_browse_tab(key, app) {
+      return;
+    }
+  }
+
   if app.feed.search_active {
     handle_search_bar_input(key, app);
   } else if app.feed.filter_focus {
@@ -241,6 +250,99 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
       _ => {}
     }
   }
+}
+
+/// Subject Browser tab (ADR-010). Returns true when the key was
+/// consumed; false lets Tab/BackTab/q/Esc reach the generic feed
+/// handler so global gestures still work.
+///
+/// PR 1 scope: column navigation only — h/l shift focused column, j/k
+/// move cursor within focused column. Cascading reset: moving Groups
+/// resets Archives/Categories cursors; moving Archives resets Categories.
+/// Enter (load papers) and `p` (promote category) land in PR 2.
+fn handle_browse_tab(key: KeyEvent, app: &mut App) -> bool {
+  match key.code {
+    KeyCode::Char('j') | KeyCode::Down => {
+      // Refresh the count bound in case the level changed since last
+      // navigation (e.g. drill-back).
+      let len = app.browse.current_level_len();
+      app.browse.rail_cursor.set_count(len);
+      app.browse.rail_cursor.move_down();
+      true
+    }
+    KeyCode::Char('k') | KeyCode::Up => {
+      let len = app.browse.current_level_len();
+      app.browse.rail_cursor.set_count(len);
+      app.browse.rail_cursor.move_up();
+      true
+    }
+    KeyCode::Char('h') | KeyCode::Left | KeyCode::Backspace | KeyCode::Esc => {
+      // ADR-011 §E2: pop one drill level. At root this is a no-op
+      // (the drill_back impl handles that internally).
+      app.browse.drill_back();
+      true
+    }
+    KeyCode::Char('l') | KeyCode::Right | KeyCode::Enter => {
+      // Drill or fetch depending on the current depth.
+      drill_or_fetch(app);
+      true
+    }
+    KeyCode::Char('p') => {
+      // Promote / un-promote the currently-selected Category. Only
+      // applies when the cursor is at the Categories level (depth 2).
+      toggle_browse_promotion_for_selected(app);
+      true
+    }
+    _ => false,
+  }
+}
+
+/// On Enter / l / Right: drill one level deeper when the cursor is on
+/// a Group or Archive; fetch the category's recent papers when on a
+/// Category leaf (no further drill).
+fn drill_or_fetch(app: &mut App) {
+  if let Some(target) = app.browse.drill_target() {
+    app.browse.drill_into(target);
+    return;
+  }
+  // At depth 2 (Categories) — Enter fires a fetch via the existing
+  // ADR-010 §D3 worker pipeline. PR 3 of ADR-011 wires subject-follow
+  // to also scope the feed when this fires.
+  spawn_browse_fetch_for_selected(app);
+}
+
+/// Resolve the rail-selected category and spawn a fetch for it,
+/// unless one is already in flight. No-op outside the Categories
+/// level (the rail must be at depth 2).
+fn spawn_browse_fetch_for_selected(app: &mut App) {
+  let Some(cat) = app.browse.rail_selected_category() else { return };
+  let code = cat.code.to_string();
+  if app.browse.inflight.contains(&code) {
+    app.status_message = Some(format!("{code}: already loading…"));
+    return;
+  }
+  app.browse.inflight.insert(code.clone());
+  app.status_message = Some(format!("{code}: loading recent papers…"));
+  crate::browse::pipeline::spawn_browse_fetch(code, app.browse.tx.clone());
+}
+
+/// Toggle the selected category's membership in
+/// `config.sources.arxiv_categories`. Persists immediately via
+/// `Config::save()`; takes effect on the next manual refresh.
+/// No-op when the rail is not at the Categories level.
+fn toggle_browse_promotion_for_selected(app: &mut App) {
+  let Some(cat) = app.browse.rail_selected_category() else { return };
+  let code = cat.code.to_string();
+  let already_promoted =
+    app.config.sources.arxiv_categories.iter().any(|c| c == &code);
+  if already_promoted {
+    app.config.sources.arxiv_categories.retain(|c| c != &code);
+    app.status_message = Some(format!("Removed {code} from feed"));
+  } else {
+    app.config.sources.arxiv_categories.push(code.clone());
+    app.status_message = Some(format!("Added {code} to feed — R to refresh"));
+  }
+  app.config.save();
 }
 
 /// Returns true if the key was consumed by the Library tab (chip cycling).

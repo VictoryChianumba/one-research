@@ -1,9 +1,9 @@
 use ratatui::{
-  Frame,
   layout::{Constraint, Direction, Layout, Rect},
   style::{Modifier, Style},
   text::{Line, Span},
   widgets::Paragraph,
+  Frame,
 };
 
 use std::collections::HashSet;
@@ -61,6 +61,11 @@ fn draw_compact_title_bar(frame: &mut Frame, app: &App, area: Rect) {
   } else {
     inactive_style
   };
+  let browse_style = if app.feed.feed_tab == FeedTab::Browse {
+    active_style
+  } else {
+    inactive_style
+  };
   let history_style = if app.feed.feed_tab == FeedTab::History {
     active_style
   } else {
@@ -76,8 +81,11 @@ fn draw_compact_title_bar(frame: &mut Frame, app: &App, area: Rect) {
     "█ █ █ ▀█ █▀  █▀▄ █▀ ▀█ █▀ █▀█ █▀▄ █▀█",
     "▀▀▀ ▀  ▀ ▀▀  ▀ ▀ ▀▀ ▀▀ ▀▀ ▀ ▀ ▀ ▀ ▀ ▀",
   ];
+  // Browse shows the total taxonomy size (static, 155) — communicates
+  // "you can browse this many subject categories." See ADR-010 §D2.
+  let browse_total = crate::models::arxiv_taxonomy::all_categories().count();
   let nav_text = format!(
-    "Inbox {inbox_count}  Library {library_count}  Discoveries {}{}  History {}  Total {total}",
+    "Browse {browse_total}  Inbox {inbox_count}  Library {library_count}  Discoveries {}{}  History {}  Total {total}",
     app.discovery.items.len(),
     discovery_spin,
     app.workspace.history.len(),
@@ -97,7 +105,9 @@ fn draw_compact_title_bar(frame: &mut Frame, app: &App, area: Rect) {
   let nav = Line::from(vec![
     Span::styled(WORDMARK[1], logo_style),
     Span::raw(" ".repeat(logo_gap)),
-    Span::styled("Inbox ", inbox_style),
+    Span::styled("Browse ", browse_style),
+    Span::styled(browse_total.to_string(), browse_style),
+    Span::styled("  Inbox ", inbox_style),
     Span::styled(inbox_count.to_string(), inbox_style),
     Span::styled("  Library ", library_style),
     Span::styled(library_count.to_string(), library_style),

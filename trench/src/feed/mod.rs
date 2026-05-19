@@ -79,6 +79,12 @@ impl FeedModel {
       FeedTab::Inbox => &self.inbox_list,
       FeedTab::Library => &self.library_list,
       FeedTab::Discoveries => &discovery.list,
+      // Browse owns four column-cursors in BrowseModel; the single-list
+      // helpers here are inert for that tab. Returning inbox_list as a
+      // placeholder is safe because handle_browse_tab intercepts every
+      // navigation gesture before active_list is consulted (same trick
+      // used by History at line 419 returning `&[]` for items_for_tab).
+      FeedTab::Browse => &self.inbox_list,
       FeedTab::History => &self.history_list,
     }
   }
@@ -89,20 +95,25 @@ impl FeedModel {
   // handlers) follow up with `app.reset_active_feed_position()` when the
   // gesture should also reset the active list cursor.
 
-  /// Advance to the next tab (Inbox → Library → Discoveries → History → Inbox).
+  /// Advance to the next tab (Browse → Inbox → Library → Discoveries → History → Browse).
+  /// ADR-011 §E6: Browse leads the cycle because it's the corpus
+  /// surface — Inbox is the curated default landing tab, but Browse
+  /// is the first you see when cycling.
   pub fn cycle_tab(&mut self) {
     self.feed_tab = match self.feed_tab {
+      FeedTab::Browse => FeedTab::Inbox,
       FeedTab::Inbox => FeedTab::Library,
       FeedTab::Library => FeedTab::Discoveries,
       FeedTab::Discoveries => FeedTab::History,
-      FeedTab::History => FeedTab::Inbox,
+      FeedTab::History => FeedTab::Browse,
     };
   }
 
   /// Walk back one tab (reverse of `cycle_tab`).
   pub fn cycle_tab_back(&mut self) {
     self.feed_tab = match self.feed_tab {
-      FeedTab::Inbox => FeedTab::History,
+      FeedTab::Browse => FeedTab::History,
+      FeedTab::Inbox => FeedTab::Browse,
       FeedTab::Library => FeedTab::Inbox,
       FeedTab::Discoveries => FeedTab::Library,
       FeedTab::History => FeedTab::Discoveries,
@@ -187,6 +198,9 @@ impl FeedModel {
       FeedTab::Inbox => &mut self.inbox_list,
       FeedTab::Library => &mut self.library_list,
       FeedTab::Discoveries => &mut discovery.list,
+      // See FeedTab::Browse note in active_list — column cursors live on
+      // BrowseModel, the single-list pre-draw is inert for this tab.
+      FeedTab::Browse => &mut self.inbox_list,
       FeedTab::History => &mut self.history_list,
     };
     // ListState.set_count + set_viewport call ensure_visible internally,
@@ -314,6 +328,9 @@ impl FeedModel {
       FeedTab::Inbox => &mut self.inbox_list,
       FeedTab::Library => &mut self.library_list,
       FeedTab::Discoveries => &mut discovery.list,
+      // See FeedTab::Browse note in active_list — narrow-feed pre-draw
+      // is inert for the Subject Browser (it draws its own 4-column UI).
+      FeedTab::Browse => &mut self.inbox_list,
       FeedTab::History => &mut self.history_list,
     };
     list.set_count(total_items);
@@ -416,7 +433,11 @@ pub fn items_for_tab<'a>(
   match feed.feed_tab {
     FeedTab::Inbox | FeedTab::Library => workspace.items_store.items(),
     FeedTab::Discoveries => &discovery.items,
-    FeedTab::History => &[],
+    // Browse renders from BrowseModel.loaded_categories (PR 2 of
+    // ADR-010), resolved against workspace.items_store via url_index.
+    // The single-slice items_for_tab abstraction doesn't apply — the
+    // tab has no "active list" in the FeedModel sense.
+    FeedTab::Browse | FeedTab::History => &[],
   }
 }
 
@@ -446,6 +467,9 @@ pub fn visible_indices_for(
             return false;
           }
         }
+        // Browse, Discoveries, History: no workflow-state pre-filter
+        // here (Browse scopes via loaded_categories; the others either
+        // don't use this helper or accept all states).
         _ => {}
       }
       let key =
@@ -530,6 +554,9 @@ mod tests {
 
   #[test]
   fn cycle_tab_walks_forward_and_wraps() {
+    // ADR-011 §E6 cycle order: Browse → Inbox → Library →
+    // Discoveries → History → Browse. Default landing tab is Inbox
+    // (App::new), not Browse — Tab from Inbox goes to Library first.
     let mut m = FeedModel::default();
     m.cycle_tab();
     assert!(m.feed_tab == FeedTab::Library);
@@ -538,12 +565,16 @@ mod tests {
     m.cycle_tab();
     assert!(m.feed_tab == FeedTab::History);
     m.cycle_tab();
+    assert!(m.feed_tab == FeedTab::Browse);
+    m.cycle_tab();
     assert!(m.feed_tab == FeedTab::Inbox);
   }
 
   #[test]
   fn cycle_tab_back_walks_backward_and_wraps() {
     let mut m = FeedModel::default();
+    m.cycle_tab_back();
+    assert!(m.feed_tab == FeedTab::Browse);
     m.cycle_tab_back();
     assert!(m.feed_tab == FeedTab::History);
     m.cycle_tab_back();

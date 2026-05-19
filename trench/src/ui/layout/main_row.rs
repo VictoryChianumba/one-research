@@ -1,11 +1,10 @@
 use ratatui::{
-  Frame,
   layout::{Alignment, Constraint, Layout, Rect},
   style::Style,
   widgets::Paragraph,
+  Frame,
 };
 
-use super::RIGHT_COL_WIDTH;
 use super::details::draw_details_panel;
 use super::feed::draw_feed_pane;
 use super::filter::draw_filter_panel;
@@ -15,7 +14,8 @@ use super::reader::{
   draw_reader_workspace_header, reader_workspace_split,
 };
 use super::widgets::{draw_horiz_split_box, draw_vert_split_box};
-use crate::app::{App, FocusedReader};
+use super::RIGHT_COL_WIDTH;
+use crate::app::{App, FeedTab, FocusedReader};
 
 /// Orchestrator helper: builds a `FeedContext` snapshot from `App` and
 /// dispatches to the (renderer-pure) `draw_feed_pane`. Lives here at
@@ -335,6 +335,44 @@ pub fn draw_main_row(
       reader: Some(reader_rect),
       secondary_reader: None,
       notes: Some(notes_rect),
+      secondary_notes: None,
+      details: None,
+    };
+  }
+
+  // Browse (ADR-011): narrow taxonomy rail on the left, regular feed
+  // table on the right. The rail renderer (draw_browse_tab) is
+  // dispatched here directly rather than through draw_feed_pane — the
+  // feed pane proper now uses draw_item_table for Browse, same as for
+  // Inbox / Library. Subject column scoping comes in PR 3 of ADR-011.
+  if app.feed.feed_tab == FeedTab::Browse {
+    let area = Rect {
+      y: area.y.saturating_add(1),
+      height: area.height.saturating_sub(2),
+      ..area
+    };
+
+    let inner_w = area.width.saturating_sub(2);
+    // Narrow rail (~28 chars). Fits "Quantitative Biology" (20) with
+    // room for the right-aligned count column; truncates archive
+    // names like "High Energy Physics — Phenomenology" with ellipsis.
+    let rail_w = 28u16.min(inner_w.saturating_sub(20)).max(16);
+    let feed_w = inner_w.saturating_sub(rail_w + 1);
+    let (rail_rect, feed_rect) =
+      draw_horiz_split_box(frame, area, feed_w, "", "", &t);
+    super::browse::draw_browse_tab(
+      frame,
+      &app.browse,
+      &app.config.sources.arxiv_categories,
+      &t,
+      rail_rect,
+    );
+    dispatch_feed_pane(frame, app, feed_rect);
+    return MainRowRects {
+      feed: Some(feed_rect),
+      reader: None,
+      secondary_reader: None,
+      notes: None,
       secondary_notes: None,
       details: None,
     };

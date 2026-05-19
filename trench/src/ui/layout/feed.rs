@@ -44,6 +44,11 @@ pub fn draw_feed_pane(
     return;
   }
 
+  // Browse (ADR-011): the rail is rendered separately by main_row.rs;
+  // here we fall through to draw_item_table so Browse's feed area
+  // looks and behaves like Inbox / Library. The Subject column scope
+  // for Browse arrives in ADR-011 PR 3.
+
   // Narrow pane: switch to title-only list to avoid squished columns.
   if area.width < 70 {
     draw_narrow_feed(frame, model, discovery, ctx, content_area);

@@ -1,0 +1,222 @@
+//! Subject Browser tab renderer (ADR-011).
+//!
+//! Single left-rail with drill-replace semantics. The rail shows one
+//! taxonomy level at a time:
+//!     - Groups (default)
+//!     - Archives of a selected Group (after one `Enter` drill)
+//!     - Categories of a selected Archive (after two drills)
+//!
+//! A one-line breadcrumb sits above the rail showing the current path
+//! (`Mathematics ›` or `Mathematics › Mathematics ›`). The right-hand
+//! pane is the regular feed table — populated by `draw_feed_pane` in
+//! `main_row.rs`. There is no longer a separate "details panel" — the
+//! ADR-010 `draw_browse_detail_panel` was deleted in PR 1 of ADR-011.
+//!
+//! Promoted categories (those in `config.sources.arxiv_categories`)
+//! render with a leading `★` marker (ADR-010 §D5 stays in force).
+
+use ratatui::{
+  layout::Rect,
+  style::{Modifier, Style},
+  text::{Line, Span},
+  widgets::Paragraph,
+  Frame,
+};
+
+use super::widgets::{pane_inset, truncate_str};
+use crate::app::BrowseModel;
+use crate::models::arxiv_taxonomy::TAXONOMY;
+
+/// Render the taxonomy rail into the area allocated by `main_row.rs`.
+/// The surrounding split border is owned by `main_row.rs`, so this
+/// function draws no outer frame.
+pub fn draw_browse_tab(
+  frame: &mut Frame,
+  browse: &BrowseModel,
+  promoted: &[String],
+  theme: &ui_theme::Theme,
+  area: Rect,
+) {
+  if area.height < 3 || area.width < 12 {
+    return;
+  }
+
+  let inner = pane_inset(area);
+  if inner.height < 3 {
+    return;
+  }
+
+  // Breadcrumb (1 line) + 1 line gap + rail body fills the rest.
+  let breadcrumb_area = Rect { height: 1, ..inner };
+  let body = Rect {
+    y: inner.y.saturating_add(2),
+    height: inner.height.saturating_sub(2),
+    ..inner
+  };
+
+  draw_breadcrumb(frame, browse, theme, breadcrumb_area);
+  draw_rail_rows(frame, browse, promoted, theme, body);
+}
+
+fn draw_breadcrumb(
+  frame: &mut Frame,
+  browse: &BrowseModel,
+  theme: &ui_theme::Theme,
+  area: Rect,
+) {
+  let crumbs = breadcrumb_for(browse);
+  let crumb = truncate_str(&crumbs, area.width.saturating_sub(1) as usize);
+  frame.render_widget(
+    Paragraph::new(Span::styled(
+      format!(" {crumb}"),
+      Style::default().fg(theme.header).add_modifier(Modifier::BOLD),
+    )),
+    Rect { height: 1, ..area },
+  );
+}
+
+/// Build the breadcrumb string for the current rail path. Used by
+/// `draw_breadcrumb` and exposed for tests + the title-bar subtitle.
+pub fn breadcrumb_for(browse: &BrowseModel) -> String {
+  match browse.rail_path.len() {
+    0 => "Browse arXiv".to_string(),
+    1 => browse.current_group().map(|g| g.name.to_string()).unwrap_or_default(),
+    _ => {
+      let g = browse.current_group().map(|g| g.name).unwrap_or("");
+      let a = browse.current_archive().map(|a| a.name).unwrap_or("");
+      format!("{g} › {a}")
+    }
+  }
+}
+
+fn draw_rail_rows(
+  frame: &mut Frame,
+  browse: &BrowseModel,
+  promoted: &[String],
+  theme: &ui_theme::Theme,
+  area: Rect,
+) {
+  let selected = browse.rail_cursor.selected();
+  let len = browse.current_level_len();
+  let visible = visible_range(selected, len, area.height);
+  let max_text = area.width.saturating_sub(2) as usize;
+
+  let lines: Vec<Line> = match browse.rail_path.len() {
+    0 => TAXONOMY
+      .iter()
+      .enumerate()
+      .skip(visible.start)
+      .take(visible.end.saturating_sub(visible.start))
+      .map(|(i, g)| {
+        rail_row(
+          theme,
+          i == selected,
+          /* marker = */ None,
+          g.name,
+          Some(g.archives.len()),
+          max_text,
+        )
+      })
+      .collect(),
+    1 => {
+      let archives = browse.current_group().map(|g| g.archives).unwrap_or(&[]);
+      archives
+        .iter()
+        .enumerate()
+        .skip(visible.start)
+        .take(visible.end.saturating_sub(visible.start))
+        .map(|(i, a)| {
+          rail_row(
+            theme,
+            i == selected,
+            None,
+            a.name,
+            Some(a.categories.len()),
+            max_text,
+          )
+        })
+        .collect()
+    }
+    _ => {
+      let cats = browse.current_archive().map(|a| a.categories).unwrap_or(&[]);
+      cats
+        .iter()
+        .enumerate()
+        .skip(visible.start)
+        .take(visible.end.saturating_sub(visible.start))
+        .map(|(i, c)| {
+          let label = if c.code == c.name {
+            c.name.to_string()
+          } else {
+            format!("{} · {}", c.code, c.name)
+          };
+          let is_promoted = promoted.iter().any(|p| p == c.code);
+          let marker = if is_promoted { Some("★") } else { None };
+          rail_row(theme, i == selected, marker, &label, None, max_text)
+        })
+        .collect()
+    }
+  };
+
+  frame.render_widget(Paragraph::new(lines), area);
+}
+
+/// Render one rail row: optional marker glyph (`★` for promoted),
+/// label (truncated to the column width minus the marker + count),
+/// and an optional right-aligned count.
+fn rail_row(
+  theme: &ui_theme::Theme,
+  selected: bool,
+  marker: Option<&'static str>,
+  label: &str,
+  count: Option<usize>,
+  width: usize,
+) -> Line<'static> {
+  let count_w = if count.is_some() { 4 } else { 0 };
+  let marker_w = 1;
+  let label_w = width.saturating_sub(marker_w + count_w);
+  let truncated = truncate_str(label, label_w);
+  let text_style = row_text_style(theme, selected);
+  let marker_style = Style::default().fg(theme.accent);
+  let count_style = if selected {
+    theme.style_selection_dim()
+  } else {
+    Style::default().fg(theme.text_dim)
+  };
+
+  let mut spans = vec![
+    Span::styled(marker.unwrap_or(" ").to_string(), marker_style),
+    Span::styled(format!("{:<label_w$}", truncated, label_w = label_w), text_style),
+  ];
+  if let Some(n) = count {
+    spans.push(Span::styled(format!(" {n:>2} "), count_style));
+  }
+  Line::from(spans)
+}
+
+fn row_text_style(theme: &ui_theme::Theme, selected: bool) -> Style {
+  if selected {
+    theme.style_selection_text()
+  } else {
+    Style::default().fg(theme.text_dim)
+  }
+}
+
+/// Window of visible row indices around `selected` for a `len`-row
+/// column at `height`-row screen real estate. Same shape as the
+/// helper that used to live inline in ADR-010 PR 1 / 2 — extracted
+/// here so the rail can scroll.
+fn visible_range(
+  selected: usize,
+  len: usize,
+  height: u16,
+) -> std::ops::Range<usize> {
+  if len == 0 || height == 0 {
+    return 0..0;
+  }
+  let visible = height as usize;
+  let start = if selected >= visible { selected + 1 - visible } else { 0 };
+  let end = (start + visible).min(len);
+  start..end
+}
+
