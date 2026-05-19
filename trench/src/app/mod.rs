@@ -129,13 +129,15 @@ pub struct App {
   pub kitty_supported: bool,
   pub fulltext_for_secondary: bool,
   pub fulltext_new_tab: bool,
-  // True while waiting for [1]/[2] to choose which reader window gets a new tab.
-  pub tab_window_prompt_active: bool,
+  /// Transient popup visibility flags.  ADR-009 cluster #4: replaces
+  /// 3 flat fields (`tab_window_prompt_active`, `abstract_popup_active`,
+  /// `narrow_feed_details_open`).  The fulltext-routing pair above
+  /// stays flat for now; it reclassifies into the future `AsyncJobs`
+  /// cluster — they're parameters of the pending fetch, not popup state.
+  pub view_flags: ViewFlags,
   /// Bottom pane in State 3 (summoned by `Ldr+f`, dismissed by `q`/`Esc`).
   /// ADR-009 cluster #3: replaces 5 flat fields with the typed state.
   pub reader_bottom: ReaderBottomState,
-  pub narrow_feed_details_open: bool, // State 2: description popup over reader
-  pub abstract_popup_active: bool,    // Space: quick abstract view
 
   // Last opened paper (shown in dashboard "Continue Reading")
   pub last_read: Option<String>,
@@ -269,10 +271,8 @@ impl App {
       kitty_supported: tread::detect_kitty_supported(),
       fulltext_for_secondary: false,
       fulltext_new_tab: false,
-      tab_window_prompt_active: false,
+      view_flags: ViewFlags::default(),
       reader_bottom: ReaderBottomState::default(),
-      narrow_feed_details_open: false,
-      abstract_popup_active: false,
       last_read: None,
       last_read_source: None,
       fulltext_rx: None,

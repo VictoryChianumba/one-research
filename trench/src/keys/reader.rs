@@ -341,8 +341,8 @@ pub(super) fn reader_back(app: &mut App, side: FocusedReader) -> bool {
     return true;
   }
 
-  if app.narrow_feed_details_open {
-    app.narrow_feed_details_open = false;
+  if app.view_flags.narrow_feed_details_open {
+    app.view_flags.narrow_feed_details_open = false;
     return true;
   }
 

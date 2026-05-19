@@ -121,7 +121,7 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
       }
       KeyCode::Char(' ') => {
         if app.selected_item().is_some() {
-          app.abstract_popup_active = true;
+          app.view_flags.abstract_popup_active = true;
         }
       }
       KeyCode::Enter => {
@@ -493,10 +493,10 @@ fn handle_workflow_gesture(key: KeyEvent, app: &mut App) -> bool {
 /// scroll/dismiss; otherwise full narrow-feed nav + Enter to open in
 /// the side reader.
 fn handle_narrow_feed_state_2(key: KeyEvent, app: &mut App) {
-  if app.narrow_feed_details_open {
+  if app.view_flags.narrow_feed_details_open {
     match key.code {
       KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('d') => {
-        app.narrow_feed_details_open = false;
+        app.view_flags.narrow_feed_details_open = false;
       }
       KeyCode::Char('j') | KeyCode::Down => {
         app.details_scroll.scroll_down(1);
@@ -511,11 +511,11 @@ fn handle_narrow_feed_state_2(key: KeyEvent, app: &mut App) {
   match key.code {
     KeyCode::Esc | KeyCode::Char('q') => {
       app.reader.split_active = false;
-      app.narrow_feed_details_open = false;
+      app.view_flags.narrow_feed_details_open = false;
       app.focus.focused_pane = PaneId::Reader;
     }
     KeyCode::Char('d') => {
-      app.narrow_feed_details_open = true;
+      app.view_flags.narrow_feed_details_open = true;
       app.details_scroll.reset();
     }
     KeyCode::Char('/') => {
@@ -526,19 +526,19 @@ fn handle_narrow_feed_state_2(key: KeyEvent, app: &mut App) {
     KeyCode::Char('j') | KeyCode::Down => {
       if kbd_scroll_ok(app) {
         app.move_down();
-        app.narrow_feed_details_open = false;
+        app.view_flags.narrow_feed_details_open = false;
       }
     }
     KeyCode::Char('k') | KeyCode::Up => {
       if kbd_scroll_ok(app) {
         app.move_up();
-        app.narrow_feed_details_open = false;
+        app.view_flags.narrow_feed_details_open = false;
       }
     }
     KeyCode::Enter => {
       if !app.fulltext_loading {
         if let Some(item) = app.selected_item().cloned() {
-          app.narrow_feed_details_open = false;
+          app.view_flags.narrow_feed_details_open = false;
           remember_fulltext_paper_context(app, &item);
           app.set_notification(format!(
             "Fetching: {}…",

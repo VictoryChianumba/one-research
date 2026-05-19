@@ -61,7 +61,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     AppView::RepoViewer => draw_repo_viewer(frame, app),
   }
   // Abstract popup floats on top of the feed view.
-  if app.abstract_popup_active {
+  if app.view_flags.abstract_popup_active {
     draw_abstract_popup(frame, app);
   }
   // Help overlay floats on top of whatever view is rendered.

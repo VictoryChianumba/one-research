@@ -237,7 +237,7 @@ pub fn draw_main_row(
         );
       }
     }
-    if app.narrow_feed_details_open {
+    if app.view_flags.narrow_feed_details_open {
       draw_narrow_feed_details_popup(frame, app, reader_rect);
     }
     return MainRowRects {

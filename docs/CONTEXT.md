@@ -42,6 +42,7 @@ When you change behaviour described here, update this file in the same commit.
 | **DebounceState** | Cluster struct (`trench/src/app/state/debounce.rs`) holding the keyboard- and mouse-scroll rate gates. Owns the read-update protocol via `try_kbd_scroll` / `try_mouse_scroll`. Pilot cluster for `ADR-009`'s App-field grouping; replaces 4 flat `App` fields (`last_scroll_time` + 3 siblings). |
 | **LeaderState** | Cluster struct (`trench/src/app/state/leader.rs`) holding the Ctrl+T leader-key gate. Four-method protocol: `activate`, `deactivate`, `expire_if_timed_out`, `is_active` — read and expire are deliberately separate so footer/log reads stay pure. ADR-009 cluster #2; replaces 3 flat `App` fields (`leader_active`, `leader_activated_at`, `leader_timeout_ms`). |
 | **ReaderBottomState** | Cluster struct (`trench/src/app/state/reader_bottom.rs`) holding the State-3 reader-bottom drawer's UI state: `open`, `focused`, `details` (view mode), `feed_popup_selected`, `scroll`. Public fields, no protocol methods — matches `ReaderPaneModel`'s convention (ADR-002). ADR-009 cluster #3; replaces 5 flat `App` fields (`reader_bottom_open` + 4 siblings). |
+| **ViewFlags** | Cluster struct (`trench/src/app/state/view_flags.rs`) holding three transient popup visibility flags: `tab_window_prompt_active`, `abstract_popup_active`, `narrow_feed_details_open`. Public fields, no protocol methods. ADR-009 cluster #4; replaces 3 flat `App` fields. The audit's original 5-field grouping reclassified the two `fulltext_*` routing flags into the future `AsyncJobs` cluster since they're consumed by the async-fetch resolution path, not popup state. |
 
 ### Term hygiene
 
@@ -120,6 +121,6 @@ The refactor is incremental. Lazy rollout — a pane is refactored when a featur
 - `docs/adr/ADR-006-store-seam.md` — C8 `load_json<T>` + `save_json<T>` (Accepted 2026-05-18; 3 PRs landed).
 - `docs/adr/ADR-007-item-store.md` — C9 `ItemStore` encapsulating Workspace's item triple (Accepted 2026-05-18; 3 PRs landed).
 - `docs/adr/ADR-008-frame-layout.md` — C6 `FrameLayout` + `apply_frame_layout` hook (Accepted 2026-05-18; 3 PRs landed).
-- `docs/adr/ADR-009-app-field-grouping.md` — N5 cluster flat `App` fields into named state structs (Proposed 2026-05-19; PR 1 = `DebounceState` pilot, PR 2 = `LeaderState`, PR 3 = `ReaderBottomState`).
+- `docs/adr/ADR-009-app-field-grouping.md` — N5 cluster flat `App` fields into named state structs (Proposed 2026-05-19; PR 1 = `DebounceState`, PR 2 = `LeaderState`, PR 3 = `ReaderBottomState`, PR 4 = `ViewFlags`).
 - `docs/audits/` — periodic architectural audits with letter-graded scorecards. Latest: `2026-05-18-architectural-audit.md` (C+, unchanged from 2026-05-16). Run `/improve-codebase-architecture` to produce a new one.
 - `CLAUDE.md` — project-wide rules. CONTEXT.md is the *language* layer above those.

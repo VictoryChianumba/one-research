@@ -15,6 +15,7 @@ mod reader_bottom;
 mod repo;
 mod settings;
 mod theme_picker;
+mod view_flags;
 
 pub use chat::ChatState;
 pub use debounce::DebounceState;
@@ -22,7 +23,6 @@ pub use discovery::DiscoveryModel;
 pub use feed::{AppView, FeedTab, FilterState, ItemCounts, NavDirection};
 pub use help::HelpState;
 pub use leader::LeaderState;
-pub use reader_bottom::ReaderBottomState;
 pub use notes::{
   CloseTabOutcome, NotesContext, NotesInstanceModel, NotesMode, NotesPaneModel,
   NotesTab,
@@ -32,6 +32,7 @@ pub use popups::{
   DiscoverResult, QuitPopupKind, QuitPopupState, TagPickerState,
 };
 pub use reader::ReaderTab;
+pub use reader_bottom::ReaderBottomState;
 pub use repo::{
   RepoContext, RepoEnterTarget, RepoFetchResult, RepoFileFetched, RepoFileKind,
   RepoPane,
@@ -40,3 +41,4 @@ pub use settings::SettingsEditState;
 pub use theme_picker::{
   CustomThemeEditorMode, CustomThemeEditorState, ThemePickerState,
 };
+pub use view_flags::ViewFlags;

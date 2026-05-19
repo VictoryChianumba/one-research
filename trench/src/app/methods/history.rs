@@ -67,7 +67,7 @@ impl App {
     // popup's wrap width becomes available in pre_draw_update there,
     // and a different bound formula (one that doesn't trigger whatever
     // regression we saw) can be tried.
-    if self.narrow_feed_details_open {
+    if self.view_flags.narrow_feed_details_open {
       self.details_scroll.set_max(usize::MAX);
     } else {
       self.details_scroll.set_max(0);

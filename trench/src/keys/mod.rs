@@ -68,9 +68,9 @@ pub fn dispatch(key: KeyEvent, app: &mut App) {
   }
 
   // Abstract popup — any of Space / Enter / Esc dismisses.
-  if app.abstract_popup_active {
+  if app.view_flags.abstract_popup_active {
     if matches!(key.code, KeyCode::Char(' ') | KeyCode::Esc | KeyCode::Enter) {
-      app.abstract_popup_active = false;
+      app.view_flags.abstract_popup_active = false;
     }
     return;
   }
@@ -98,22 +98,22 @@ pub fn dispatch(key: KeyEvent, app: &mut App) {
   }
 
   // Tab window prompt — intercepts [1]/[2]/Esc to choose which reader pane.
-  if app.tab_window_prompt_active {
+  if app.view_flags.tab_window_prompt_active {
     match key.code {
       KeyCode::Char('1') => {
-        app.tab_window_prompt_active = false;
+        app.view_flags.tab_window_prompt_active = false;
         app.fulltext_for_secondary = false;
         app.fulltext_new_tab = true;
         trigger_fulltext_new_tab(app);
       }
       KeyCode::Char('2') => {
-        app.tab_window_prompt_active = false;
+        app.view_flags.tab_window_prompt_active = false;
         app.fulltext_for_secondary = true;
         app.fulltext_new_tab = true;
         trigger_fulltext_new_tab(app);
       }
       KeyCode::Esc => {
-        app.tab_window_prompt_active = false;
+        app.view_flags.tab_window_prompt_active = false;
         app.set_notification("Cancelled.".to_string());
       }
       _ => {}
@@ -1126,7 +1126,7 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
         return;
       }
       if app.reader.dual_active {
-        app.tab_window_prompt_active = true;
+        app.view_flags.tab_window_prompt_active = true;
         app.set_notification(
           "Add to: [1] left  [2] right  Esc: cancel".to_string(),
         );
