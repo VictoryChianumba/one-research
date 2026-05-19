@@ -124,5 +124,5 @@ The refactor is incremental. Lazy rollout — a pane is refactored when a featur
 - `docs/adr/ADR-007-item-store.md` — C9 `ItemStore` encapsulating Workspace's item triple (Accepted 2026-05-18; 3 PRs landed).
 - `docs/adr/ADR-008-frame-layout.md` — C6 `FrameLayout` + `apply_frame_layout` hook (Accepted 2026-05-18; 3 PRs landed).
 - `docs/adr/ADR-009-app-field-grouping.md` — N5 cluster flat `App` fields into named state structs (Accepted 2026-05-19; 6 PRs landed: `DebounceState`, `LeaderState`, `ReaderBottomState`, `ViewFlags`, `RenderCaches`, `AsyncJobs`). App shrank 108 → 80 fields.
-- `docs/audits/` — periodic architectural audits with letter-graded scorecards. Latest: `2026-05-18-architectural-audit.md` (C+, unchanged from 2026-05-16). Run `/improve-codebase-architecture` to produce a new one.
+- `docs/audits/` — periodic architectural audits with letter-graded scorecards. Latest: `2026-05-19-architectural-audit.md` (B−, up from C+ after the ADR-009 series + N1/N2/N8 witnesses landed). Run `/improve-codebase-architecture` to produce a new one.
 - `CLAUDE.md` — project-wide rules. CONTEXT.md is the *language* layer above those.
