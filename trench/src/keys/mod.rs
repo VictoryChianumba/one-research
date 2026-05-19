@@ -45,8 +45,8 @@ pub fn dispatch(key: KeyEvent, app: &mut App) {
             if pane_empty {
               if app.reader.dual_active {
                 app.reader.dual_active = false;
-                app.reader_bottom_open = false;
-                app.reader_bottom_focused = false;
+                app.reader_bottom.open = false;
+                app.reader_bottom.focused = false;
                 app.reader.secondary.tabs.clear();
                 app.reader.secondary.active_tab = 0;
                 app.notes.set_visible(FocusedReader::Secondary, false);
@@ -153,8 +153,8 @@ pub fn dispatch(key: KeyEvent, app: &mut App) {
   }
   // State-3 bottom pane (A2) — handles its own key set when open and focused.
   if app.reader.dual_active
-    && app.reader_bottom_open
-    && app.reader_bottom_focused
+    && app.reader_bottom.open
+    && app.reader_bottom.focused
   {
     handle_reader_bottom_pane(key, app);
     return;
@@ -653,18 +653,18 @@ fn sync_focus_after_pane_change(app: &mut App) {
 }
 
 fn focus_reader_bottom_from_reader(app: &mut App) -> bool {
-  if !app.reader.dual_active || !app.reader_bottom_open {
+  if !app.reader.dual_active || !app.reader_bottom.open {
     return false;
   }
   match app.focus.focused_pane {
     PaneId::Reader | PaneId::Notes => {
       app.reader.focused = FocusedReader::Primary;
-      app.reader_bottom_focused = true;
+      app.reader_bottom.focused = true;
       true
     }
     PaneId::SecondaryReader | PaneId::SecondaryNotes => {
       app.reader.focused = FocusedReader::Secondary;
-      app.reader_bottom_focused = true;
+      app.reader_bottom.focused = true;
       true
     }
     _ => false,
@@ -951,25 +951,25 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
     KeyCode::Char('f') => {
       if app.reader.dual_active {
         // State 3: toggle bottom feed pane.
-        if app.reader_bottom_open {
-          app.reader_bottom_open = false;
-          app.reader_bottom_focused = false;
-          app.reader_bottom_details = false;
+        if app.reader_bottom.open {
+          app.reader_bottom.open = false;
+          app.reader_bottom.focused = false;
+          app.reader_bottom.details = false;
           if app.focus.focused_pane == PaneId::Feed {
             app.focus.focused_pane = PaneId::Reader;
           }
         } else {
-          app.reader_bottom_open = true;
-          app.reader_bottom_focused = true;
-          app.reader_bottom_details = false;
-          app.reader_feed_popup_selected = app.active_selected_index();
+          app.reader_bottom.open = true;
+          app.reader_bottom.focused = true;
+          app.reader_bottom.details = false;
+          app.reader_bottom.feed_popup_selected = app.active_selected_index();
         }
       } else if app.reader.split_active {
         // State 2 → State 3: auto-fetch selected item into right pane
         app.reader.dual_active = true;
-        app.reader_bottom_focused = false;
-        app.reader_bottom_details = false;
-        app.reader_bottom_scroll.reset();
+        app.reader_bottom.focused = false;
+        app.reader_bottom.details = false;
+        app.reader_bottom.scroll.reset();
         if !app.fulltext_loading {
           if let Some(item) = app.selected_item().cloned() {
             remember_fulltext_paper_context(app, &item);
@@ -1001,7 +1001,7 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
       app.show_quit_popup();
     }
     KeyCode::Char('h') => {
-      if app.reader_bottom_focused {
+      if app.reader_bottom.focused {
         return;
       }
       let t = std::time::Instant::now();
@@ -1033,8 +1033,8 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
       }
     }
     KeyCode::Char('k') => {
-      if app.reader_bottom_focused {
-        app.reader_bottom_focused = false;
+      if app.reader_bottom.focused {
+        app.reader_bottom.focused = false;
         app.focus.focused_pane = match app.reader.focused {
           FocusedReader::Primary => PaneId::Reader,
           FocusedReader::Secondary => PaneId::SecondaryReader,
@@ -1054,7 +1054,7 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
       }
     }
     KeyCode::Char('l') => {
-      if app.reader_bottom_focused {
+      if app.reader_bottom.focused {
         return;
       }
       let t = std::time::Instant::now();
@@ -1165,8 +1165,8 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
         let pane_empty = app.reader_secondary_close_active_tab();
         if pane_empty {
           app.reader.dual_active = false;
-          app.reader_bottom_open = false;
-          app.reader_bottom_focused = false;
+          app.reader_bottom.open = false;
+          app.reader_bottom.focused = false;
           app.notes.set_visible(FocusedReader::Secondary, false);
           app.reader.focused = FocusedReader::Primary;
           app.focus.focused_pane = PaneId::Reader;
@@ -1177,8 +1177,8 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
         if pane_empty {
           if app.reader.dual_active {
             app.reader.dual_active = false;
-            app.reader_bottom_open = false;
-            app.reader_bottom_focused = false;
+            app.reader_bottom.open = false;
+            app.reader_bottom.focused = false;
             app.reader.secondary.tabs.clear();
             app.reader.secondary.active_tab = 0;
             app.notes.set_visible(FocusedReader::Secondary, false);

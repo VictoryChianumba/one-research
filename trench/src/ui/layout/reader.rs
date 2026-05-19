@@ -317,10 +317,10 @@ pub(super) fn draw_reader_bottom_pane(
 
   frame.render_widget(Clear, popup_rect);
 
-  let focused = app.reader_bottom_focused;
+  let focused = app.reader_bottom.focused;
   let border_color = if focused { t.border_active } else { t.border };
 
-  let title_str = if app.reader_bottom_details {
+  let title_str = if app.reader_bottom.details {
     " Feed Drawer Details · d: back  j/k: scroll  Esc: back "
   } else if app.feed.search_active || !app.feed.search_query.is_empty() {
     " Feed Drawer · / search active  Enter: open  Esc: clear  q: close "
@@ -339,7 +339,7 @@ pub(super) fn draw_reader_bottom_pane(
     return;
   }
 
-  if app.reader_bottom_details {
+  if app.reader_bottom.details {
     draw_bottom_pane_details(frame, app, inner);
   } else {
     draw_bottom_pane_feed(frame, app, inner);
@@ -347,12 +347,12 @@ pub(super) fn draw_reader_bottom_pane(
 }
 
 fn draw_bottom_pane_details(frame: &mut Frame, app: &App, area: Rect) {
-  // reader_bottom_scroll.max is set in App::pre_draw_update to MAX
+  // reader_bottom.scroll.max is set in App::pre_draw_update to MAX
   // when details mode is open. We just read offset() here.
-  let scroll = app.reader_bottom_scroll.offset();
+  let scroll = app.reader_bottom.scroll.offset();
 
   let t = app.theme();
-  let sel = app.reader_feed_popup_selected;
+  let sel = app.reader_bottom.feed_popup_selected;
   if app.feed.feed_tab == FeedTab::History {
     let Some(entry) = app.history_get(sel) else { return };
     let rows =
@@ -460,13 +460,13 @@ fn draw_bottom_pane_feed(frame: &mut Frame, app: &mut App, area: Rect) {
   // the pre-computed `list_area.height`.  `total` is data-only and
   // could live in `pre_draw_update`; consolidating both writes into
   // one hook keeps the auto-scroll story local to one place.
-  let sel = app.reader_feed_popup_selected;
+  let sel = app.reader_bottom.feed_popup_selected;
   let total = if app.feed.feed_tab == FeedTab::History {
     app.history_count()
   } else {
     app.visible_count()
   };
-  let offset = app.reader_bottom_scroll.offset();
+  let offset = app.reader_bottom.scroll.offset();
 
   frame.render_widget(
     Paragraph::new(drawer_feed_header_line(list_area.width as usize, &t)),

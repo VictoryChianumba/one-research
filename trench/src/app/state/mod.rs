@@ -11,6 +11,7 @@ mod notes;
 mod panes;
 mod popups;
 mod reader;
+mod reader_bottom;
 mod repo;
 mod settings;
 mod theme_picker;
@@ -21,6 +22,7 @@ pub use discovery::DiscoveryModel;
 pub use feed::{AppView, FeedTab, FilterState, ItemCounts, NavDirection};
 pub use help::HelpState;
 pub use leader::LeaderState;
+pub use reader_bottom::ReaderBottomState;
 pub use notes::{
   CloseTabOutcome, NotesContext, NotesInstanceModel, NotesMode, NotesPaneModel,
   NotesTab,

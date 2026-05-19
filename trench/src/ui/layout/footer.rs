@@ -79,15 +79,15 @@ fn footer_command_line(app: &App) -> Line<'static> {
   }
 
   if app.reader.dual_active
-    && app.reader_bottom_open
-    && app.reader_bottom_focused
+    && app.reader_bottom.open
+    && app.reader_bottom.focused
   {
-    let label = if app.reader_bottom_details {
+    let label = if app.reader_bottom.details {
       "feed drawer details"
     } else {
       "feed drawer"
     };
-    let keys = if app.reader_bottom_details {
+    let keys = if app.reader_bottom.details {
       ": j/k scroll | d back | q/Esc close | ? help"
     } else if app.feed.search_active {
       ": type filter | Enter keep | Esc clear | j/k move | ? help"

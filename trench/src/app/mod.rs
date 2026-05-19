@@ -131,17 +131,11 @@ pub struct App {
   pub fulltext_new_tab: bool,
   // True while waiting for [1]/[2] to choose which reader window gets a new tab.
   pub tab_window_prompt_active: bool,
-  // Bottom pane in State 3 (summoned by Ldr+f, dismissed by q/Esc)
-  pub reader_bottom_open: bool,    // pane is visible
-  pub reader_bottom_focused: bool, // pane has keyboard focus
-  pub reader_bottom_details: bool, // showing details (true) or feed list (false)
-  /// Scroll offset for the reader bottom drawer — used in both modes
-  /// (`draw_bottom_pane_feed` and `draw_bottom_pane_details`). Each
-  /// render path sets max appropriately for its mode.
-  pub reader_bottom_scroll: crate::primitives::ScrollState,
+  /// Bottom pane in State 3 (summoned by `Ldr+f`, dismissed by `q`/`Esc`).
+  /// ADR-009 cluster #3: replaces 5 flat fields with the typed state.
+  pub reader_bottom: ReaderBottomState,
   pub narrow_feed_details_open: bool, // State 2: description popup over reader
   pub abstract_popup_active: bool,    // Space: quick abstract view
-  pub reader_feed_popup_selected: usize, // selected item in bottom feed list
 
   // Last opened paper (shown in dashboard "Continue Reading")
   pub last_read: Option<String>,
@@ -276,13 +270,9 @@ impl App {
       fulltext_for_secondary: false,
       fulltext_new_tab: false,
       tab_window_prompt_active: false,
-      reader_bottom_open: false,
-      reader_bottom_focused: false,
-      reader_bottom_details: false,
+      reader_bottom: ReaderBottomState::default(),
       narrow_feed_details_open: false,
       abstract_popup_active: false,
-      reader_bottom_scroll: crate::primitives::ScrollState::new(),
-      reader_feed_popup_selected: 0,
       last_read: None,
       last_read_source: None,
       fulltext_rx: None,

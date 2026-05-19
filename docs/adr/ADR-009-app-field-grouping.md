@@ -1,6 +1,6 @@
 # ADR-009 — Cluster flat `App` fields into named state structs
 
-- **Status:** Proposed (2026-05-19). PR 1 ships ADR + `DebounceState` + 5 smoke tests + 4-field migration + CONTEXT.md vocabulary entry. PR 2 ships `LeaderState` + 7 smoke tests + 3-field migration + 6 call-site updates.
+- **Status:** Proposed (2026-05-19). PR 1 ships ADR + `DebounceState` + 5 smoke tests + 4-field migration. PR 2 ships `LeaderState` + 7 smoke tests + 3-field migration + 6 call-site updates. PR 3 ships `ReaderBottomState` + 2 smoke tests + 5-field migration + ~104 call-site renames (sed-driven mechanical).
 - **Date:** 2026-05-19
 - **Owner:** Victory Chianumba
 - **Supersedes:** none
@@ -60,7 +60,7 @@ impl DebounceState {
 | Cluster | Fields | Struct | Status |
 |---|---|---|---|
 | Leader key | `leader_active`, `leader_activated_at`, `leader_timeout_ms` (3) | `LeaderState` | ✓ PR 2 (2026-05-19) |
-| Reader-bottom drawer | `reader_bottom_open`, `reader_bottom_focused`, `reader_bottom_details`, `reader_feed_popup_selected`, `reader_bottom_scroll` (5) | `ReaderBottomState` | pending |
+| Reader-bottom drawer | `reader_bottom_open`, `reader_bottom_focused`, `reader_bottom_details`, `reader_feed_popup_selected`, `reader_bottom_scroll` (5) | `ReaderBottomState` | ✓ PR 3 (2026-05-19) |
 | Async fetch receivers | `fetch_rx`, `fulltext_rx`, `tread_fetch_rx`, `repo_fetch_rx`, `is_loading`, `loading_sources`, `loaded_sources`, `spinner_frame`, `fulltext_loading`, `pending_fulltext_context`, `pending_tread_fetch` (11) | `AsyncJobs` | pending |
 | View-state popups | `tab_window_prompt_active`, `abstract_popup_active`, `narrow_feed_details_open`, `fulltext_new_tab`, `fulltext_for_secondary` (5) | `ViewFlags` | pending |
 | RefCell caches | `visible_cache`, `counts_cache`, `filter_source_names_cache`, `filter_summary_cache`, `filtered_history_cache` (5) | `RenderCaches` | pending |

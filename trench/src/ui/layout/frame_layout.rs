@@ -24,9 +24,9 @@ use crate::app::App;
 #[derive(Default, Debug, Clone, Copy)]
 pub struct FrameLayout {
   /// The reader bottom-drawer *list area* when the drawer is in feed
-  /// mode (`reader_bottom_open && !reader_bottom_details`).
+  /// mode (`reader_bottom.open && !reader_bottom.details`).
   /// `apply_frame_layout` uses `.height` to size
-  /// `reader_bottom_scroll.max` for feed-mode auto-scroll.
+  /// `reader_bottom.scroll.max` for feed-mode auto-scroll.
   pub reader_bottom_feed_list: Option<Rect>,
 }
 
@@ -43,8 +43,8 @@ pub fn compute_frame_layout(app: &App, area: Rect) -> FrameLayout {
   // The Rect math mirrors `draw_reader_bottom_pane` /
   // `draw_bottom_pane_feed`'s shared helpers in `ui/layout/reader.rs`.
   if app.reader.dual_active
-    && app.reader_bottom_open
-    && !app.reader_bottom_details
+    && app.reader_bottom.open
+    && !app.reader_bottom.details
   {
     layout.reader_bottom_feed_list =
       super::reader::reader_bottom_feed_list_rect(area);

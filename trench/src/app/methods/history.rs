@@ -73,13 +73,13 @@ impl App {
       self.details_scroll.set_max(0);
     }
 
-    // reader_bottom_scroll.max: details mode allows unbounded scroll
+    // reader_bottom.scroll.max: details mode allows unbounded scroll
     // (same paragraph-clipping pattern). The feed-mode counterpart
     // requires viewport_rows from the bottom-drawer list area, which
     // isn't known until layout — see `apply_frame_layout` (C6 / ADR-008)
     // for that branch.
-    if self.reader_bottom_open && self.reader_bottom_details {
-      self.reader_bottom_scroll.set_max(usize::MAX);
+    if self.reader_bottom.open && self.reader_bottom.details {
+      self.reader_bottom.scroll.set_max(usize::MAX);
     }
   }
 
@@ -104,15 +104,15 @@ impl App {
       // Mirrors the pre-C6 inline math at reader.rs:434-441 exactly:
       // cap max at `total - 1`, then clamp offset so the selection is
       // within [offset, offset + viewport_rows).
-      self.reader_bottom_scroll.set_max(total.saturating_sub(1));
-      let sel = self.reader_feed_popup_selected;
-      let mut offset = self.reader_bottom_scroll.offset();
+      self.reader_bottom.scroll.set_max(total.saturating_sub(1));
+      let sel = self.reader_bottom.feed_popup_selected;
+      let mut offset = self.reader_bottom.scroll.offset();
       if sel < offset {
         offset = sel;
       } else if sel >= offset.saturating_add(viewport_rows) {
         offset = sel + 1 - viewport_rows;
       }
-      self.reader_bottom_scroll.set_offset(offset);
+      self.reader_bottom.scroll.set_offset(offset);
     }
   }
 

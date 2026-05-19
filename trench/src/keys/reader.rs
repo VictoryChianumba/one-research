@@ -45,7 +45,7 @@ pub(super) fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
       KeyCode::Esc => {
         app.feed.search_active = false;
         app.clear_search_query();
-        app.reader_feed_popup_selected = 0;
+        app.reader_bottom.feed_popup_selected = 0;
       }
       KeyCode::Enter => {
         app.feed.search_active = false;
@@ -65,32 +65,32 @@ pub(super) fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
 
   match key.code {
     KeyCode::Char('j') | KeyCode::Down => {
-      if app.reader_bottom_details {
-        app.reader_bottom_scroll.scroll_down(1);
+      if app.reader_bottom.details {
+        app.reader_bottom.scroll.scroll_down(1);
       } else {
         let count = reader_feed_count(app);
         if count > 0 {
-          app.reader_feed_popup_selected =
-            (app.reader_feed_popup_selected + 1).min(count - 1);
+          app.reader_bottom.feed_popup_selected =
+            (app.reader_bottom.feed_popup_selected + 1).min(count - 1);
         }
       }
     }
     KeyCode::Char('k') | KeyCode::Up => {
-      if app.reader_bottom_details {
-        app.reader_bottom_scroll.scroll_up(1);
+      if app.reader_bottom.details {
+        app.reader_bottom.scroll.scroll_up(1);
       } else {
-        app.reader_feed_popup_selected =
-          app.reader_feed_popup_selected.saturating_sub(1);
+        app.reader_bottom.feed_popup_selected =
+          app.reader_bottom.feed_popup_selected.saturating_sub(1);
       }
     }
     KeyCode::Char('d') => {
-      app.reader_bottom_details = !app.reader_bottom_details;
-      app.reader_bottom_scroll.reset();
+      app.reader_bottom.details = !app.reader_bottom.details;
+      app.reader_bottom.scroll.reset();
     }
     KeyCode::Char('/') => {
       app.feed.search_active = true;
       app.clear_search_query();
-      app.reader_feed_popup_selected = 0;
+      app.reader_bottom.feed_popup_selected = 0;
     }
     KeyCode::Tab => {
       app.feed.feed_tab = match app.feed.feed_tab {
@@ -111,8 +111,8 @@ pub(super) fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
       app.reset_active_feed_position();
     }
     KeyCode::Enter => {
-      if !app.reader_bottom_details && !app.fulltext_loading {
-        let idx = app.reader_feed_popup_selected;
+      if !app.reader_bottom.details && !app.fulltext_loading {
+        let idx = app.reader_bottom.feed_popup_selected;
         if app.feed.feed_tab == FeedTab::History {
           let entry = app.history_get(idx).cloned();
           if let Some(entry) = entry {
@@ -137,7 +137,7 @@ pub(super) fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
                     target,
                     crate::action::OpenMode::ReplaceActive,
                   );
-                  app.reader_bottom_focused = false;
+                  app.reader_bottom.focused = false;
                   app.focus.focused_pane = PaneId::Reader;
                 }
               }
@@ -168,24 +168,24 @@ pub(super) fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
             target,
             crate::action::OpenMode::ReplaceActive,
           );
-          app.reader_bottom_focused = false;
+          app.reader_bottom.focused = false;
           app.focus.focused_pane = PaneId::Reader;
         }
       }
     }
     KeyCode::Esc => {
-      if app.reader_bottom_details {
-        app.reader_bottom_details = false;
-        app.reader_bottom_scroll.reset();
+      if app.reader_bottom.details {
+        app.reader_bottom.details = false;
+        app.reader_bottom.scroll.reset();
       } else {
-        app.reader_bottom_open = false;
-        app.reader_bottom_focused = false;
+        app.reader_bottom.open = false;
+        app.reader_bottom.focused = false;
         app.focus.focused_pane = PaneId::Reader;
       }
     }
     KeyCode::Char('q') => {
-      app.reader_bottom_open = false;
-      app.reader_bottom_focused = false;
+      app.reader_bottom.open = false;
+      app.reader_bottom.focused = false;
       app.focus.focused_pane = PaneId::Reader;
     }
     _ => {}
@@ -195,10 +195,10 @@ pub(super) fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
 fn clamp_reader_feed_selection(app: &mut App) {
   let count = reader_feed_count(app);
   if count == 0 {
-    app.reader_feed_popup_selected = 0;
+    app.reader_bottom.feed_popup_selected = 0;
   } else {
-    app.reader_feed_popup_selected =
-      app.reader_feed_popup_selected.min(count - 1);
+    app.reader_bottom.feed_popup_selected =
+      app.reader_bottom.feed_popup_selected.min(count - 1);
   }
 }
 
@@ -223,8 +223,8 @@ pub(super) fn handle_reader_pane(key: KeyEvent, app: &mut App) -> bool {
   {
     log::debug!("routing to secondary reader pane");
     if key.code == KeyCode::Tab {
-      if app.reader_bottom_open {
-        app.reader_bottom_focused = true;
+      if app.reader_bottom.open {
+        app.reader_bottom.focused = true;
       }
       return true;
     }
@@ -251,8 +251,8 @@ pub(super) fn handle_reader_pane(key: KeyEvent, app: &mut App) -> bool {
         let pane_empty = app.reader_secondary_close_active_tab();
         if pane_empty {
           app.reader.dual_active = false;
-          app.reader_bottom_open = false;
-          app.reader_bottom_focused = false;
+          app.reader_bottom.open = false;
+          app.reader_bottom.focused = false;
           app.notes.set_visible(FocusedReader::Secondary, false);
           app.reader.focused = FocusedReader::Primary;
           app.focus.focused_pane = PaneId::Reader;
@@ -307,8 +307,8 @@ pub(super) fn handle_reader_pane(key: KeyEvent, app: &mut App) -> bool {
           app.reader.secondary.active_tab = 0;
           app.reader.active = !app.reader.primary.tabs.is_empty();
           app.reader.dual_active = false;
-          app.reader_bottom_open = false;
-          app.reader_bottom_focused = false;
+          app.reader_bottom.open = false;
+          app.reader_bottom.focused = false;
           app.notes.collapse_secondary_into_primary();
           app.reader.focused = FocusedReader::Primary;
           app.focus.focused_pane =
@@ -326,10 +326,10 @@ pub(super) fn handle_reader_pane(key: KeyEvent, app: &mut App) -> bool {
 }
 
 pub(super) fn reader_back(app: &mut App, side: FocusedReader) -> bool {
-  if app.reader_bottom_open {
-    app.reader_bottom_open = false;
-    app.reader_bottom_focused = false;
-    app.reader_bottom_details = false;
+  if app.reader_bottom.open {
+    app.reader_bottom.open = false;
+    app.reader_bottom.focused = false;
+    app.reader_bottom.details = false;
     app.focus.focused_pane = match side {
       FocusedReader::Primary => PaneId::Reader,
       FocusedReader::Secondary if app.reader.dual_active => {
@@ -360,8 +360,8 @@ pub(super) fn reader_back(app: &mut App, side: FocusedReader) -> bool {
         app.reader.secondary.tabs.clear();
         app.reader.secondary.active_tab = 0;
         app.notes.set_visible(FocusedReader::Secondary, false);
-        app.reader_bottom_open = false;
-        app.reader_bottom_focused = false;
+        app.reader_bottom.open = false;
+        app.reader_bottom.focused = false;
         app.reader.focused = FocusedReader::Primary;
         app.focus.focused_pane = PaneId::Reader;
       }
@@ -372,8 +372,8 @@ pub(super) fn reader_back(app: &mut App, side: FocusedReader) -> bool {
         app.reader.secondary.active_tab = 0;
         app.reader.active = !app.reader.primary.tabs.is_empty();
         app.reader.dual_active = false;
-        app.reader_bottom_open = false;
-        app.reader_bottom_focused = false;
+        app.reader_bottom.open = false;
+        app.reader_bottom.focused = false;
         app.notes.collapse_secondary_into_primary();
         app.reader.focused = FocusedReader::Primary;
         app.focus.focused_pane =
@@ -397,8 +397,8 @@ pub(super) fn close_all_readers(app: &mut App) {
   app.reader.active = false;
   app.reader.dual_active = false;
   app.reader.split_active = false;
-  app.reader_bottom_open = false;
-  app.reader_bottom_focused = false;
+  app.reader_bottom.open = false;
+  app.reader_bottom.focused = false;
   app.reader.primary.tabs.clear();
   app.reader.primary.active_tab = 0;
   app.reader.secondary.tabs.clear();
