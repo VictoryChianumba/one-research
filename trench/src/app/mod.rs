@@ -6,7 +6,6 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::sync::mpsc::Receiver;
-use std::time::Instant;
 
 mod caches;
 pub mod focus;
@@ -171,10 +170,9 @@ pub struct App {
   /// `try_mouse_scroll`.
   pub debounce: DebounceState,
 
-  // Leader key
-  pub leader_active: bool,
-  pub leader_activated_at: Option<Instant>,
-  pub leader_timeout_ms: u64,
+  /// Ctrl+T leader-key arming + auto-expire.  ADR-009 cluster #2:
+  /// replaces three flat fields with the typed state machine.
+  pub leader: LeaderState,
 
   /// Focus + pane registry. Holds `focused_pane` and the per-pane
   /// rect cache populated by layout each frame.
@@ -294,9 +292,7 @@ impl App {
       pending_tread_fetch: None,
       repo_fetch_rx: None,
       debounce: DebounceState::default(),
-      leader_active: false,
-      leader_activated_at: None,
-      leader_timeout_ms: 1000,
+      leader: LeaderState::default(),
       focus: FocusManager::new(),
       help: HelpState::default(),
       visible_cache: RefCell::new(None),

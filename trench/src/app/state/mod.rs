@@ -6,6 +6,7 @@ mod debounce;
 mod discovery;
 mod feed;
 mod help;
+mod leader;
 mod notes;
 mod panes;
 mod popups;
@@ -19,6 +20,7 @@ pub use debounce::DebounceState;
 pub use discovery::DiscoveryModel;
 pub use feed::{AppView, FeedTab, FilterState, ItemCounts, NavDirection};
 pub use help::HelpState;
+pub use leader::LeaderState;
 pub use notes::{
   CloseTabOutcome, NotesContext, NotesInstanceModel, NotesMode, NotesPaneModel,
   NotesTab,

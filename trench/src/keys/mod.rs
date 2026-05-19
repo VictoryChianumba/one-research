@@ -142,7 +142,7 @@ pub fn dispatch(key: KeyEvent, app: &mut App) {
     return;
   }
   if key.code == KeyCode::Char('?') && !is_text_entry_context(app) {
-    app.leader_active = false;
+    app.leader.deactivate();
     app.help.active = true;
     app.help.section = 0;
     app.help.scroll.reset();
@@ -215,24 +215,17 @@ fn is_text_entry_context(app: &App) -> bool {
 // ── Leader key (Ctrl+T) ───────────────────────────────────────────────────────
 
 fn handle_leader_or_ctrl_t(key: KeyEvent, app: &mut App) -> bool {
-  // Expire leader if timeout elapsed.
-  if app.leader_active
-    && app
-      .leader_activated_at
-      .map(|t| t.elapsed().as_millis() > app.leader_timeout_ms as u128)
-      .unwrap_or(false)
-  {
-    app.leader_active = false;
-  }
+  // Expire leader if timeout elapsed (must run before the is_active
+  // gate below — LeaderState separates expire from read by design).
+  app.leader.expire_if_timed_out();
 
   // Ctrl+T: arm the leader.
   if key.code == KeyCode::Char('t') && key.modifiers == KeyModifiers::CONTROL {
-    app.leader_active = true;
-    app.leader_activated_at = Some(std::time::Instant::now());
+    app.leader.activate();
     return true;
   }
 
-  if !app.leader_active {
+  if !app.leader.is_active() {
     return false;
   }
   handle_leader(key, app);
@@ -887,7 +880,7 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
       | KeyCode::Char('l')
   );
   if !is_nav {
-    app.leader_active = false;
+    app.leader.deactivate();
   }
 
   match key.code {

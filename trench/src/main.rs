@@ -1331,7 +1331,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             log::debug!(
               "key event: {:?} leader_active={} focused_pane={:?}",
               key.code,
-              app.leader_active,
+              app.leader.is_active(),
               app.focus.focused_pane
             );
             keys::dispatch(key, &mut app);

@@ -69,7 +69,7 @@ fn footer_command_line(app: &App) -> Line<'static> {
 
   let mut spans = Vec::new();
 
-  if app.leader_active {
+  if app.leader.is_active() {
     spans.push(Span::styled("leader", accent));
     spans.push(Span::styled(
       ": f feed | t tab | [/] tabs | n notes | c chat | h/j/k/l focus | ? help",
