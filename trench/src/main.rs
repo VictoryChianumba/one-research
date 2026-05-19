@@ -1,6 +1,7 @@
 mod action;
 mod app;
 mod bench;
+mod browse;
 mod commands;
 mod config;
 mod discovery;

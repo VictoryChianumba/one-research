@@ -40,6 +40,12 @@ pub struct App {
   /// `feed`, `reader`, `notes`. Lifted out of `feed` by C7 PR 2 (ADR-005).
   pub discovery: DiscoveryModel,
 
+  /// Subject-Browser composition-root model (ADR-010). Owns the four
+  /// column cursors (Groups | Archives | Categories | Recent), the
+  /// session-scoped per-category URL lists, and the inflight-fetch set.
+  /// Sibling to `feed`, `discovery`, `reader`, `notes`.
+  pub browse: BrowseModel,
+
   /// Tag picker popup state.
   pub tag_picker: TagPickerState,
   pub status_message: Option<String>,
@@ -210,6 +216,7 @@ impl App {
         session: crate::store::session::load(),
         ..DiscoveryModel::default()
       },
+      browse: BrowseModel::new(),
       tag_picker: TagPickerState::default(),
       status_message: None,
       async_jobs: AsyncJobs::default(),
@@ -599,6 +606,9 @@ impl App {
       FeedTab::Inbox => self.workspace.items_store.items(),
       FeedTab::Library => self.workspace.items_store.items(),
       FeedTab::Discoveries => &self.discovery.items,
+      // Browse: renders from BrowseModel.loaded_categories (PR 2);
+      // single-slice abstraction doesn't apply. Same trick History uses.
+      FeedTab::Browse => &[],
       FeedTab::History => &[],
     }
   }
@@ -608,6 +618,10 @@ impl App {
       FeedTab::Inbox => self.feed.inbox_list.selected(),
       FeedTab::Library => self.feed.library_list.selected(),
       FeedTab::Discoveries => self.discovery.list.selected(),
+      // Browse owns four column cursors; this single-cursor helper is
+      // inert. handle_browse_tab intercepts navigation before this is
+      // consulted (mirror of feed/mod.rs::active_list rationale).
+      FeedTab::Browse => 0,
       FeedTab::History => self.feed.history_list.selected(),
     }
   }
@@ -635,6 +649,11 @@ impl App {
         self.discovery.list.set_count(count);
         self.discovery.list.set_selected(value);
       }
+      // Browse routes through its own column ListStates in BrowseModel;
+      // reset_active_feed_position calls this on tab switch but Browse's
+      // cursors are reset separately by the BrowseModel constructor /
+      // explicit reset in handle_browse_tab.
+      FeedTab::Browse => {}
       FeedTab::History => {
         self.feed.history_list.set_count(count);
         self.feed.history_list.set_selected(value);
@@ -647,6 +666,8 @@ impl App {
       FeedTab::Inbox => self.feed.inbox_list.set_offset(value),
       FeedTab::Library => self.feed.library_list.set_offset(value),
       FeedTab::Discoveries => self.discovery.list.set_offset(value),
+      // Browse: column offsets managed by BrowseModel directly.
+      FeedTab::Browse => {}
       FeedTab::History => self.feed.history_list.set_offset(value),
     }
   }

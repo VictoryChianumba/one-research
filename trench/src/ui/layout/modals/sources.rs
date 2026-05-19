@@ -56,8 +56,6 @@ pub fn draw_sources_popup(frame: &mut Frame, app: &App) {
   let list_area = columns[1];
   let w = list_area.width as usize;
   let hrule = "─".repeat(w.saturating_sub(4));
-  let cats = app.sources_popup_arxiv_cats();
-  let cats_count = cats.len();
   let sources_count = crate::config::PREDEFINED_SOURCES.len();
   let custom_feeds = &app.config.sources.custom_feeds;
   let cursor = app.sources_popup.cursor;
@@ -186,31 +184,20 @@ pub fn draw_sources_popup(frame: &mut Frame, app: &App) {
   };
   lines.push(detect_line);
 
-  lines.push(Line::from(Span::styled("  arXiv categories", header_style)));
-  lines.push(Line::from(Span::styled(format!("  {hrule}"), dim_style)));
-  for (i, (code, label)) in cats.iter().enumerate() {
-    let pos = 1 + i;
-    let sel = cursor == pos;
-    let enabled = app.config.sources.arxiv_categories.contains(code);
-    let cb = if enabled { "[x]" } else { "[ ]" };
-    let label_str =
-      if label.is_empty() { code.as_str() } else { label.as_str() };
-    let text = format!("  {cb} {code:<8} {label_str}");
-    let style = if sel {
-      selected_style
-    } else if enabled {
-      accent_style
-    } else {
-      dim_style
-    };
-    lines.push(Line::from(Span::styled(text, style)));
-  }
+  // ADR-010 PR 3: arXiv-categories section removed — the Subject
+  // Browser owns that surface (Tab → Browse, `p` to promote). One-line
+  // hint stays for one release so existing users find the new gesture.
+  lines.push(Line::from(""));
+  lines.push(Line::from(Span::styled(
+    "  arXiv categories now in Browse (Tab cycles, p promotes)",
+    dim_style,
+  )));
   lines.push(Line::from(""));
 
   lines.push(Line::from(Span::styled("  Sources", header_style)));
   lines.push(Line::from(Span::styled(format!("  {hrule}"), dim_style)));
   for (i, &name) in crate::config::PREDEFINED_SOURCES.iter().enumerate() {
-    let pos = 1 + cats_count + i;
+    let pos = 1 + i;
     let sel = cursor == pos;
     let enabled =
       app.config.sources.enabled_sources.get(name).copied().unwrap_or(true);
@@ -233,7 +220,7 @@ pub fn draw_sources_popup(frame: &mut Frame, app: &App) {
     lines.push(Line::from(Span::styled("  none", dim_style)));
   } else {
     for (i, feed) in custom_feeds.iter().enumerate() {
-      let pos = 1 + cats_count + sources_count + i;
+      let pos = 1 + sources_count + i;
       let sel = cursor == pos;
       let text = format!("  [x] {}", feed.name);
       let style = if sel { selected_style } else { accent_style };
@@ -241,16 +228,17 @@ pub fn draw_sources_popup(frame: &mut Frame, app: &App) {
     }
   }
 
+  // Line-count layout: blank, hint, blank, header, rule = 5 lines
+  // before the predefined-sources rows start at line index 5. Custom
+  // feeds follow after a blank + header + rule = +3 from end of sources.
   let selected_line = if cursor == 0 {
     2
-  } else if cursor <= cats_count {
-    6 + cursor.saturating_sub(1)
-  } else if cursor <= cats_count + sources_count {
-    9 + cats_count + cursor.saturating_sub(1 + cats_count)
+  } else if cursor <= sources_count {
+    // 6 leading lines (blank, "Add source", input, detect_line, blank
+    // hint, blank) before the Sources header+rule then rows.
+    9 + cursor.saturating_sub(1)
   } else {
-    12 + cats_count
-      + sources_count
-      + cursor.saturating_sub(1 + cats_count + sources_count)
+    12 + sources_count + cursor.saturating_sub(1 + sources_count)
   };
   let viewport_rows = list_area.height as usize;
   let scroll = if selected_line >= viewport_rows.saturating_sub(2) {

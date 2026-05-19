@@ -2,6 +2,7 @@
 //! `crate::app::ChatState` (and friends) keep working without `state::` qualifier.
 
 mod async_jobs;
+mod browse;
 mod chat;
 mod debounce;
 mod discovery;
@@ -20,6 +21,7 @@ mod theme_picker;
 mod view_flags;
 
 pub use async_jobs::AsyncJobs;
+pub use browse::BrowseModel;
 pub use chat::ChatState;
 pub use debounce::DebounceState;
 pub use discovery::DiscoveryModel;

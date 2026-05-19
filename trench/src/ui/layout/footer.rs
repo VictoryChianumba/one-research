@@ -1,9 +1,9 @@
 use ratatui::{
-  Frame,
   layout::{Constraint, Direction, Layout, Rect},
   style::{Modifier, Style},
   text::{Line, Span},
   widgets::Paragraph,
+  Frame,
 };
 
 use crate::app::{App, FeedTab, FocusedReader, NotesMode, PaneId};
@@ -192,6 +192,12 @@ fn footer_command_line(app: &App) -> Line<'static> {
     spans.push(Span::styled("history", accent));
     spans.push(Span::styled(
       ": [/] time | Enter reopen | Ctrl+D delete | / search | Tab inbox | ? help",
+      ordinary,
+    ));
+  } else if app.feed.feed_tab == FeedTab::Browse {
+    spans.push(Span::styled("browse", accent));
+    spans.push(Span::styled(
+      ": h/l column | j/k move | Enter load recent | p promote | Tab history | ? help",
       ordinary,
     ));
   } else {

@@ -154,8 +154,9 @@ impl SourcesSurface {
     key: KeyEvent,
     app: &mut App,
   ) -> Vec<Effect> {
-    let cats = app.sources_popup_arxiv_cats();
-    let cats_count = cats.len();
+    // ADR-010 PR 3: arXiv categories no longer live here — Browse owns
+    // them (`p` to promote). Cursor positions are now: 0 = input field,
+    // 1..=sources_count = predefined sources, the rest = custom feeds.
     let sources_count = config::PREDEFINED_SOURCES.len();
     let custom_count = app.config.sources.custom_feeds.len();
     let total = app.sources_popup_total_items();
@@ -179,23 +180,8 @@ impl SourcesSurface {
         let c = self.cursor;
         if c == 0 {
           self.input.focus();
-        } else if c <= cats_count {
-          let code = cats[c - 1].0.clone();
-          if app.config.sources.arxiv_categories.contains(&code) {
-            log::debug!("sources_popup: removing arxiv category: {code}");
-            app.config.sources.arxiv_categories.retain(|x| x != &code);
-          } else {
-            log::debug!("sources_popup: adding arxiv category: {code}");
-            app.config.sources.arxiv_categories.push(code);
-          }
-          app.config.save();
-          log::debug!(
-            "sources_popup: saved — arxiv categories now: [{}]",
-            app.config.sources.arxiv_categories.join(", ")
-          );
-          crate::force_refresh(app);
-        } else if c <= cats_count + sources_count {
-          let src = config::PREDEFINED_SOURCES[c - cats_count - 1];
+        } else if c <= sources_count {
+          let src = config::PREDEFINED_SOURCES[c - 1];
           let cur = app
             .config
             .sources
@@ -212,7 +198,7 @@ impl SourcesSurface {
       }
       KeyCode::Char('d') => {
         let c = self.cursor;
-        let custom_start = 1 + cats_count + sources_count;
+        let custom_start = 1 + sources_count;
         if c >= custom_start && c < custom_start + custom_count {
           let idx = c - custom_start;
           app.config.sources.custom_feeds.remove(idx);

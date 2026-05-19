@@ -3,17 +3,6 @@ use std::path::PathBuf;
 
 use ratatui::style::Color;
 
-/// Ordered list of arXiv categories shown in the sources popup.
-pub const KNOWN_ARXIV_CATS: &[(&str, &str)] = &[
-  ("cs.LG", "machine learning"),
-  ("cs.AI", "artificial intelligence"),
-  ("cs.CL", "natural language processing"),
-  ("cs.CV", "computer vision"),
-  ("cs.NE", "neural networks"),
-  ("cs.RO", "robotics"),
-  ("stat.ML", "statistics / machine learning"),
-];
-
 /// Ordered list of predefined (non-custom) RSS sources.
 pub const PREDEFINED_SOURCES: &[&str] = &[
   "huggingface",

@@ -17,11 +17,13 @@ ci () {
   #   - check-store-seam.sh:          ADR-006 (load_json / save_json envelope)
   #   - check-item-store.sh:          ADR-007 (ItemStore encapsulates Workspace triple)
   #   - check-frame-layout.sh:        ADR-008 (FrameLayout / apply_frame_layout)
+  #   - check-subject-browser.sh:     ADR-010 (FeedTab::Browse + arXiv taxonomy)
   scripts/check-render-purification.sh
   scripts/check-ingestion-seam.sh
   scripts/check-store-seam.sh
   scripts/check-item-store.sh
   scripts/check-frame-layout.sh
+  scripts/check-subject-browser.sh
 
   cargo +nightly check && cargo +nightly fix --allow-dirty && cargo +nightly clippy --fix --allow-dirty && cargo +nightly fmt --all && cargo +nightly test
   #cargo +nightly fmt --all

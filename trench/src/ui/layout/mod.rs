@@ -6,6 +6,7 @@ use ratatui::{
 use super::repo_viewer::draw_repo_viewer;
 use crate::app::{App, AppView};
 
+mod browse;
 mod details;
 mod feed;
 mod filter;

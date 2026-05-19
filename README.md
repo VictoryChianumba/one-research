@@ -7,6 +7,7 @@ A terminal UI for following AI research — aggregates arXiv, HuggingFace daily 
 ## Features
 
 - Aggregates arXiv (cs.LG, cs.AI, stat.ML and more), HuggingFace daily papers, OpenAI blog, DeepMind blog, BAIR blog, MIT News AI, Import AI newsletter, and any custom RSS/Atom feed
+- **Subject Browser** — navigate arXiv's full taxonomy (8 groups, ~155 categories) and promote any subject into your daily feed with one keystroke
 - Workflow states per item: Inbox, Skimmed, Queued, Deep Read, Archived — persisted across sessions
 - Full-text reader: opens papers and articles inline without leaving the TUI
 - Split-view reader: primary feed alongside a persistent reader pane, independently scrollable
@@ -114,7 +115,7 @@ Runtime data files:
 
 ### Adding sources
 
-**arXiv categories** — open Settings (`Ldr+S`), navigate to Sources, and add any arXiv category code (e.g. `cs.CL`, `cs.CV`, `cs.NE`, `cs.RO`, `stat.ML`).
+**arXiv categories** — switch to the Browse tab (`Tab` cycles to it), navigate the three-column taxonomy with `h`/`l`/`j`/`k`, and press `p` on any category to add it to your daily feed. `Enter` on a category loads its recent papers into the details pane without promoting (useful for one-off gleaning). Promoted categories show a `★` marker; press `p` again to un-promote.
 
 **AI source discovery** — switch to the Discoveries tab (`Ldr+d`), press `/`, and describe a research topic. trench will query the model and return a list of relevant arXiv categories and RSS feeds you can add with a single keystroke.
 
@@ -155,6 +156,24 @@ The leader key is `Ctrl+T` (shown as `Ldr` below).
 | `q` | Queued |
 | `w` | Deep Read |
 | `x` | Archived |
+
+### Subject Browser (Browse tab)
+
+`Tab` cycles into the Browse tab (between Discoveries and History). The
+tab shows a three-column taxonomy of arXiv's 8 groups, ~40 archives,
+and ~155 categories, with the selected category's recent papers in
+the right-hand details pane.
+
+| Key | Action |
+|---|---|
+| `h` / `l` | Shift focus across columns (Groups → Archives → Categories) |
+| `j` / `k` | Move cursor within the focused column |
+| `Enter` | Load the selected category's recent papers into the details pane |
+| `p` | Promote / un-promote the selected category (toggle membership in your daily feed). `★` marks promoted categories. |
+
+Promotions take effect on the next manual refresh (`R`). Browse-fetched
+papers merge into the global cache (dedup + workflow state preserved)
+but only appear in Inbox if their category is promoted.
 
 ### Leader bindings (`Ctrl+T` then key)
 

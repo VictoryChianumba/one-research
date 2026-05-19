@@ -1,26 +1,14 @@
 use crate::app::App;
 
 impl App {
-  pub fn sources_popup_arxiv_cats(&self) -> Vec<(String, String)> {
-    let mut cats: Vec<(String, String)> = crate::config::KNOWN_ARXIV_CATS
-      .iter()
-      .map(|(code, label)| (code.to_string(), label.to_string()))
-      .collect();
-    for cat in &self.config.sources.arxiv_categories {
-      if !crate::config::KNOWN_ARXIV_CATS
-        .iter()
-        .any(|(k, _)| *k == cat.as_str())
-      {
-        cats.push((cat.clone(), String::new()));
-      }
-    }
-    cats
-  }
-
   /// Total number of cursor-navigable rows in the sources popup.
+  ///
+  /// ADR-010 PR 3 removed the arXiv-categories section — that management
+  /// surface lives in the Subject Browser (`FeedTab::Browse`) now. The
+  /// popup retains its input field, predefined-sources toggles, and
+  /// custom-feed rows.
   pub fn sources_popup_total_items(&self) -> usize {
     1 // input field
-      + self.sources_popup_arxiv_cats().len()
       + crate::config::PREDEFINED_SOURCES.len()
       + self.config.sources.custom_feeds.len()
   }

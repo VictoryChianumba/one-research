@@ -93,6 +93,11 @@ pub enum FeedTab {
   Inbox,
   Library,
   Discoveries,
+  /// Subject Browser — full arXiv taxonomy navigator (ADR-010).
+  /// Has its own 4-column model with independent cursors per column;
+  /// the FeedModel single-list machinery (active_list, inbox_list, …) is
+  /// not used here. handle_browse_tab in keys/feed.rs owns navigation.
+  Browse,
   History,
 }
 

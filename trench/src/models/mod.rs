@@ -1,3 +1,4 @@
+pub mod arxiv_taxonomy;
 pub mod categories;
 pub mod fixtures;
 pub mod item;
