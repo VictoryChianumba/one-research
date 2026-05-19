@@ -142,6 +142,43 @@ pub fn draw_filter_panel(frame: &mut Frame, app: &App, area: Rect) {
     lines.push(Line::from(""));
   }
 
+  // ADR-011 §E3 — sort modes. Mutually exclusive: [x] on the active
+  // mode; Space on any row sets that mode. Random re-shuffles the
+  // session seed each time it's selected, so re-Spacing Random gives
+  // a fresh order.
+  lines.push(filter_header("Sort", &t));
+  for mode in [
+    crate::feed::FeedSortMode::Dated,
+    crate::feed::FeedSortMode::Random,
+    crate::feed::FeedSortMode::Popular,
+    crate::feed::FeedSortMode::Trending,
+  ] {
+    let active = app.feed.sort_mode == mode;
+    let cursor = focused && s == c;
+    if cursor {
+      cursor_line = lines.len();
+    }
+    lines.push(filter_row(mode.label(), active, cursor, &t));
+    s += 1;
+  }
+  lines.push(Line::from(""));
+
+  // ADR-011 §E4 — subject-follow toggle. When ON, the Browse rail's
+  // current drill point narrows the visible items.
+  lines.push(filter_header("Browse", &t));
+  let cursor = focused && s == c;
+  if cursor {
+    cursor_line = lines.len();
+  }
+  lines.push(filter_row(
+    "Follow rail subject",
+    app.feed.subject_follow,
+    cursor,
+    &t,
+  ));
+  s += 1;
+  lines.push(Line::from(""));
+
   lines.push(Line::from(Span::styled(hrule, Style::default().fg(t.border))));
 
   let clear_hl = focused && s == c;

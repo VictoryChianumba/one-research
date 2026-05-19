@@ -36,6 +36,7 @@ fn dispatch_feed_pane(frame: &mut Frame, app: &mut App, area: Rect) {
     &app.workspace,
     &app.feed,
     &app.discovery,
+    &app.browse,
     &app.config,
   );
   let filtered_history =
@@ -364,6 +365,7 @@ pub fn draw_main_row(
       frame,
       &app.browse,
       &app.config.sources.arxiv_categories,
+      app.feed.subject_follow,
       &t,
       rail_rect,
     );

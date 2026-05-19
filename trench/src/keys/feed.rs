@@ -293,6 +293,22 @@ fn handle_browse_tab(key: KeyEvent, app: &mut App) -> bool {
       toggle_browse_promotion_for_selected(app);
       true
     }
+    KeyCode::Char('F') => {
+      // ADR-011 §E4: subject-follow quick-toggle. Capital F (no
+      // leader) flips the toggle without opening the filter pane.
+      // Rail footer renders the current state so the user can always
+      // see it.
+      app.feed.subject_follow = !app.feed.subject_follow;
+      app.status_message = Some(
+        if app.feed.subject_follow {
+          "Subject follow ON — feed narrows to rail subject"
+        } else {
+          "Subject follow OFF — feed shows everything"
+        }
+        .to_string(),
+      );
+      true
+    }
     _ => false,
   }
 }

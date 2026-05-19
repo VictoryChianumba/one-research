@@ -21,6 +21,42 @@ use crate::app::{DiscoveryModel, FeedTab, FilterState};
 // but the data lives elsewhere.
 use crate::ui::Viewport;
 
+/// Sort key applied across the feed pane (ADR-011 §E3). Mutually
+/// exclusive — exactly one is active at any time. Stacks on top of the
+/// existing source / workflow-state / signal filters.
+///
+/// `Dated` is the default and the historical behaviour. `Random` /
+/// `Popular` / `Trending` are session-only (not persisted to disk —
+/// per ADR-011 §E3 the launch-time surprise of a restored random
+/// shuffle outweighs the cost of re-selection).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum FeedSortMode {
+  /// `published_at` descending. The historical default.
+  Dated,
+  /// Deterministic shuffle keyed off a per-session seed. Stable
+  /// within a session so re-renders don't reorder.
+  Random,
+  /// `upvote_count` descending. HuggingFace items sort naturally;
+  /// arXiv items (upvote_count = 0) sink to the bottom unless
+  /// enriched with Semantic Scholar citation counts.
+  Popular,
+  /// Items published in the last 14 days, sorted by `upvote_count`
+  /// descending. Older items are filtered out entirely.
+  Trending,
+}
+
+impl FeedSortMode {
+  /// Human-readable label for the filter pane.
+  pub fn label(self) -> &'static str {
+    match self {
+      FeedSortMode::Dated => "Dated",
+      FeedSortMode::Random => "Random",
+      FeedSortMode::Popular => "Popular",
+      FeedSortMode::Trending => "Trending",
+    }
+  }
+}
+
 /// Owned state for the feed pane. Renders take `&FeedModel`, never `&mut`
 /// (post-PR 4). PR 2 leaves call sites mutating fields directly through
 /// `&mut app.feed.*` — render purification arrives in PR 4.
@@ -52,6 +88,18 @@ pub struct FeedModel {
   pub filter_focus: bool,
   pub filter_cursor: usize,
   pub active_filters: FilterState,
+
+  // ADR-011 §E3 — sort mode applied across every tab. Session-only,
+  // resets to Dated on launch.
+  pub sort_mode: FeedSortMode,
+  // ADR-011 §E4 — when true, the Subject Browser rail's current
+  // drill point narrows the visible items. Default false; toggled
+  // from the filter pane or via the `F` quick-toggle in Browse.
+  pub subject_follow: bool,
+  // Per-session seed for FeedSortMode::Random. Stable so re-renders
+  // produce the same shuffle order until next launch or until the
+  // user explicitly re-shuffles from the filter pane.
+  pub random_seed: u64,
 }
 
 impl FeedModel {
@@ -236,9 +284,11 @@ impl FeedModel {
     &self,
     workspace: &crate::data::workspace_store::Workspace,
     discovery: &DiscoveryModel,
+    browse: &crate::app::BrowseModel,
     config: &crate::config::Config,
   ) -> Option<String> {
-    let visible = visible_indices_for(workspace, self, discovery, config);
+    let visible =
+      visible_indices_for(workspace, self, discovery, browse, config);
     let selected = self.active_list(discovery).selected();
     let idx = *visible.get(selected)?;
     let items = items_for_tab(workspace, self, discovery);
@@ -293,10 +343,12 @@ impl FeedModel {
     &mut self,
     workspace: &mut crate::data::workspace_store::Workspace,
     discovery: &mut DiscoveryModel,
+    browse: &crate::app::BrowseModel,
     config: &crate::config::Config,
     state: crate::models::WorkflowState,
   ) -> Vec<crate::effect::Effect> {
-    let Some(url) = self.selected_url(workspace, discovery, config) else {
+    let Some(url) = self.selected_url(workspace, discovery, browse, config)
+    else {
       return Vec::new();
     };
     self.set_workflow_state_for_url(workspace, discovery, &url, state)
@@ -393,6 +445,15 @@ impl Default for FeedModel {
       filter_focus: false,
       filter_cursor: 0,
       active_filters: FilterState::new(),
+      sort_mode: FeedSortMode::Dated,
+      subject_follow: false,
+      // Session seed for FeedSortMode::Random. Time-based so each
+      // launch produces a fresh shuffle while staying stable within
+      // the session.
+      random_seed: std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0),
     }
   }
 }
@@ -422,37 +483,58 @@ pub struct FeedContext<'a> {
 }
 
 /// The item slice the current tab is reading from.
-/// Inbox + Library read `workspace.items`; Discoveries reads
+/// Inbox + Library + Browse read `workspace.items`; Discoveries reads
 /// `discovery.items`; History reads nothing (uses
 /// `filtered_history` instead).
+///
+/// ADR-011 §E1: Browse joins Inbox / Library as a workspace.items
+/// consumer. The rail is rendered separately by main_row.rs and
+/// scopes the feed via subject_follow (see `visible_indices_for`).
 pub fn items_for_tab<'a>(
   workspace: &'a crate::data::workspace_store::Workspace,
   feed: &'a FeedModel,
   discovery: &'a DiscoveryModel,
 ) -> &'a [crate::models::FeedItem] {
   match feed.feed_tab {
-    FeedTab::Inbox | FeedTab::Library => workspace.items_store.items(),
+    FeedTab::Inbox | FeedTab::Library | FeedTab::Browse => {
+      workspace.items_store.items()
+    }
     FeedTab::Discoveries => &discovery.items,
-    // Browse renders from BrowseModel.loaded_categories (PR 2 of
-    // ADR-010), resolved against workspace.items_store via url_index.
-    // The single-slice items_for_tab abstraction doesn't apply — the
-    // tab has no "active list" in the FeedModel sense.
-    FeedTab::Browse | FeedTab::History => &[],
+    FeedTab::History => &[],
   }
 }
 
-/// Compute the filter+search-applied indices into [`items_for_tab`].
+/// Compute the filter+search-applied indices into [`items_for_tab`],
+/// then apply the active [`FeedSortMode`].
+///
 /// Pure read; takes field-scoped borrows so the dispatcher can release
-/// them before taking `&mut FeedModel`.
+/// them before taking `&mut FeedModel`. The `browse` parameter is read
+/// only when `feed.subject_follow` is true and the active tab is
+/// `Browse` — the rail's current drill point narrows the visible set
+/// (ADR-011 §E1, §E4).
 pub fn visible_indices_for(
   workspace: &crate::data::workspace_store::Workspace,
   feed: &FeedModel,
   discovery: &DiscoveryModel,
+  browse: &crate::app::BrowseModel,
   config: &crate::config::Config,
 ) -> Vec<usize> {
   let items = items_for_tab(workspace, feed, discovery);
   let q = feed.search_query_lower.as_str();
-  items
+
+  // Subject-follow scope only applies on the Browse tab when the user
+  // has actually drilled at least once. At depth 0 (Groups level) the
+  // feed stays unfiltered — "drill point" implies you've drilled.
+  let subject_scope = if feed.feed_tab == FeedTab::Browse
+    && feed.subject_follow
+    && !browse.rail_path.is_empty()
+  {
+    Some(subject_follow_scope(browse))
+  } else {
+    None
+  };
+
+  let mut indices: Vec<usize> = items
     .iter()
     .enumerate()
     .filter(|(_, item)| {
@@ -468,9 +550,14 @@ pub fn visible_indices_for(
           }
         }
         // Browse, Discoveries, History: no workflow-state pre-filter
-        // here (Browse scopes via loaded_categories; the others either
-        // don't use this helper or accept all states).
+        // (Browse shows items regardless of workflow state — the
+        // user's drilling, not workflow-managing).
         _ => {}
+      }
+      if let Some(scope) = &subject_scope {
+        if !scope.matches(item) {
+          return false;
+        }
       }
       let key =
         if item.source_platform == crate::models::SourcePlatform::HuggingFace {
@@ -498,7 +585,99 @@ pub fn visible_indices_for(
       feed.active_filters.matches(item)
     })
     .map(|(i, _)| i)
-    .collect()
+    .collect();
+
+  apply_sort_mode(&mut indices, items, feed.sort_mode, feed.random_seed);
+  indices
+}
+
+/// Subject-follow predicate (ADR-011 §E4). Resolved once per call to
+/// `visible_indices_for` to avoid re-reading the rail per-item.
+enum SubjectScope {
+  /// Match items tagged with any code under this archive — either the
+  /// bare archive id (e.g. `gr-qc`) or any `archive_id.*` (e.g. `cs.LG`,
+  /// `cs.CR`).
+  Archive(&'static str),
+  /// Match items tagged with exactly this category code (e.g. `math.NT`).
+  Category(&'static str),
+}
+
+impl SubjectScope {
+  fn matches(&self, item: &crate::models::FeedItem) -> bool {
+    match self {
+      SubjectScope::Archive(id) => {
+        let prefix = format!("{id}.");
+        item.domain_tags.iter().any(|t| t == id || t.starts_with(&prefix))
+      }
+      SubjectScope::Category(code) => {
+        item.domain_tags.iter().any(|t| t == code)
+      }
+    }
+  }
+}
+
+fn subject_follow_scope(browse: &crate::app::BrowseModel) -> SubjectScope {
+  // depth 1 = at Archives level, cursor on one Archive
+  // depth 2 = at Categories level, cursor on one Category
+  // (depth 0 short-circuited by visible_indices_for before reaching here)
+  if browse.rail_path.len() == 1 {
+    if let Some(a) = browse.rail_selected_archive() {
+      return SubjectScope::Archive(a.id);
+    }
+  }
+  if let Some(c) = browse.rail_selected_category() {
+    return SubjectScope::Category(c.code);
+  }
+  // Fall back to "match everything" by way of an empty-prefix archive.
+  // This branch is structurally unreachable given rail_path is
+  // non-empty (subject_follow_scope's pre-condition).
+  SubjectScope::Archive("")
+}
+
+/// Apply the [`FeedSortMode`] to a filtered index list (ADR-011 §E3).
+/// `items` is the slice the indices point into; we read `upvote_count`
+/// + `published_at` from it for the non-Dated modes.
+fn apply_sort_mode(
+  indices: &mut Vec<usize>,
+  items: &[crate::models::FeedItem],
+  mode: FeedSortMode,
+  random_seed: u64,
+) {
+  match mode {
+    FeedSortMode::Dated => {
+      // items_store is already sorted by published_at desc — no work.
+    }
+    FeedSortMode::Random => {
+      // Fisher-Yates with a seeded LCG. Inline because pulling in the
+      // `rand` crate just for a session shuffle isn't worth the dep.
+      let mut state = random_seed | 1;
+      for i in (1..indices.len()).rev() {
+        state = state
+          .wrapping_mul(6364136223846793005)
+          .wrapping_add(1442695040888963407);
+        let j = ((state >> 33) as usize) % (i + 1);
+        indices.swap(i, j);
+      }
+    }
+    FeedSortMode::Popular => {
+      indices.sort_by(|a, b| {
+        items[*b].upvote_count.cmp(&items[*a].upvote_count)
+      });
+    }
+    FeedSortMode::Trending => {
+      // Cutoff = 14 days before now, formatted as ISO date. ISO 8601
+      // date strings compare correctly lexicographically, so we can
+      // filter and sort using string compare regardless of whether
+      // published_at is a bare date or a full datetime.
+      let cutoff = (chrono::Utc::now() - chrono::Duration::days(14))
+        .format("%Y-%m-%d")
+        .to_string();
+      indices.retain(|i| items[*i].published_at.as_str() >= cutoff.as_str());
+      indices.sort_by(|a, b| {
+        items[*b].upvote_count.cmp(&items[*a].upvote_count)
+      });
+    }
+  }
 }
 
 /// Apply the History tab's filter to `workspace.history`. Returns owned
@@ -954,5 +1133,133 @@ mod tests {
     // overflow, so offset lands at item 3.
     assert_eq!(m.library_list.offset(), 3);
     assert_eq!(m.inbox_list.offset(), 0);
+  }
+
+  // ── ADR-011 §E3: sort modes ───────────────────────────────────────────
+  //
+  // Tests target apply_sort_mode directly so we don't have to spin up
+  // the full visible_indices_for filter pipeline. Each test builds a
+  // hand-crafted item set, then verifies the post-sort order.
+
+  use crate::models::{ContentType, FeedItem, SignalLevel, SourcePlatform, WorkflowState};
+
+  fn item(url: &str, published: &str, upvotes: u32, tags: &[&str]) -> FeedItem {
+    FeedItem {
+      id: url.to_string(),
+      title: url.to_string(),
+      source_platform: SourcePlatform::ArXiv,
+      content_type: ContentType::Paper,
+      domain_tags: tags.iter().map(|t| t.to_string()).collect(),
+      signal: SignalLevel::Primary,
+      published_at: published.to_string(),
+      authors: vec![],
+      summary_short: String::new(),
+      workflow_state: WorkflowState::Inbox,
+      url: url.to_string(),
+      upvote_count: upvotes,
+      github_repo: None,
+      github_owner: None,
+      github_repo_name: None,
+      benchmark_results: vec![],
+      full_content: None,
+      source_name: "test".to_string(),
+      title_lower: String::new(),
+      authors_lower: vec![],
+    }
+  }
+
+  #[test]
+  fn sort_dated_is_noop_preserves_order() {
+    // items_store is conventionally sorted by published_at desc;
+    // apply_sort_mode(Dated) must leave the input order untouched.
+    let items = vec![
+      item("a", "2026-05-19", 100, &[]),
+      item("b", "2026-05-18", 50, &[]),
+      item("c", "2026-05-17", 200, &[]),
+    ];
+    let mut indices = vec![0, 1, 2];
+    apply_sort_mode(&mut indices, &items, FeedSortMode::Dated, 42);
+    assert_eq!(indices, vec![0, 1, 2]);
+  }
+
+  #[test]
+  fn sort_popular_orders_by_upvote_count_desc() {
+    let items = vec![
+      item("a", "2026-05-19", 5, &[]),
+      item("b", "2026-05-18", 100, &[]),
+      item("c", "2026-05-17", 50, &[]),
+    ];
+    let mut indices = vec![0, 1, 2];
+    apply_sort_mode(&mut indices, &items, FeedSortMode::Popular, 42);
+    // Expected order: b (100), c (50), a (5).
+    assert_eq!(indices, vec![1, 2, 0]);
+  }
+
+  #[test]
+  fn sort_random_is_deterministic_for_same_seed() {
+    let items: Vec<FeedItem> = (0..10)
+      .map(|i| item(&format!("u{i}"), "2026-05-19", 0, &[]))
+      .collect();
+    let mut a = (0..10).collect::<Vec<usize>>();
+    let mut b = (0..10).collect::<Vec<usize>>();
+    apply_sort_mode(&mut a, &items, FeedSortMode::Random, 42);
+    apply_sort_mode(&mut b, &items, FeedSortMode::Random, 42);
+    assert_eq!(a, b, "same seed must produce same shuffle");
+    // And must actually shuffle (not just return input order).
+    assert_ne!(a, (0..10).collect::<Vec<usize>>(), "shuffle should reorder");
+  }
+
+  #[test]
+  fn sort_random_differs_for_different_seeds() {
+    let items: Vec<FeedItem> =
+      (0..20).map(|i| item(&format!("u{i}"), "2026-05-19", 0, &[])).collect();
+    let mut a = (0..20).collect::<Vec<usize>>();
+    let mut b = (0..20).collect::<Vec<usize>>();
+    apply_sort_mode(&mut a, &items, FeedSortMode::Random, 1);
+    apply_sort_mode(&mut b, &items, FeedSortMode::Random, 999_999);
+    assert_ne!(a, b, "different seeds should produce different shuffles");
+  }
+
+  #[test]
+  fn sort_trending_filters_to_last_14_days_then_sorts_by_upvotes() {
+    // Build with old + new items mixed. Trending mode should drop the
+    // old ones entirely, then sort the rest by upvote_count desc.
+    let now = chrono::Utc::now();
+    let recent = now.format("%Y-%m-%d").to_string();
+    let old = (now - chrono::Duration::days(60)).format("%Y-%m-%d").to_string();
+    let items = vec![
+      item("old-low", &old, 10, &[]),       // dropped
+      item("new-low", &recent, 5, &[]),     // kept, low
+      item("old-high", &old, 1000, &[]),    // dropped despite high upvotes
+      item("new-high", &recent, 200, &[]),  // kept, high
+    ];
+    let mut indices = vec![0, 1, 2, 3];
+    apply_sort_mode(&mut indices, &items, FeedSortMode::Trending, 42);
+    // Expected order: new-high (200), new-low (5). old-* dropped.
+    assert_eq!(indices, vec![3, 1]);
+  }
+
+  // ── ADR-011 §E4: subject-follow predicate ────────────────────────────
+
+  #[test]
+  fn subject_scope_archive_matches_prefix_and_bare_id() {
+    let scope = SubjectScope::Archive("cs");
+    assert!(scope.matches(&item("a", "x", 0, &["cs.LG"])));
+    assert!(scope.matches(&item("b", "x", 0, &["cs.AI", "stat.ML"])));
+    assert!(!scope.matches(&item("c", "x", 0, &["math.NT"])));
+
+    // Bare archive id (gr-qc) — items tagged with exactly the
+    // archive id match too.
+    let gr_qc = SubjectScope::Archive("gr-qc");
+    assert!(gr_qc.matches(&item("d", "x", 0, &["gr-qc"])));
+    assert!(!gr_qc.matches(&item("e", "x", 0, &["gr-qcology"]))); // not a prefix match
+  }
+
+  #[test]
+  fn subject_scope_category_matches_exact_code_only() {
+    let scope = SubjectScope::Category("math.NT");
+    assert!(scope.matches(&item("a", "x", 0, &["math.NT"])));
+    assert!(!scope.matches(&item("b", "x", 0, &["math.AG"])));
+    assert!(!scope.matches(&item("c", "x", 0, &["math.NT.subspec"])));
   }
 }

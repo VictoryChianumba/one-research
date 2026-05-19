@@ -34,6 +34,7 @@ pub fn draw_browse_tab(
   frame: &mut Frame,
   browse: &BrowseModel,
   promoted: &[String],
+  subject_follow: bool,
   theme: &ui_theme::Theme,
   area: Rect,
 ) {
@@ -46,16 +47,55 @@ pub fn draw_browse_tab(
     return;
   }
 
-  // Breadcrumb (1 line) + 1 line gap + rail body fills the rest.
+  // Layout: breadcrumb (1) + gap (1) + rail body + footer (1).
+  // Footer renders the subject-follow indicator so the toggle state
+  // is always visible (ADR-011 §E4).
   let breadcrumb_area = Rect { height: 1, ..inner };
+  let footer_h = if inner.height >= 5 { 1 } else { 0 };
   let body = Rect {
     y: inner.y.saturating_add(2),
-    height: inner.height.saturating_sub(2),
+    height: inner.height.saturating_sub(2 + footer_h),
     ..inner
+  };
+  let footer_area = if footer_h > 0 {
+    Some(Rect {
+      x: inner.x,
+      y: inner.y + inner.height - footer_h,
+      width: inner.width,
+      height: footer_h,
+    })
+  } else {
+    None
   };
 
   draw_breadcrumb(frame, browse, theme, breadcrumb_area);
   draw_rail_rows(frame, browse, promoted, theme, body);
+  if let Some(fa) = footer_area {
+    draw_rail_footer(frame, subject_follow, theme, fa);
+  }
+}
+
+/// Subject-follow indicator pinned at the bottom of the rail. Renders
+/// `Follow: ✓` (accent) or `Follow: ✗` (dim). Toggled via `F`.
+fn draw_rail_footer(
+  frame: &mut Frame,
+  subject_follow: bool,
+  theme: &ui_theme::Theme,
+  area: Rect,
+) {
+  let (label, label_style) = if subject_follow {
+    (
+      "Follow: ✓",
+      Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+    )
+  } else {
+    ("Follow: ✗", Style::default().fg(theme.text_dim))
+  };
+  let text = truncate_str(label, area.width.saturating_sub(1) as usize);
+  frame.render_widget(
+    Paragraph::new(Span::styled(format!(" {text}"), label_style)),
+    area,
+  );
 }
 
 fn draw_breadcrumb(

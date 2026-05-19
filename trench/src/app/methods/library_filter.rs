@@ -173,13 +173,15 @@ impl App {
   /// Total number of selectable rows in the filter panel (dynamic source +
   /// tag counts + fixed sections). Workflow-state filtering moved to the
   /// Library tab chips, so the panel covers sources, signals, content types,
-  /// tags, and clear-all.
+  /// tags, sort modes, the subject-follow toggle, and clear-all.
   pub fn filter_total_items(&self) -> usize {
     self.filter_source_names().len()
       + 3
       + 3
       + crate::tags::all_tags(&self.workspace.item_tags).len()
-      + 1
+      + 4 // sort modes (Dated / Random / Popular / Trending)
+      + 1 // follow toggle
+      + 1 // clear-all
   }
 
   /// Sorted unique source label strings derived from loaded items.
@@ -225,11 +227,45 @@ impl App {
     let tag_count = tag_names.len();
     let c = self.feed.filter_cursor;
 
-    // Layout: [sources] [3 signals] [3 content types] [tags] [clear-all]
+    // Layout (ADR-011 §E3/§E4 added Sort + Follow before clear-all):
+    //   [sources] [3 signals] [3 content types] [tags]
+    //   [4 sort modes] [1 follow toggle] [clear-all]
     let signals_start = src_count;
     let content_start = signals_start + 3;
     let tags_start = content_start + 3;
-    let clear_all = tags_start + tag_count;
+    let sort_start = tags_start + tag_count;
+    let follow_start = sort_start + 4;
+    let clear_all = follow_start + 1;
+
+    // Sort + Follow live on FeedModel directly, not FilterState. The
+    // visible-items cache must still be invalidated, so we mutate then
+    // route Effect::FiltersChanged explicitly (mirrors mutate_filters).
+    if c >= sort_start && c < follow_start {
+      let mode = match c - sort_start {
+        0 => crate::feed::FeedSortMode::Dated,
+        1 => crate::feed::FeedSortMode::Random,
+        2 => crate::feed::FeedSortMode::Popular,
+        _ => crate::feed::FeedSortMode::Trending,
+      };
+      // Re-shuffle on every Random selection so the user can refresh
+      // the order by Space-selecting Random again.
+      if mode == crate::feed::FeedSortMode::Random {
+        self.feed.random_seed = std::time::SystemTime::now()
+          .duration_since(std::time::UNIX_EPOCH)
+          .map(|d| d.as_nanos() as u64)
+          .unwrap_or(0);
+      }
+      self.feed.sort_mode = mode;
+      self.route_effects(&[crate::effect::Effect::FiltersChanged]);
+      self.reset_active_feed_position();
+      return;
+    }
+    if c == follow_start {
+      self.feed.subject_follow = !self.feed.subject_follow;
+      self.route_effects(&[crate::effect::Effect::FiltersChanged]);
+      self.reset_active_feed_position();
+      return;
+    }
 
     self.mutate_filters(|filters| {
       if c < src_count {
@@ -249,12 +285,12 @@ impl App {
           1 => toggle_set(&mut filters.content_types, ContentType::Article),
           _ => toggle_set(&mut filters.content_types, ContentType::Digest),
         }
-      } else if c < clear_all {
+      } else if c < sort_start {
         let tag = tag_names[c - tags_start].clone();
         if !filters.tags.remove(&tag) {
           filters.tags.insert(tag);
         }
-      } else {
+      } else if c == clear_all {
         *filters = FilterState::new();
       }
     });
@@ -275,6 +311,7 @@ impl App {
     let effects = self.feed.set_workflow_state_at_cursor(
       &mut self.workspace,
       &mut self.discovery,
+      &self.browse,
       &self.config,
       state,
     );
