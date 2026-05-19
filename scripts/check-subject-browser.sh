@@ -79,7 +79,65 @@ for tag in "PR 1 (" "PR 2 (" "PR 3 ("; do
   fi
 done
 
+# ── Slice-11 (rail-shaped browse, ADR-011) ─────────────────────────────
+
+# P1.  BrowseModel must not carry the deleted ADR-010 fields. The rail
+#      refactor (ADR-011 PR 1) replaced three parallel cursors with a
+#      single rail_path + rail_cursor. Reviving any of the three would
+#      mean the rail reshape was silently regressed.
+if grep -nE '^\s*pub (focused_column|archives|categories):' \
+  trench/src/app/state/browse.rs 2>/dev/null
+then
+  echo "FAIL: BrowseModel resurfaced a deleted ADR-010 field (ADR-011 §E2 P1)"
+  echo "      Expected fields: rail_path, rail_cursor, recent, loaded_categories, inflight, tx, rx."
+  fail=1
+fi
+
+# P2.  draw_browse_detail_panel was deleted in ADR-011 PR 1. The
+#      metadata side pane is gone; the feed table on the right shows
+#      the items. A revival would mean the rail reshape's central
+#      simplification was undone.
+if grep -nE 'fn draw_browse_detail_panel' \
+  trench/src/ui/layout/browse.rs 2>/dev/null
+then
+  echo "FAIL: draw_browse_detail_panel resurfaced (ADR-011 P2)"
+  echo "      The details side pane is gone in the rail design."
+  fail=1
+fi
+
+# P3.  FeedSortMode has exactly four variants: Dated, Random, Popular,
+#      Trending. A fifth variant is an unplanned mode addition that
+#      needs ADR-level review.
+sort_variants=$(grep -cE '^\s*(Dated|Random|Popular|Trending),' \
+  trench/src/feed/mod.rs || true)
+if [[ "$sort_variants" -ne 4 ]]; then
+  echo "FAIL: FeedSortMode expected 4 variants (Dated, Random, Popular, Trending), found ${sort_variants} (ADR-011 P3)"
+  fail=1
+fi
+
+# P4.  The Subject column renders in Browse only. A reference to
+#      `Subject` cell rendering inside the *non-Browse* branch of
+#      draw_item_table would mean the column has leaked into Inbox /
+#      Library. The guard is structural: `show_subject_col` must be
+#      derived from `feed_tab == FeedTab::Browse`.
+if ! grep -qE 'show_subject_col.*=.*feed_tab.*Browse' \
+  trench/src/ui/layout/feed.rs
+then
+  echo "FAIL: Subject column not gated on feed_tab == Browse (ADR-011 §E5 P4)"
+  echo "      Expected: 'let show_subject_col = model.feed_tab == FeedTab::Browse;'"
+  fail=1
+fi
+
+# P5.  ADR-011 cadence text mentions every shipped PR. Mirror of O5 / J5.
+adr11="docs/adr/ADR-011-browse-scoped-feed.md"
+for tag in "PR 1 (" "PR 2 (" "PR 3 ("; do
+  if ! grep -qF "$tag" "$adr11"; then
+    echo "FAIL: ${adr11} status block missing reference to '${tag}'"
+    fail=1
+  fi
+done
+
 if [[ "$fail" -eq 0 ]]; then
-  echo "OK: subject-browser invariants hold (taxonomy × 8 groups, dispatch coverage, Browse ∉ Source, KNOWN_ARXIV_CATS removed)"
+  echo "OK: subject-browser invariants hold (taxonomy × 8 groups, dispatch coverage, Browse ∉ Source, KNOWN_ARXIV_CATS removed, rail reshape locked: 4 sort modes, Subject col Browse-only, no draw_browse_detail_panel)"
 fi
 exit $fail

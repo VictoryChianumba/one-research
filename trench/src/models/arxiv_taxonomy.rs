@@ -46,8 +46,9 @@ pub struct Group {
 
 /// Look up a category by its canonical code (e.g. `cs.LG`). Linear scan
 /// over ~155 entries — microseconds, no need for a phf map. Consumed by
-/// ADR-010 PR 2 to resolve fetched URLs back to their canonical category.
-#[allow(dead_code)] // PR 2 (worker → workspace.items resolver)
+/// the Subject column renderer (ADR-011 §E5) to identify which entries
+/// in `FeedItem.domain_tags` are canonical category codes vs detected
+/// subtopics / human labels.
 pub fn find_category(code: &str) -> Option<&'static Category> {
   for g in TAXONOMY {
     for a in g.archives {

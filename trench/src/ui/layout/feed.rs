@@ -847,12 +847,29 @@ pub fn draw_item_table(
   // Header: color carries the emphasis; no bold (single-channel emphasis).
   let header_style = Style::default().fg(t.header);
 
-  let header = Row::new(vec![
-    feed_header_cell(" ", header_style),
-    feed_header_cell("Title", header_style),
-    feed_header_cell("Date", header_style),
-  ])
-  .height(2);
+  // ADR-011 §E5: Subject column appears in Browse only. Width 12 chars
+  // fits codes like `astro-ph.GA` (11); longer codes like
+  // `cond-mat.dis-nn` (15) ellipsise. Other tabs leave the column out
+  // entirely so Inbox / Library layouts stay untouched.
+  let show_subject_col = model.feed_tab == FeedTab::Browse;
+  const SUBJECT_COL_W: u16 = 12;
+
+  let header = if show_subject_col {
+    Row::new(vec![
+      feed_header_cell(" ", header_style),
+      feed_header_cell("Subject", header_style),
+      feed_header_cell("Title", header_style),
+      feed_header_cell("Date", header_style),
+    ])
+    .height(2)
+  } else {
+    Row::new(vec![
+      feed_header_cell(" ", header_style),
+      feed_header_cell("Title", header_style),
+      feed_header_cell("Date", header_style),
+    ])
+    .height(2)
+  };
 
   // Standard pane padding: 2 cols left/right, 1 row top/bottom.
   let pane = pane_inset(area);
@@ -871,8 +888,10 @@ pub fn draw_item_table(
   };
 
   // Available width for title column: total inner width minus fixed cols.
-  // sig(1) + date(10) + 2 column gaps of 2 each = 15
-  let title_col_w = (inner.width.saturating_sub(1 + 10 + 4)) as usize;
+  // sig(1) + [subject(12) + gap(2) if Browse] + date(10) + 2 column gaps of 2 each
+  let subject_w = if show_subject_col { SUBJECT_COL_W + 2 } else { 0 };
+  let title_col_w =
+    (inner.width.saturating_sub(1 + subject_w + 10 + 4)) as usize;
   let title_wrap_w = title_col_w.max(10);
 
   // Viewport height in rows (inner height minus 2 header rows).
@@ -982,32 +1001,56 @@ pub fn draw_item_table(
       let _ = (&vm.source_label, vm.content_type_short, &vm.author);
       let _ = selected_dim_style;
 
-      Row::new(vec![
-        feed_cell(
-          vm.signal_indicator,
-          if is_selected { selected_text_style } else { signal_style },
-        ),
-        Cell::from(Text::from({
-          let title_style =
-            if is_selected { selected_text_style } else { Style::default() };
-          let lines: Vec<Line<'static>> = title_lines
-            .iter()
-            .map(|s| Line::from(Span::styled(s.clone(), title_style)))
-            .chain(std::iter::once(Line::from("")))
-            .collect();
-          lines
-        })),
-        feed_cell(
-          item.published_at.as_str(),
+      let signal_cell = feed_cell(
+        vm.signal_indicator,
+        if is_selected { selected_text_style } else { signal_style },
+      );
+      let title_cell = Cell::from(Text::from({
+        let title_style =
+          if is_selected { selected_text_style } else { Style::default() };
+        let lines: Vec<Line<'static>> = title_lines
+          .iter()
+          .map(|s| Line::from(Span::styled(s.clone(), title_style)))
+          .chain(std::iter::once(Line::from("")))
+          .collect();
+        lines
+      }));
+      let date_cell = feed_cell(
+        item.published_at.as_str(),
+        if is_selected {
+          selected_text_style
+        } else {
+          Style::default().fg(t.text_dim)
+        },
+      );
+
+      let cells = if show_subject_col {
+        // Pick the first arxiv-code-shaped tag from domain_tags via the
+        // taxonomy lookup. Falls back to blank when the item has no
+        // canonical code (HF / RSS items where domain_tags carries
+        // detected subtopics rather than codes).
+        let subject = item
+          .domain_tags
+          .iter()
+          .find(|t| {
+            crate::models::arxiv_taxonomy::find_category(t.as_str()).is_some()
+          })
+          .map(|s| safe_truncate_chars(s, SUBJECT_COL_W as usize).to_string())
+          .unwrap_or_default();
+        let subject_cell = feed_cell(
+          &subject,
           if is_selected {
             selected_text_style
           } else {
-            Style::default().fg(t.text_dim)
+            Style::default().fg(t.accent)
           },
-        ),
-      ])
-      .style(row_style)
-      .height(row_height)
+        );
+        vec![signal_cell, subject_cell, title_cell, date_cell]
+      } else {
+        vec![signal_cell, title_cell, date_cell]
+      };
+
+      Row::new(cells).style(row_style).height(row_height)
     })
     .collect();
   log::debug!(
@@ -1016,13 +1059,20 @@ pub fn draw_item_table(
     t_rows.elapsed().as_millis()
   );
 
-  let table = Table::new(
-    rows,
-    [Constraint::Length(1), Constraint::Min(0), Constraint::Length(10)],
-  )
-  .header(header)
-  .column_spacing(2)
-  .row_highlight_style(Style::default());
+  let constraints: Vec<Constraint> = if show_subject_col {
+    vec![
+      Constraint::Length(1),
+      Constraint::Length(SUBJECT_COL_W),
+      Constraint::Min(0),
+      Constraint::Length(10),
+    ]
+  } else {
+    vec![Constraint::Length(1), Constraint::Min(0), Constraint::Length(10)]
+  };
+  let table = Table::new(rows, constraints)
+    .header(header)
+    .column_spacing(2)
+    .row_highlight_style(Style::default());
 
   let t_render = std::time::Instant::now();
   frame.render_widget(table, inner);

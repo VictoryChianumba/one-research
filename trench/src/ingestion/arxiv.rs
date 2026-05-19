@@ -213,13 +213,27 @@ fn parse_atom(xml: &str) -> Result<Vec<FeedItem>, String> {
           let date =
             published_at.split('T').next().unwrap_or(&published_at).to_string();
 
-          // Map raw category codes to human-readable labels.
-          let mut mapped: Vec<String> = domain_tags
-            .iter()
-            .filter_map(|code| map_arxiv_category(code.as_str()))
-            .map(|label| label.to_string())
-            .collect();
-          // Append subtopics detected from title and summary.
+          // Preserve raw category codes alongside human-readable
+          // labels and detected subtopics. ADR-011 §E5 (Subject
+          // column) + §E4 (subject_follow predicate) both consume the
+          // canonical code form (e.g. `cs.LG`), so it must stay in
+          // domain_tags — the prior label-only mapping silently broke
+          // the subject_follow predicate for the post-ADR-010 broader
+          // category set.
+          let mut mapped: Vec<String> = Vec::new();
+          for code in &domain_tags {
+            if !mapped.contains(code) {
+              mapped.push(code.clone());
+            }
+          }
+          for code in &domain_tags {
+            if let Some(label) = map_arxiv_category(code.as_str()) {
+              let l = label.to_string();
+              if !mapped.contains(&l) {
+                mapped.push(l);
+              }
+            }
+          }
           for label in detect_subtopics(&clean_title, &summary_short) {
             let s = label.to_string();
             if !mapped.contains(&s) {

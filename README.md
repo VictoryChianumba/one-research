@@ -159,21 +159,43 @@ The leader key is `Ctrl+T` (shown as `Ldr` below).
 
 ### Subject Browser (Browse tab)
 
-`Tab` cycles into the Browse tab (between Discoveries and History). The
-tab shows a three-column taxonomy of arXiv's 8 groups, ~40 archives,
-and ~155 categories, with the selected category's recent papers in
-the right-hand details pane.
+`Tab` cycles tabs in the order **Browse → Inbox → Library → Discoveries →
+History → Browse**. Default landing tab is Inbox (the curated feed);
+Browse is the firehose surface for arXiv's full taxonomy.
+
+The Browse tab has a narrow left rail showing one taxonomy level at a
+time and the regular feed table on the right with a leading **Subject**
+column. The breadcrumb above the rail shows your current drill path
+(e.g. `Mathematics › math`).
 
 | Key | Action |
 |---|---|
-| `h` / `l` | Shift focus across columns (Groups → Archives → Categories) |
-| `j` / `k` | Move cursor within the focused column |
-| `Enter` | Load the selected category's recent papers into the details pane |
-| `p` | Promote / un-promote the selected category (toggle membership in your daily feed). `★` marks promoted categories. |
+| `j` / `k` | Move the rail cursor |
+| `l` / `→` / `Enter` | Drill into the highlighted Group / Archive, or load recent papers when on a Category |
+| `h` / `←` / `Esc` / `Backspace` | Drill back one level |
+| `p` | Promote / un-promote the selected Category — toggles membership in your daily feed. `★` marks promoted categories. |
+| `F` | Quick-toggle subject-follow — when on, the feed area narrows to the rail's current drill point |
 
-Promotions take effect on the next manual refresh (`R`). Browse-fetched
-papers merge into the global cache (dedup + workflow state preserved)
-but only appear in Inbox if their category is promoted.
+The rail footer always shows the follow state (`Follow: ✓` or
+`Follow: ✗`). Promotions take effect on the next manual refresh
+(`R`). Browse-fetched papers merge into the global cache (dedup +
+workflow state preserved) but only appear in Inbox if their category
+is promoted.
+
+### Sort modes
+
+Open the filter pane with `f` to access four mutually-exclusive sort
+modes that apply across every tab:
+
+| Mode | Behaviour |
+|---|---|
+| `Dated` | Newest first by `published_at` (default). |
+| `Random` | Deterministic shuffle keyed off a per-session seed. Selecting Random again re-shuffles. |
+| `Popular` | Highest `upvote_count` first. arXiv items without HuggingFace upvotes / Semantic Scholar citations sort to the bottom. |
+| `Trending` | Items from the last 14 days only, sorted by `upvote_count`. Older items are filtered out. |
+
+Sort modes are session-only — they reset to `Dated` on next launch so
+re-opening trench never surprises you with a stale random shuffle.
 
 ### Leader bindings (`Ctrl+T` then key)
 
