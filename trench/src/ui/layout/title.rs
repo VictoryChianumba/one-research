@@ -67,7 +67,7 @@ fn draw_compact_title_bar(frame: &mut Frame, app: &App, area: Rect) {
     inactive_style
   };
   let discovery_spin = if app.discovery.loading {
-    format!(" {}", SPINNER[app.spinner_frame % SPINNER.len()])
+    format!(" {}", SPINNER[app.async_jobs.spinner_frame % SPINNER.len()])
   } else {
     String::new()
   };

@@ -293,13 +293,14 @@ fn build_loading_sources(custom_feeds: &[config::CustomFeed]) -> Vec<String> {
 
 /// Spawn a fresh fetch cycle and attach the receiver to `app`.
 pub(crate) fn do_refresh(app: &mut App) {
-  if app.is_loading || app.is_refreshing {
+  if app.async_jobs.is_loading || app.is_refreshing {
     return;
   }
   let (tx, rx) = mpsc::channel::<FetchMessage>();
-  app.fetch_rx = Some(rx);
-  app.loading_sources = build_loading_sources(&app.config.sources.custom_feeds);
-  app.is_loading = true;
+  app.async_jobs.fetch_rx = Some(rx);
+  app.async_jobs.loading_sources =
+    build_loading_sources(&app.config.sources.custom_feeds);
+  app.async_jobs.is_loading = true;
   app.is_refreshing = true;
   spawn_fetch(tx, app.config.clone());
 }
@@ -308,9 +309,9 @@ pub(crate) fn do_refresh(app: &mut App) {
 /// in-flight fetch, clears the item cache, then starts a fresh fetch.
 pub(crate) fn force_refresh(app: &mut App) {
   app.config = config::Config::load();
-  app.is_loading = false;
+  app.async_jobs.is_loading = false;
   app.is_refreshing = false;
-  app.fetch_rx = None;
+  app.async_jobs.fetch_rx = None;
   app.reset_items();
   do_refresh(app);
 }
@@ -860,10 +861,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   // 4. Spawn background thread to fetch all sources then enrich.
   {
     let (tx, rx) = mpsc::channel::<FetchMessage>();
-    app.fetch_rx = Some(rx);
-    app.loading_sources =
+    app.async_jobs.fetch_rx = Some(rx);
+    app.async_jobs.loading_sources =
       build_loading_sources(&app.config.sources.custom_feeds);
-    app.is_loading = true;
+    app.async_jobs.is_loading = true;
     spawn_fetch(tx, app.config.clone());
   }
 
@@ -937,7 +938,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
       }
 
       // ── Drain background fetch results ────────────────────────────────
-      if let Some(rx) = app.fulltext_rx.as_ref() {
+      if let Some(rx) = app.async_jobs.fulltext_rx.as_ref() {
         let t = std::time::Instant::now();
         match rx.try_recv() {
           Ok(result) => {
@@ -945,8 +946,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
               "fulltext drain: received result, took {}µs to recv",
               t.elapsed().as_micros()
             );
-            app.fulltext_rx = None;
-            app.fulltext_loading = false;
+            app.async_jobs.fulltext_rx = None;
+            app.async_jobs.fulltext_loading = false;
             match result {
               Ok(fetched_paper) => {
                 log::debug!(
@@ -956,28 +957,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // arxiv URLs get the rich LaTeX path via `tread::fetch_paper`
                 // — structured math, tables, figures — which used to block
                 // the UI for ~2s here.  Spawn it on a worker instead and
-                // park the open-reader context in `app.pending_tread_fetch`;
+                // park the open-reader context in `app.async_jobs.pending_tread_fetch`;
                 // the drain block below picks it up on a later loop tick.
                 // Non-arxiv URLs still complete inline because the fulltext
                 // result IS the final paper.
-                let notes_context = app.pending_fulltext_context.take();
+                let notes_context =
+                  app.async_jobs.pending_fulltext_context.take();
                 let title = app.last_read.clone().unwrap_or_default();
                 let detected_arxiv_id = notes_context
                   .as_ref()
                   .and_then(|ctx| tread::extract_arxiv_id(&ctx.paper.url));
                 let kitty_supported = app.kitty_supported;
-                let target = if app.fulltext_for_secondary {
+                let target = if app.async_jobs.fulltext_for_secondary {
                   action::ReaderTarget::Secondary
                 } else {
                   action::ReaderTarget::Primary
                 };
-                let mode = if app.fulltext_new_tab {
+                let mode = if app.async_jobs.fulltext_new_tab {
                   action::OpenMode::NewTab
                 } else {
                   action::OpenMode::ReplaceActive
                 };
-                app.fulltext_for_secondary = false;
-                app.fulltext_new_tab = false;
+                app.async_jobs.fulltext_for_secondary = false;
+                app.async_jobs.fulltext_new_tab = false;
 
                 if let Some(id) = detected_arxiv_id {
                   // arxiv path: defer.  Stays in `fulltext_loading=true`
@@ -985,8 +987,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                   // the tread fetch completes.
                   let (tread_tx, tread_rx) = std::sync::mpsc::channel();
                   spawn_tread_fetch(id.clone(), kitty_supported, tread_tx);
-                  app.tread_fetch_rx = Some(tread_rx);
-                  app.pending_tread_fetch =
+                  app.async_jobs.tread_fetch_rx = Some(tread_rx);
+                  app.async_jobs.pending_tread_fetch =
                     Some(crate::app::PendingTreadFetch {
                       arxiv_id: id,
                       title,
@@ -995,7 +997,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                       target,
                       mode,
                     });
-                  app.fulltext_loading = true;
+                  app.async_jobs.fulltext_loading = true;
                   app.mark_dirty();
                   continue;
                 }
@@ -1023,7 +1025,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 app.clear_notification();
               }
               Err(e) => {
-                app.pending_fulltext_context = None;
+                app.async_jobs.pending_fulltext_context = None;
                 app.set_notification(format!("Failed to fetch content: {e}"));
               }
             }
@@ -1031,11 +1033,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
           }
           Err(std::sync::mpsc::TryRecvError::Disconnected) => {
             log::debug!("fulltext drain: channel disconnected");
-            app.fulltext_rx = None;
-            app.fulltext_loading = false;
-            app.fulltext_for_secondary = false;
-            app.fulltext_new_tab = false;
-            app.pending_fulltext_context = None;
+            app.async_jobs.fulltext_rx = None;
+            app.async_jobs.fulltext_loading = false;
+            app.async_jobs.fulltext_for_secondary = false;
+            app.async_jobs.fulltext_new_tab = false;
+            app.async_jobs.pending_fulltext_context = None;
             app
               .set_notification("Fetch error: thread disconnected".to_string());
             app.mark_dirty();
@@ -1049,14 +1051,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
       // spawned `tread::fetch_paper` on a worker, and now its result
       // is ready.  Completes the deferred reader open with the rich
       // paper data (or falls back to the fulltext result on error).
-      if let Some(rx) = app.tread_fetch_rx.as_ref() {
+      if let Some(rx) = app.async_jobs.tread_fetch_rx.as_ref() {
         match rx.try_recv() {
           Ok(result) => {
             log::info!("[DIAG-7e21] tread_drain: result received");
             tread::bench::emit_us("trench_tread_drain", 0);
-            app.tread_fetch_rx = None;
-            app.fulltext_loading = false;
-            let Some(pending) = app.pending_tread_fetch.take() else {
+            app.async_jobs.tread_fetch_rx = None;
+            app.async_jobs.fulltext_loading = false;
+            let Some(pending) = app.async_jobs.pending_tread_fetch.take()
+            else {
               log::warn!(
                 "tread drain: result arrived but no pending context — dropping"
               );
@@ -1125,13 +1128,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
           }
           Err(std::sync::mpsc::TryRecvError::Disconnected) => {
             log::debug!("tread drain: channel disconnected");
-            app.tread_fetch_rx = None;
-            app.fulltext_loading = false;
+            app.async_jobs.tread_fetch_rx = None;
+            app.async_jobs.fulltext_loading = false;
             // Try the fulltext fallback before giving up so the user
             // still gets a reader, just with less rich content.  On
             // the arxiv-shortcut path there is no fallback — surface
             // an error and leave the reader closed.
-            if let Some(pending) = app.pending_tread_fetch.take() {
+            if let Some(pending) = app.async_jobs.pending_tread_fetch.take() {
               if let Some(fallback) = pending.fallback_paper {
                 let reader = tread::Reader::init(
                   fallback,
@@ -1176,8 +1179,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         match rx.try_recv() {
           Ok(result) => {
             app.reader_popup.rx = None;
-            app.fulltext_loading = false;
-            app.pending_fulltext_context = None;
+            app.async_jobs.fulltext_loading = false;
+            app.async_jobs.pending_fulltext_context = None;
             match result {
               Ok(paper) => {
                 let reader = tread::Reader::init(
@@ -1209,8 +1212,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
           }
           Err(std::sync::mpsc::TryRecvError::Disconnected) => {
             app.reader_popup.rx = None;
-            app.fulltext_loading = false;
-            app.pending_fulltext_context = None;
+            app.async_jobs.fulltext_loading = false;
+            app.async_jobs.pending_fulltext_context = None;
             app
               .set_notification("Fetch error: thread disconnected".to_string());
             app.mark_dirty();
@@ -1219,7 +1222,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
       }
 
-      if let Some(rx) = app.repo_fetch_rx.as_ref() {
+      if let Some(rx) = app.async_jobs.repo_fetch_rx.as_ref() {
         let t = std::time::Instant::now();
         match rx.try_recv() {
           Ok(result) => {
@@ -1227,7 +1230,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
               "repo_fetch drain: received result, took {}µs to recv",
               t.elapsed().as_micros()
             );
-            app.repo_fetch_rx = None;
+            app.async_jobs.repo_fetch_rx = None;
             match result {
               RepoFetchResult::RepoOpened { branch, tree } => match tree {
                 Ok(nodes) => {
@@ -1250,7 +1253,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
           }
           Err(std::sync::mpsc::TryRecvError::Disconnected) => {
             log::debug!("repo_fetch drain: channel disconnected");
-            app.repo_fetch_rx = None;
+            app.async_jobs.repo_fetch_rx = None;
             app.set_repo_status("Fetch error: thread disconnected");
             app.mark_dirty();
           }

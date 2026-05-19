@@ -166,7 +166,10 @@ mod tests {
 
   #[test]
   fn default_caches_are_all_unpopulated() {
-    assert_eq!(populated(&RenderCaches::default()), (false, false, false, false, false));
+    assert_eq!(
+      populated(&RenderCaches::default()),
+      (false, false, false, false, false)
+    );
   }
 
   #[test]

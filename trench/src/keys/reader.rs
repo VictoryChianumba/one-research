@@ -111,7 +111,7 @@ pub(super) fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
       app.reset_active_feed_position();
     }
     KeyCode::Enter => {
-      if !app.reader_bottom.details && !app.fulltext_loading {
+      if !app.reader_bottom.details && !app.async_jobs.fulltext_loading {
         let idx = app.reader_bottom.feed_popup_selected;
         if app.feed.feed_tab == FeedTab::History {
           let entry = app.history_get(idx).cloned();

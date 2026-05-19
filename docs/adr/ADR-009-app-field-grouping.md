@@ -1,6 +1,6 @@
 # ADR-009 — Cluster flat `App` fields into named state structs
 
-- **Status:** Proposed (2026-05-19). PR 1 ships ADR + `DebounceState` + 5 smoke tests + 4-field migration. PR 2 ships `LeaderState` + 7 smoke tests + 3-field migration + 6 call-site updates. PR 3 ships `ReaderBottomState` + 2 smoke tests + 5-field migration + ~104 call-site renames (sed-driven mechanical). PR 4 ships `ViewFlags` + 2 smoke tests + 3-field migration; the audit's original 5-field grouping is corrected — the two `fulltext_*` routing flags reclassify into the future `AsyncJobs` cluster. PR 5 ships `RenderCaches` + 11 behavioural tests (one per `Effect` variant) + 5-field migration + the effect-observer protocol moves onto the struct.
+- **Status:** Accepted (2026-05-19). Six PRs landed in one session. PR 1 ships ADR + `DebounceState` + 5 smoke tests + 4-field migration. PR 2 ships `LeaderState` + 7 smoke tests + 3-field migration + 6 call-site updates. PR 3 ships `ReaderBottomState` + 2 smoke tests + 5-field migration + ~104 call-site renames (sed-driven mechanical). PR 4 ships `ViewFlags` + 2 smoke tests + 3-field migration; the audit's original 5-field grouping is corrected — the two `fulltext_*` routing flags reclassify into the future `AsyncJobs` cluster. PR 5 ships `RenderCaches` + 11 behavioural tests (one per `Effect` variant) + 5-field migration + the effect-observer protocol moves onto the struct. PR 6 ships `AsyncJobs` + 3 smoke tests + 13-field migration + ~112 call-site renames; closes the punch list. App shrank 108 → 80 fields net across the series.
 - **Date:** 2026-05-19
 - **Owner:** Victory Chianumba
 - **Supersedes:** none
@@ -61,7 +61,7 @@ impl DebounceState {
 |---|---|---|---|
 | Leader key | `leader_active`, `leader_activated_at`, `leader_timeout_ms` (3) | `LeaderState` | ✓ PR 2 (2026-05-19) |
 | Reader-bottom drawer | `reader_bottom_open`, `reader_bottom_focused`, `reader_bottom_details`, `reader_feed_popup_selected`, `reader_bottom_scroll` (5) | `ReaderBottomState` | ✓ PR 3 (2026-05-19) |
-| Async fetch receivers | `fetch_rx`, `fulltext_rx`, `tread_fetch_rx`, `repo_fetch_rx`, `is_loading`, `loading_sources`, `loaded_sources`, `spinner_frame`, `fulltext_loading`, `pending_fulltext_context`, `pending_tread_fetch`, `fulltext_new_tab`, `fulltext_for_secondary` (13) | `AsyncJobs` | pending (reclassified +2 from ViewFlags) |
+| Async fetch receivers | `fetch_rx`, `fulltext_rx`, `tread_fetch_rx`, `repo_fetch_rx`, `is_loading`, `loading_sources`, `loaded_sources`, `spinner_frame`, `fulltext_loading`, `pending_fulltext_context`, `pending_tread_fetch`, `fulltext_new_tab`, `fulltext_for_secondary` (13) | `AsyncJobs` | ✓ PR 6 (2026-05-19) |
 | Popup flags | `tab_window_prompt_active`, `abstract_popup_active`, `narrow_feed_details_open` (3) | `ViewFlags` | ✓ PR 4 (2026-05-19) |
 | RefCell caches | `visible_cache`, `counts_cache`, `filter_source_names_cache`, `filter_summary_cache`, `filtered_history_cache` (5) | `RenderCaches` | ✓ PR 5 (2026-05-19) |
 
@@ -113,3 +113,5 @@ Following the ADR-006/007/008 rhythm:
 | Final | ADR Accepted flip after all clusters in §"Future clusters" land, or after the audit's next pass declares the goal met | trivial |
 
 This ADR moves to **Accepted** when the audit's `App` composition-root grade reaches **C+** or better, or when the next architectural audit explicitly closes the candidate.
+
+**Flipped to Accepted on 2026-05-19** when the AsyncJobs PR 6 closed the Future-clusters table. App shrank 108 → 80 fields net. The grade-progression test (does the next audit close the candidate?) is deferred to that audit; this status flip reflects the *punch list* being complete, not the audit grade being recalculated.

@@ -1,6 +1,7 @@
 //! Sub-state types for `App`. Grouped by concern; re-exported flat so that
 //! `crate::app::ChatState` (and friends) keep working without `state::` qualifier.
 
+mod async_jobs;
 mod chat;
 mod debounce;
 mod discovery;
@@ -18,6 +19,7 @@ mod settings;
 mod theme_picker;
 mod view_flags;
 
+pub use async_jobs::AsyncJobs;
 pub use chat::ChatState;
 pub use debounce::DebounceState;
 pub use discovery::DiscoveryModel;

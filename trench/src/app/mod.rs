@@ -1,10 +1,8 @@
 use crate::config::{Config, CustomThemeConfig};
-use crate::ingestion::message::FetchMessage;
 use crate::models::*;
 use chrono::Utc;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use std::sync::mpsc::Receiver;
 
 mod caches;
 pub mod focus;
@@ -46,12 +44,11 @@ pub struct App {
   pub tag_picker: TagPickerState,
   pub status_message: Option<String>,
 
-  // Background fetching
-  pub fetch_rx: Option<Receiver<FetchMessage>>,
-  pub loading_sources: Vec<String>,
-  pub loaded_sources: Vec<String>,
-  pub is_loading: bool,
-  pub spinner_frame: usize,
+  /// Every in-flight background fetch lives here, grouped by job class
+  /// (bulk fetch / fulltext / tread / repo) plus the fulltext-routing
+  /// flags.  ADR-009 cluster #6: closes the punch list — replaces 13
+  /// scattered flat fields with one typed home.
+  pub async_jobs: AsyncJobs,
 
   // View state
   pub view: AppView,
@@ -126,13 +123,11 @@ pub struct App {
   /// escapes only on graphics-capable terminals; on others, the
   /// hook is a no-op and tread's text-fallback caption renders.
   pub kitty_supported: bool,
-  pub fulltext_for_secondary: bool,
-  pub fulltext_new_tab: bool,
   /// Transient popup visibility flags.  ADR-009 cluster #4: replaces
   /// 3 flat fields (`tab_window_prompt_active`, `abstract_popup_active`,
-  /// `narrow_feed_details_open`).  The fulltext-routing pair above
-  /// stays flat for now; it reclassifies into the future `AsyncJobs`
-  /// cluster — they're parameters of the pending fetch, not popup state.
+  /// `narrow_feed_details_open`).  The two `fulltext_*` routing flags
+  /// that ADR-009 originally lumped here moved into `AsyncJobs` (PR 6) —
+  /// they're parameters of the pending fetch, not popup state.
   pub view_flags: ViewFlags,
   /// Bottom pane in State 3 (summoned by `Ldr+f`, dismissed by `q`/`Esc`).
   /// ADR-009 cluster #3: replaces 5 flat fields with the typed state.
@@ -142,23 +137,8 @@ pub struct App {
   pub last_read: Option<String>,
   pub last_read_source: Option<String>,
 
-  // Background fulltext fetch (article reader)
-  pub fulltext_rx: Option<Receiver<Result<tread::PaperData, String>>>,
-  pub fulltext_loading: bool,
-  pub pending_fulltext_context: Option<NotesContext>,
-  // Stage 2 of the arxiv path: after fulltext drains we kick off the
-  // rich-LaTeX `tread::fetch_paper` on its own worker.  This receiver
-  // is the channel from that worker; `pending_tread_fetch` holds the
-  // context we need to finish opening the reader once it returns
-  // (target pane, mode, title, notes context, plus the fulltext
-  // result we'll fall back to if the arxiv fetch errors).  Both are
-  // populated together in main.rs's fulltext drain Ok branch and
-  // cleared together by the tread drain Ok / Err / Disconnect branches.
-  pub tread_fetch_rx: Option<Receiver<Result<tread::PaperData, String>>>,
-  pub pending_tread_fetch: Option<PendingTreadFetch>,
-  // Background repo fetch (repo viewer)
-  pub repo_fetch_rx: Option<Receiver<RepoFetchResult>>,
-
+  // Stage-1 fulltext, stage-2 tread (arxiv-LaTeX), and the repo-viewer
+  // fetch channels all live on `async_jobs` now — see ADR-009 cluster #6.
   /// Scroll debounce gates (keyboard + mouse). ADR-009 pilot cluster:
   /// the four flat fields this replaces moved into `DebounceState`,
   /// which owns the cooldown protocol via `try_kbd_scroll` /
@@ -232,11 +212,7 @@ impl App {
       },
       tag_picker: TagPickerState::default(),
       status_message: None,
-      fetch_rx: None,
-      loading_sources: Vec::new(),
-      loaded_sources: Vec::new(),
-      is_loading: false,
-      spinner_frame: 0,
+      async_jobs: AsyncJobs::default(),
       view: AppView::Feed,
       repo_context: None,
       github_token: None,
@@ -257,18 +233,10 @@ impl App {
       reader_popup: crate::reader::ReaderPopupModel::new(),
       voice_controller: tread::build_voice_controller(),
       kitty_supported: tread::detect_kitty_supported(),
-      fulltext_for_secondary: false,
-      fulltext_new_tab: false,
       view_flags: ViewFlags::default(),
       reader_bottom: ReaderBottomState::default(),
       last_read: None,
       last_read_source: None,
-      fulltext_rx: None,
-      fulltext_loading: false,
-      pending_fulltext_context: None,
-      tread_fetch_rx: None,
-      pending_tread_fetch: None,
-      repo_fetch_rx: None,
       debounce: DebounceState::default(),
       leader: LeaderState::default(),
       focus: FocusManager::new(),
@@ -405,7 +373,10 @@ impl App {
   /// - `discovery_loading` — discovery agent in flight
   /// - `settings_save_time` — TTL window for the "Saved." indicator
   pub fn has_active_animation(&self) -> bool {
-    if self.is_loading || self.is_refreshing || self.discovery.loading {
+    if self.async_jobs.is_loading
+      || self.is_refreshing
+      || self.discovery.loading
+    {
       return true;
     }
     if self.settings.save_time.is_some() {
@@ -755,7 +726,7 @@ impl App {
     let kind =
       if self.focus.focused_pane == PaneId::Reader && self.reader.active {
         QuitPopupKind::LeaveReader
-      } else if self.discovery.loading || self.is_loading {
+      } else if self.discovery.loading || self.async_jobs.is_loading {
         QuitPopupKind::QuitWithProgress
       } else if self.chat.active
         && self.chat.ui.as_ref().map_or(false, |c| !c.input.trim().is_empty())
@@ -1111,9 +1082,9 @@ mod tests {
   fn has_active_animation_true_when_loading() {
     let mut app = App::new();
     let _ = app.check_needs_redraw();
-    app.is_loading = true;
+    app.async_jobs.is_loading = true;
     assert!(app.has_active_animation());
-    app.is_loading = false;
+    app.async_jobs.is_loading = false;
     app.is_refreshing = true;
     assert!(app.has_active_animation());
     app.is_refreshing = false;

@@ -12,8 +12,9 @@ impl App {
     // Spinner only ticks when something is actually loading. Without this
     // gate, the wrapping increment fires every loop iteration and would
     // perpetually re-set `needs_redraw` even on idle.
-    if self.is_loading {
-      self.spinner_frame = self.spinner_frame.wrapping_add(1);
+    if self.async_jobs.is_loading {
+      self.async_jobs.spinner_frame =
+        self.async_jobs.spinner_frame.wrapping_add(1);
       self.mark_dirty();
     }
     self.poll_detect_result();
@@ -27,7 +28,7 @@ impl App {
       }
     }
 
-    if self.fetch_rx.is_none() {
+    if self.async_jobs.fetch_rx.is_none() {
       return;
     }
 
@@ -35,7 +36,7 @@ impl App {
     let mut messages = Vec::new();
     let mut disconnected = false;
 
-    if let Some(rx) = &self.fetch_rx {
+    if let Some(rx) = &self.async_jobs.fetch_rx {
       loop {
         match rx.try_recv() {
           Ok(msg) => messages.push(msg),
@@ -49,9 +50,9 @@ impl App {
     }
 
     if disconnected {
-      self.is_loading = false;
+      self.async_jobs.is_loading = false;
       self.is_refreshing = false;
-      self.fetch_rx = None;
+      self.async_jobs.fetch_rx = None;
     }
 
     let was_empty = self.workspace.items_store.is_empty();
@@ -180,8 +181,8 @@ impl App {
           }
         }
         FetchMessage::SourceComplete(name) => {
-          self.loading_sources.retain(|s| s != &name);
-          self.loaded_sources.push(name);
+          self.async_jobs.loading_sources.retain(|s| s != &name);
+          self.async_jobs.loaded_sources.push(name);
           // Status bar shows the loading-sources list; without
           // mark_dirty, a phantom in-progress source can sit on
           // screen for ~250ms until any other event ticks the
@@ -190,11 +191,11 @@ impl App {
         }
         FetchMessage::SourceError(name, err) => {
           self.status_message = Some(err);
-          self.loading_sources.retain(|s| s != &name);
+          self.async_jobs.loading_sources.retain(|s| s != &name);
           self.mark_dirty();
         }
         FetchMessage::AllComplete => {
-          self.is_loading = false;
+          self.async_jobs.is_loading = false;
           self.is_refreshing = false;
         }
       }

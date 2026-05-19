@@ -125,7 +125,7 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
         }
       }
       KeyCode::Enter => {
-        if !app.fulltext_loading {
+        if !app.async_jobs.fulltext_loading {
           if let Some(item) = app.selected_item().cloned() {
             remember_fulltext_paper_context(app, &item);
             log::debug!("feed Enter: spawning fetch for url={}", item.url);
@@ -164,7 +164,7 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
         }
       }
       KeyCode::Char('R') => {
-        if app.is_loading || app.is_refreshing {
+        if app.async_jobs.is_loading || app.is_refreshing {
           app.set_notification("Already refreshing...".to_string());
         } else {
           app.clear_notification();
@@ -232,7 +232,7 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
               });
               app.view = AppView::RepoViewer;
               let (tx, rx) = mpsc::channel();
-              app.repo_fetch_rx = Some(rx);
+              app.async_jobs.repo_fetch_rx = Some(rx);
               spawn_repo_open(owner, repo_name, token, tx);
             }
           }
@@ -536,7 +536,7 @@ fn handle_narrow_feed_state_2(key: KeyEvent, app: &mut App) {
       }
     }
     KeyCode::Enter => {
-      if !app.fulltext_loading {
+      if !app.async_jobs.fulltext_loading {
         if let Some(item) = app.selected_item().cloned() {
           app.view_flags.narrow_feed_details_open = false;
           remember_fulltext_paper_context(app, &item);

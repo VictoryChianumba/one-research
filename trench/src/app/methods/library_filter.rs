@@ -208,7 +208,8 @@ impl App {
       names.insert(seed.to_string());
     }
     let computed: Vec<String> = names.into_iter().collect();
-    *self.render_caches.filter_source_names.borrow_mut() = Some(computed.clone());
+    *self.render_caches.filter_source_names.borrow_mut() =
+      Some(computed.clone());
     computed
   }
 

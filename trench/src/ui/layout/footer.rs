@@ -17,17 +17,17 @@ pub fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
     .constraints([Constraint::Length(1), Constraint::Length(1)])
     .split(area);
 
-  let status_line: Option<Line> = if app.fulltext_loading {
-    let spin = SPINNER[app.spinner_frame % SPINNER.len()];
+  let status_line: Option<Line> = if app.async_jobs.fulltext_loading {
+    let spin = SPINNER[app.async_jobs.spinner_frame % SPINNER.len()];
     Some(Line::from(Span::styled(
       format!("{spin} fetching article…"),
       Style::default().fg(t.warning),
     )))
   } else if let Some(msg) = &app.status_message {
     Some(Line::from(Span::styled(msg.clone(), Style::default().fg(t.warning))))
-  } else if app.is_loading {
-    let spin = SPINNER[app.spinner_frame % SPINNER.len()];
-    let sources = app.loading_sources.join(", ");
+  } else if app.async_jobs.is_loading {
+    let spin = SPINNER[app.async_jobs.spinner_frame % SPINNER.len()];
+    let sources = app.async_jobs.loading_sources.join(", ");
     let prefix = if app.is_refreshing { "↻ refreshing" } else { "fetching" };
     Some(Line::from(Span::styled(
       format!(
