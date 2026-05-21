@@ -151,7 +151,7 @@ pub fn draw_search_row(frame: &mut Frame, app: &App, area: Rect) {
   let search_text = if !app.feed.search_query.is_empty() {
     format!(" / {}", app.feed.search_query)
   } else if app.feed.search_active {
-    " / search · author:  year:  ti:  abs:".to_string()
+    " / search · author:  cat:  year:  ti:  abs:".to_string()
   } else {
     " / Search items...".to_string()
   };

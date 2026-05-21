@@ -163,6 +163,8 @@ term to one field, and multiple terms are conjunctive (all must match):
 | `abs:reinforcement` | `reinforcement` in the abstract (`abstract:` also works) |
 | `author:hinton` | an author named Hinton (`au:` also works) |
 | `author:"Yann LeCun"` | quotes group a value containing spaces |
+| `cat:cs.LG` | items in the arXiv category cs.LG (`category:` also works) |
+| `cat:cs` | items in any cs.* category (archive-level match) |
 | `year:2024` | published in 2024 |
 | `year:2020-2024` | published in the inclusive range |
 | `year:>=2023` | published in 2023 or later (`>`, `<`, `<=` also work) |

@@ -38,12 +38,18 @@ feed pipeline only calls `Query::parse` + `Query::score`.
 
 ### D2 — Field-prefix grammar with conjunctive terms
 
-`ti:`/`title:`, `abs:`/`abstract:`, `au:`/`author:`, `year:`/`yr:`, plus free
-text. Double quotes group a value with spaces (`author:"Yann LeCun"`). Year
-accepts `2024`, `2020-2024`, `>2020`, `>=2020`, `<2024`, `<=2024`. All terms are
-AND'd; an unknown prefix (`http://…`) is treated as one free term, never split.
-An unparseable `year:` is dropped rather than demoted to free text, so a bad year
-can't silently start matching titles.
+`ti:`/`title:`, `abs:`/`abstract:`, `au:`/`author:`, `cat:`/`category:`,
+`year:`/`yr:`, plus free text. Double quotes group a value with spaces
+(`author:"Yann LeCun"`). Year accepts `2024`, `2020-2024`, `>2020`, `>=2020`,
+`<2024`, `<=2024`. All terms are AND'd; an unknown prefix (`http://…`) is treated
+as one free term, never split. An unparseable `year:` is dropped rather than
+demoted to free text, so a bad year can't silently start matching titles.
+
+`cat:` and `year:` are **controlled-vocabulary gates**, not fuzzy-scored:
+`cat:cs.LG` matches the exact arXiv category, `cat:cs` matches every `cs.*`
+sub-category, resolved via `arxiv_taxonomy::item_matches_category` (case-insensitive,
+also accepts a human label). Category knowledge lives in the taxonomy module so
+both this operator and Browse's `SubjectScope` draw from one table.
 
 ### D3 — Fuzzy matching via `fuzzy-matcher` (SkimMatcherV2), smart-case
 

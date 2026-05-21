@@ -77,6 +77,65 @@ pub fn group_count() -> usize {
   TAXONOMY.len()
 }
 
+/// True if any of `tags` (a `FeedItem`'s `domain_tags`) falls under the
+/// arXiv subject named by `query` — the `cat:` search operator (ADR-012).
+///
+/// `query` may be a category code (`cs.LG`), a bare archive id (`cs`,
+/// `gr-qc`), or a human label (`Machine Learning`, `Computer Science`).
+/// Archive-level queries match every sub-category: `cat:cs` matches
+/// `cs.LG`, `cs.AI`, … Matching is case-insensitive and tolerant of
+/// `domain_tags` that carry either the canonical code or the human label.
+///
+/// Browse's `SubjectScope` (feed/mod.rs) resolves the same taxonomy from a
+/// rail-driven enum and is intentionally left separate; this entry point
+/// is the free-string one the search parser needs.
+pub fn item_matches_category(tags: &[String], query: &str) -> bool {
+  tags.iter().any(|tag| tag_matches_category(tag, query))
+}
+
+fn tag_matches_category(tag: &str, query: &str) -> bool {
+  // Resolve the tag to a canonical code when possible so a human-label
+  // domain_tag ("Machine Learning") still matches `cat:cs.LG`.
+  let code = canonical_code_for(tag).unwrap_or(tag);
+  if code.eq_ignore_ascii_case(query) {
+    return true;
+  }
+  // Archive-level query against a sub-category code: `cs` vs `cs.LG`.
+  if let Some((archive, _)) = code.split_once('.')
+    && archive.eq_ignore_ascii_case(query)
+  {
+    return true;
+  }
+  // Query given as an archive *name* ("Computer Science") or id — match
+  // any code under that archive.
+  if let Some(arch_id) = archive_id_for(query) {
+    let prefix = format!("{arch_id}.");
+    return code.eq_ignore_ascii_case(arch_id)
+      || code.to_ascii_lowercase().starts_with(&prefix.to_ascii_lowercase());
+  }
+  false
+}
+
+/// Resolve a `domain_tag` (canonical code or human label, any case) to its
+/// canonical category code.
+fn canonical_code_for(tag: &str) -> Option<&'static str> {
+  all_categories()
+    .find(|c| {
+      c.code.eq_ignore_ascii_case(tag) || c.name.eq_ignore_ascii_case(tag)
+    })
+    .map(|c| c.code)
+}
+
+/// Resolve an archive query (id or human name, any case) to its canonical id.
+fn archive_id_for(query: &str) -> Option<&'static str> {
+  TAXONOMY.iter().find_map(|g| {
+    g.archives.iter().find_map(|a| {
+      (a.id.eq_ignore_ascii_case(query) || a.name.eq_ignore_ascii_case(query))
+        .then_some(a.id)
+    })
+  })
+}
+
 // ---------------------------------------------------------------------------
 // Taxonomy data
 // ---------------------------------------------------------------------------

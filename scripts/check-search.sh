@@ -45,7 +45,7 @@ fi
 # Q3.  The parser grammar exists: all four field prefixes are recognised
 #      in the search module. Catches an accidental rename/drop of a
 #      prefix arm.
-for prefix in '"ti"' '"abs"' '"au"' '"year"'; do
+for prefix in '"ti"' '"abs"' '"au"' '"cat"' '"year"'; do
   if ! grep -qF "$prefix" trench/src/search/mod.rs; then
     echo "FAIL: search/mod.rs parser missing field prefix arm ${prefix} (ADR-012 §D2)"
     fail=1
@@ -76,6 +76,6 @@ if ! grep -qF "PR 1 (" "$adr12"; then
 fi
 
 if [[ "$fail" -eq 0 ]]; then
-  echo "OK: search invariants hold (single visible-set fn, relevance sort + query.score present, 4 field prefixes, raw-query fuzzy path, ADR-012 cadence intact)"
+  echo "OK: search invariants hold (single visible-set fn, relevance sort + query.score present, 5 field prefixes incl. cat:, raw-query fuzzy path, ADR-012 cadence intact)"
 fi
 exit $fail

@@ -36,6 +36,7 @@ const HELP_SECTIONS: &[(&str, &[(&str, &str)])] = &[
       ("Fuzzy", "Typo-tolerant — subsequence match, not exact"),
       ("ti: / abs:", "Restrict a term to title / abstract"),
       ("au: / author:", "Restrict a term to authors"),
+      ("cat: / category:", "arXiv subject — cs.LG (exact) · cs (all cs.*)"),
       ("year:", "2024 · 2020-2024 · >2020 · >=2020 · <2024"),
       ("Quotes", "author:\"Yann LeCun\" groups a value with spaces"),
       ("Multiple terms", "All must match (AND); plain words match anywhere"),

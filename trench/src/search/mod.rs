@@ -10,6 +10,7 @@
 //! - `ti:` / `title:` — term must fuzzy-match the title.
 //! - `abs:` / `abstract:` — term must fuzzy-match the summary.
 //! - `au:` / `author:` — term must fuzzy-match some author.
+//! - `cat:` / `category:` — arXiv subject; `cs.LG` (exact), `cs` (all cs.*).
 //! - `year:` / `yr:` — `2024`, `2020-2024`, `>2020`, `>=2020`, `<2024`, `<=2024`.
 //! - anything else — free term, matches title, author, or abstract.
 //!
@@ -87,6 +88,7 @@ pub struct Query {
   pub title: Vec<String>,
   pub author: Vec<String>,
   pub summary: Vec<String>,
+  pub category: Vec<String>,
   pub year: Option<YearConstraint>,
 }
 
@@ -96,6 +98,7 @@ impl Query {
       && self.title.is_empty()
       && self.author.is_empty()
       && self.summary.is_empty()
+      && self.category.is_empty()
       && self.year.is_none()
   }
 
@@ -115,6 +118,10 @@ impl Query {
           }
           "au" | "author" if !value.is_empty() => {
             q.author.push(value.to_string());
+            continue;
+          }
+          "cat" | "category" if !value.is_empty() => {
+            q.category.push(value.to_string());
             continue;
           }
           "year" | "yr" => {
@@ -140,6 +147,17 @@ impl Query {
       match item_year(item) {
         Some(y) if yc.satisfied_by(y) => {}
         _ => return None,
+      }
+    }
+
+    // Category is controlled vocabulary, not free text — a hard gate
+    // (like year), resolved via the taxonomy rather than fuzzy-matched.
+    for cat in &self.category {
+      if !crate::models::arxiv_taxonomy::item_matches_category(
+        &item.domain_tags,
+        cat,
+      ) {
+        return None;
       }
     }
 
@@ -312,6 +330,43 @@ mod tests {
     let st = q.score(&in_title, &m).unwrap();
     let sa = q.score(&in_abstract, &m).unwrap();
     assert!(st > sa, "title score {st} should beat abstract score {sa}");
+  }
+
+  #[test]
+  fn parse_routes_cat_prefix() {
+    let q = Query::parse("cat:cs.LG transformers");
+    assert_eq!(q.category, vec!["cs.LG"]);
+    assert_eq!(q.free, vec!["transformers"]);
+  }
+
+  #[test]
+  fn cat_matches_exact_code_and_archive() {
+    let m = SkimMatcherV2::default();
+    let mut paper = item("Some Paper", &["A"], "x", "2024");
+    paper.domain_tags = vec!["cs.LG".to_string()];
+
+    // Exact category code.
+    assert!(Query::parse("cat:cs.LG").score(&paper, &m).is_some());
+    // Archive-level query matches any cs.* category.
+    assert!(Query::parse("cat:cs").score(&paper, &m).is_some());
+    // Case-insensitive.
+    assert!(Query::parse("cat:CS.lg").score(&paper, &m).is_some());
+    // Different category is excluded.
+    assert!(Query::parse("cat:math.NT").score(&paper, &m).is_none());
+  }
+
+  #[test]
+  fn cat_combines_with_free_text_as_a_gate() {
+    let m = SkimMatcherV2::default();
+    let mut ml = item("Attention", &["A"], "x", "2024");
+    ml.domain_tags = vec!["cs.LG".to_string()];
+    let mut nt = item("Attention", &["A"], "x", "2024");
+    nt.domain_tags = vec!["math.NT".to_string()];
+
+    let q = Query::parse("cat:cs attention");
+    // Same title match, but the category gate keeps only the cs paper.
+    assert!(q.score(&ml, &m).is_some());
+    assert!(q.score(&nt, &m).is_none());
   }
 
   #[test]
