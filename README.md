@@ -141,11 +141,32 @@ The leader key is `Ctrl+T` (shown as `Ldr` below).
 |---|---|
 | `j` / `k` | Move down / up |
 | `g` / `G` | Jump to top / bottom |
-| `/` | Search / filter feed |
+| `/` | Search the feed (fuzzy, relevance-ranked) |
 | `Enter` | Open item in reader |
 | `o` | Open URL in browser |
 | `r` | Refresh all sources |
 | `Tab` | Cycle focus between open panes |
+
+### Search
+
+Press `/` and type. Search is fuzzy (typo-tolerant) and **relevance-ranked** — the
+best match is surfaced first, rather than just filtering the list in place. A title
+hit outranks an author hit outranks an abstract hit.
+
+Plain words match across title, authors, and abstract. Field prefixes restrict a
+term to one field, and multiple terms are conjunctive (all must match):
+
+| Query | Matches |
+|---|---|
+| `attention is all you need` | any item whose title/author/abstract fuzzily contains all terms |
+| `ti:diffusion` | `diffusion` in the title only (`title:` also works) |
+| `abs:reinforcement` | `reinforcement` in the abstract (`abstract:` also works) |
+| `author:hinton` | an author named Hinton (`au:` also works) |
+| `author:"Yann LeCun"` | quotes group a value containing spaces |
+| `year:2024` | published in 2024 |
+| `year:2020-2024` | published in the inclusive range |
+| `year:>=2023` | published in 2023 or later (`>`, `<`, `<=` also work) |
+| `au:vaswani year:2017 attention` | combine field terms, a year, and free text |
 
 ### Workflow states
 
@@ -163,8 +184,8 @@ The leader key is `Ctrl+T` (shown as `Ldr` below).
 History → Browse**. Default landing tab is Inbox (the curated feed);
 Browse is the firehose surface for arXiv's full taxonomy.
 
-The Browse tab has a narrow left rail showing one taxonomy level at a
-time and the regular feed table on the right with a leading **Subject**
+The Browse tab has a narrow right rail showing one taxonomy level at a
+time and the regular feed table on the left with a leading **Subject**
 column. The breadcrumb above the rail shows your current drill path
 (e.g. `Mathematics › math`).
 

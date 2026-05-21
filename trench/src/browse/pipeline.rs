@@ -54,3 +54,48 @@ pub fn spawn_browse_fetch(category: String, tx: mpsc::Sender<BrowseMessage>) {
     }
   });
 }
+
+/// Spawn a free-text arXiv search on a worker thread (`arxiv::fetch_search`).
+///
+/// Sends a single [`BrowseMessage::SearchResults`] on `tx`, then exits.
+/// On a fetch error or thread panic it sends an *empty* result and logs
+/// the cause — the consumer treats empty as "no results" and always
+/// clears the search-loading flag, so a transient failure can't wedge
+/// the UI in a permanent loading state.
+pub fn spawn_arxiv_search(query: String, tx: mpsc::Sender<BrowseMessage>) {
+  std::thread::spawn(move || {
+    let tx_panic = tx.clone();
+    let query_panic = query.clone();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+      let t = std::time::Instant::now();
+      let items = match arxiv::fetch_search(&query) {
+        Ok(items) => {
+          log::info!(
+            "browse::spawn_arxiv_search[{query}]: {} results in {}ms",
+            items.len(),
+            t.elapsed().as_millis(),
+          );
+          items
+        }
+        Err(e) => {
+          log::error!(
+            "browse::spawn_arxiv_search[{query}]: failed in {}ms — {e}",
+            t.elapsed().as_millis(),
+          );
+          Vec::new()
+        }
+      };
+      let _ = tx.send(BrowseMessage::SearchResults { query, items });
+    }));
+    if let Err(payload) = result {
+      let msg = crate::panic_msg(payload);
+      log::error!(
+        "browse::spawn_arxiv_search[{query_panic}]: thread panicked — {msg}"
+      );
+      let _ = tx_panic.send(BrowseMessage::SearchResults {
+        query: query_panic,
+        items: Vec::new(),
+      });
+    }
+  });
+}

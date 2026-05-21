@@ -13,6 +13,8 @@
 
 use std::collections::HashSet;
 
+use fuzzy_matcher::skim::SkimMatcherV2;
+
 use crate::app::{DiscoveryModel, FeedTab, FilterState};
 // C7 PR 2 (ADR-005 §S2): `discovery: DiscoveryModel` field moved from
 // `FeedModel.discovery` to `App.discovery`. Methods and free fns that
@@ -83,6 +85,10 @@ pub struct FeedModel {
   pub search_query: String,
   pub search_query_lower: String,
   pub search_active: bool,
+  /// An online arXiv search is in flight (submitted from the search bar).
+  /// Gates duplicate submits and keeps the event loop at the interactive
+  /// cadence so the results merge promptly (see `has_active_animation`).
+  pub search_loading: bool,
 
   // Filter panel state.
   pub filter_focus: bool,
@@ -143,26 +149,23 @@ impl FeedModel {
   // handlers) follow up with `app.reset_active_feed_position()` when the
   // gesture should also reset the active list cursor.
 
-  /// Advance to the next tab (Browse → Inbox → Library → Discoveries → History → Browse).
-  /// ADR-011 §E6: Browse leads the cycle because it's the corpus
-  /// surface — Inbox is the curated default landing tab, but Browse
-  /// is the first you see when cycling.
+  /// Advance to the next tab (Inbox → Browse → Library → Discoveries → History → Inbox).
   pub fn cycle_tab(&mut self) {
     self.feed_tab = match self.feed_tab {
-      FeedTab::Browse => FeedTab::Inbox,
-      FeedTab::Inbox => FeedTab::Library,
+      FeedTab::Inbox => FeedTab::Browse,
+      FeedTab::Browse => FeedTab::Library,
       FeedTab::Library => FeedTab::Discoveries,
       FeedTab::Discoveries => FeedTab::History,
-      FeedTab::History => FeedTab::Browse,
+      FeedTab::History => FeedTab::Inbox,
     };
   }
 
   /// Walk back one tab (reverse of `cycle_tab`).
   pub fn cycle_tab_back(&mut self) {
     self.feed_tab = match self.feed_tab {
-      FeedTab::Browse => FeedTab::History,
-      FeedTab::Inbox => FeedTab::Browse,
-      FeedTab::Library => FeedTab::Inbox,
+      FeedTab::Inbox => FeedTab::History,
+      FeedTab::Browse => FeedTab::Inbox,
+      FeedTab::Library => FeedTab::Browse,
       FeedTab::Discoveries => FeedTab::Library,
       FeedTab::History => FeedTab::Discoveries,
     };
@@ -442,6 +445,7 @@ impl Default for FeedModel {
       search_query: String::new(),
       search_query_lower: String::new(),
       search_active: false,
+      search_loading: false,
       filter_focus: false,
       filter_cursor: 0,
       active_filters: FilterState::new(),
@@ -474,6 +478,8 @@ impl Default for FeedModel {
 pub struct FeedContext<'a> {
   pub workspace: &'a crate::data::workspace_store::Workspace,
   pub theme: ui_theme::Theme,
+  pub browse_feed_focused: bool,
+  pub browse_subject_depth: usize,
   /// Indices into [`items_for_tab`]`(workspace, feed, discovery)` after
   /// applying search + filter + tab-scoping. Empty for the History tab.
   pub visible_indices: Vec<usize>,
@@ -520,7 +526,8 @@ pub fn visible_indices_for(
   config: &crate::config::Config,
 ) -> Vec<usize> {
   let items = items_for_tab(workspace, feed, discovery);
-  let q = feed.search_query_lower.as_str();
+  let query = crate::search::Query::parse(&feed.search_query);
+  let matcher = SkimMatcherV2::default();
 
   // Subject-follow scope only applies on the Browse tab when the user
   // has actually drilled at least once. At depth 0 (Groups level) the
@@ -534,7 +541,10 @@ pub fn visible_indices_for(
     None
   };
 
-  let mut indices: Vec<usize> = items
+  // Non-search filters first (tab, subject scope, source toggles, tags,
+  // chip filters). Search is applied as a separate scoring pass so a
+  // live query can reorder the survivors by relevance.
+  let mut scored: Vec<(usize, i64)> = items
     .iter()
     .enumerate()
     .filter(|(_, item)| {
@@ -570,12 +580,6 @@ pub fn visible_indices_for(
           return false;
         }
       }
-      if !q.is_empty()
-        && !item.title_lower.contains(q)
-        && !item.authors_lower.iter().any(|a| a.contains(q))
-      {
-        return false;
-      }
       if !feed.active_filters.tags.is_empty() {
         let item_tags = crate::tags::for_url(&workspace.item_tags, &item.url);
         if !item_tags.iter().any(|t| feed.active_filters.tags.contains(t)) {
@@ -584,11 +588,27 @@ pub fn visible_indices_for(
       }
       feed.active_filters.matches(item)
     })
-    .map(|(i, _)| i)
+    .filter_map(|(i, item)| {
+      if query.is_empty() {
+        Some((i, 0))
+      } else {
+        query.score(item, &matcher).map(|score| (i, score))
+      }
+    })
     .collect();
 
-  apply_sort_mode(&mut indices, items, feed.sort_mode, feed.random_seed);
-  indices
+  if query.is_empty() {
+    let mut indices: Vec<usize> = scored.into_iter().map(|(i, _)| i).collect();
+    apply_sort_mode(&mut indices, items, feed.sort_mode, feed.random_seed);
+    indices
+  } else {
+    // Relevance order: best score first. `sort_by` is stable, so equal
+    // scores keep items_store's published_at-desc order (newest wins
+    // ties) and the active FeedSortMode is intentionally bypassed —
+    // when you're searching, match quality is the ordering.
+    scored.sort_by(|a, b| b.1.cmp(&a.1));
+    scored.into_iter().map(|(i, _)| i).collect()
+  }
 }
 
 /// Subject-follow predicate (ADR-011 §E4). Resolved once per call to
@@ -607,13 +627,44 @@ impl SubjectScope {
     match self {
       SubjectScope::Archive(id) => {
         let prefix = format!("{id}.");
-        item.domain_tags.iter().any(|t| t == id || t.starts_with(&prefix))
+        item.domain_tags.iter().any(|t| {
+          t == id
+            || t.starts_with(&prefix)
+            || taxonomy_archive_id_for_tag(t).is_some_and(|a| a == *id)
+            || taxonomy_category_code_for_tag(t)
+              .is_some_and(|c| c == *id || c.starts_with(&prefix))
+        })
       }
-      SubjectScope::Category(code) => {
-        item.domain_tags.iter().any(|t| t == code)
-      }
+      SubjectScope::Category(code) => item.domain_tags.iter().any(|t| {
+        t == code
+          || taxonomy_category_code_for_tag(t).is_some_and(|c| c == *code)
+      }),
     }
   }
+}
+
+fn taxonomy_category_code_for_tag(tag: &str) -> Option<&'static str> {
+  crate::models::arxiv_taxonomy::find_category(tag).map(|c| c.code).or_else(
+    || {
+      crate::models::arxiv_taxonomy::all_categories()
+        .find(|c| c.name.eq_ignore_ascii_case(tag))
+        .map(|c| c.code)
+    },
+  )
+}
+
+fn taxonomy_archive_id_for_tag(tag: &str) -> Option<&'static str> {
+  crate::models::arxiv_taxonomy::TAXONOMY.iter().find_map(|group| {
+    group.archives.iter().find_map(|archive| {
+      if archive.id.eq_ignore_ascii_case(tag)
+        || archive.name.eq_ignore_ascii_case(tag)
+      {
+        Some(archive.id)
+      } else {
+        None
+      }
+    })
+  })
 }
 
 fn subject_follow_scope(browse: &crate::app::BrowseModel) -> SubjectScope {
@@ -660,9 +711,8 @@ fn apply_sort_mode(
       }
     }
     FeedSortMode::Popular => {
-      indices.sort_by(|a, b| {
-        items[*b].upvote_count.cmp(&items[*a].upvote_count)
-      });
+      indices
+        .sort_by(|a, b| items[*b].upvote_count.cmp(&items[*a].upvote_count));
     }
     FeedSortMode::Trending => {
       // Cutoff = 14 days before now, formatted as ISO date. ISO 8601
@@ -673,9 +723,8 @@ fn apply_sort_mode(
         .format("%Y-%m-%d")
         .to_string();
       indices.retain(|i| items[*i].published_at.as_str() >= cutoff.as_str());
-      indices.sort_by(|a, b| {
-        items[*b].upvote_count.cmp(&items[*a].upvote_count)
-      });
+      indices
+        .sort_by(|a, b| items[*b].upvote_count.cmp(&items[*a].upvote_count));
     }
   }
 }
@@ -733,18 +782,16 @@ mod tests {
 
   #[test]
   fn cycle_tab_walks_forward_and_wraps() {
-    // ADR-011 §E6 cycle order: Browse → Inbox → Library →
-    // Discoveries → History → Browse. Default landing tab is Inbox
-    // (App::new), not Browse — Tab from Inbox goes to Library first.
+    // Cycle order: Inbox → Browse → Library → Discoveries → History → Inbox.
     let mut m = FeedModel::default();
+    m.cycle_tab();
+    assert!(m.feed_tab == FeedTab::Browse);
     m.cycle_tab();
     assert!(m.feed_tab == FeedTab::Library);
     m.cycle_tab();
     assert!(m.feed_tab == FeedTab::Discoveries);
     m.cycle_tab();
     assert!(m.feed_tab == FeedTab::History);
-    m.cycle_tab();
-    assert!(m.feed_tab == FeedTab::Browse);
     m.cycle_tab();
     assert!(m.feed_tab == FeedTab::Inbox);
   }
@@ -753,13 +800,13 @@ mod tests {
   fn cycle_tab_back_walks_backward_and_wraps() {
     let mut m = FeedModel::default();
     m.cycle_tab_back();
-    assert!(m.feed_tab == FeedTab::Browse);
-    m.cycle_tab_back();
     assert!(m.feed_tab == FeedTab::History);
     m.cycle_tab_back();
     assert!(m.feed_tab == FeedTab::Discoveries);
     m.cycle_tab_back();
     assert!(m.feed_tab == FeedTab::Library);
+    m.cycle_tab_back();
+    assert!(m.feed_tab == FeedTab::Browse);
     m.cycle_tab_back();
     assert!(m.feed_tab == FeedTab::Inbox);
   }
@@ -1141,7 +1188,9 @@ mod tests {
   // the full visible_indices_for filter pipeline. Each test builds a
   // hand-crafted item set, then verifies the post-sort order.
 
-  use crate::models::{ContentType, FeedItem, SignalLevel, SourcePlatform, WorkflowState};
+  use crate::models::{
+    ContentType, FeedItem, SignalLevel, SourcePlatform, WorkflowState,
+  };
 
   fn item(url: &str, published: &str, upvotes: u32, tags: &[&str]) -> FeedItem {
     FeedItem {
@@ -1197,9 +1246,8 @@ mod tests {
 
   #[test]
   fn sort_random_is_deterministic_for_same_seed() {
-    let items: Vec<FeedItem> = (0..10)
-      .map(|i| item(&format!("u{i}"), "2026-05-19", 0, &[]))
-      .collect();
+    let items: Vec<FeedItem> =
+      (0..10).map(|i| item(&format!("u{i}"), "2026-05-19", 0, &[])).collect();
     let mut a = (0..10).collect::<Vec<usize>>();
     let mut b = (0..10).collect::<Vec<usize>>();
     apply_sort_mode(&mut a, &items, FeedSortMode::Random, 42);
@@ -1228,10 +1276,10 @@ mod tests {
     let recent = now.format("%Y-%m-%d").to_string();
     let old = (now - chrono::Duration::days(60)).format("%Y-%m-%d").to_string();
     let items = vec![
-      item("old-low", &old, 10, &[]),       // dropped
-      item("new-low", &recent, 5, &[]),     // kept, low
-      item("old-high", &old, 1000, &[]),    // dropped despite high upvotes
-      item("new-high", &recent, 200, &[]),  // kept, high
+      item("old-low", &old, 10, &[]),      // dropped
+      item("new-low", &recent, 5, &[]),    // kept, low
+      item("old-high", &old, 1000, &[]),   // dropped despite high upvotes
+      item("new-high", &recent, 200, &[]), // kept, high
     ];
     let mut indices = vec![0, 1, 2, 3];
     apply_sort_mode(&mut indices, &items, FeedSortMode::Trending, 42);
@@ -1246,6 +1294,7 @@ mod tests {
     let scope = SubjectScope::Archive("cs");
     assert!(scope.matches(&item("a", "x", 0, &["cs.LG"])));
     assert!(scope.matches(&item("b", "x", 0, &["cs.AI", "stat.ML"])));
+    assert!(scope.matches(&item("label", "x", 0, &["Machine Learning"])));
     assert!(!scope.matches(&item("c", "x", 0, &["math.NT"])));
 
     // Bare archive id (gr-qc) — items tagged with exactly the
@@ -1259,6 +1308,7 @@ mod tests {
   fn subject_scope_category_matches_exact_code_only() {
     let scope = SubjectScope::Category("math.NT");
     assert!(scope.matches(&item("a", "x", 0, &["math.NT"])));
+    assert!(scope.matches(&item("label", "x", 0, &["Number Theory"])));
     assert!(!scope.matches(&item("b", "x", 0, &["math.AG"])));
     assert!(!scope.matches(&item("c", "x", 0, &["math.NT.subspec"])));
   }

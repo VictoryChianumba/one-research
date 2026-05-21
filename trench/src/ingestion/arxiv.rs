@@ -52,6 +52,48 @@ pub fn fetch(categories: &[String]) -> Result<Vec<FeedItem>, String> {
   parse_atom(&body)
 }
 
+/// Free-text search across arXiv (title / abstract / authors), ranked by
+/// relevance. Unlike [`fetch`], which pulls the *most recent* papers in a
+/// set of categories, this spans all of arXiv's history — so a known
+/// title resolves even when it isn't in the local cache or among recent
+/// submissions. Reuses [`parse_atom`], so results are fully-formed
+/// `FeedItem`s (categories, signal, subtopics) identical to ingested
+/// papers; they merge into `items_store` and surface like any other item.
+///
+/// `query` is the user's raw text. reqwest URL-encodes the `search_query`
+/// value, so spaces and punctuation in the title are handled without a
+/// manual encoder. The arXiv field syntax `all:` is decoded server-side.
+///
+/// The query is wrapped in quotes so arXiv treats it as a **phrase**.
+/// Unquoted multi-word text is parsed as `all:w1 OR all:w2 OR …`, which
+/// for a title like "Attention Is All You Need" ranks dozens of papers
+/// sharing those common words above the one you meant. The quoted phrase
+/// requires the words to appear contiguously, so the target paper lands
+/// on the first page of relevance-sorted results.
+pub fn fetch_search(query: &str) -> Result<Vec<FeedItem>, String> {
+  let query = query.trim();
+  if query.is_empty() {
+    return Ok(Vec::new());
+  }
+  // Strip any quotes the user typed so we control the phrase wrapping.
+  let cleaned = query.replace('"', " ");
+  let cleaned = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
+  let search_query = format!("all:\"{cleaned}\"");
+  let resp = crate::http::client()
+    .get("https://export.arxiv.org/api/query")
+    .query(&[
+      ("search_query", search_query.as_str()),
+      ("sortBy", "relevance"),
+      ("max_results", "50"),
+    ])
+    .send()
+    .map_err(|e| format!("HTTP request failed: {e}"))?;
+  let body = crate::http::read_body(resp)
+    .map_err(|e| format!("Failed to read response body: {e}"))?;
+
+  parse_atom(&body)
+}
+
 /// Free-text arXiv search using `search_query=all:{query}`.
 pub fn search_query(
   query: &str,

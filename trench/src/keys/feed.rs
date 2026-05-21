@@ -6,7 +6,9 @@ use super::super::{
   truncate_for_notif,
 };
 use super::remember_fulltext_paper_context;
-use crate::app::{App, AppView, FeedTab, PaneId, RepoContext, RepoPane};
+use crate::app::{
+  App, AppView, BrowseFocus, FeedTab, PaneId, RepoContext, RepoPane,
+};
 use crate::models::WorkflowState;
 
 pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
@@ -48,10 +50,13 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
     }
   }
 
-  // Browse tab — own column navigation (h/l/j/k). Tab/BackTab/q/Esc fall
-  // through so global gestures still work. PR 2 will extend this to
-  // handle Enter (spawn fetch / open paper) and `p` (promote category).
-  if app.feed.feed_tab == FeedTab::Browse {
+  // Browse tab — owns its local subject rail vs feed focus when no
+  // transient input surface is active. Search/filter must receive keys
+  // first because they replace the right companion pane while open.
+  if app.feed.feed_tab == FeedTab::Browse
+    && !app.feed.search_active
+    && !app.feed.filter_focus
+  {
     if handle_browse_tab(key, app) {
       return;
     }
@@ -77,7 +82,6 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
         app.feed.exit_filter_focus();
       }
       KeyCode::Esc => {
-        app.clear_filters();
         app.feed.exit_filter_focus();
       }
       _ => {}
@@ -256,12 +260,61 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
 /// consumed; false lets Tab/BackTab/q/Esc reach the generic feed
 /// handler so global gestures still work.
 ///
-/// PR 1 scope: column navigation only — h/l shift focused column, j/k
-/// move cursor within focused column. Cascading reset: moving Groups
-/// resets Archives/Categories cursors; moving Archives resets Categories.
-/// Enter (load papers) and `p` (promote category) land in PR 2.
+/// Rail focus owns taxonomy navigation, promotion, and subject-follow.
+/// Feed focus falls through to the normal feed handler for paper actions.
 fn handle_browse_tab(key: KeyEvent, app: &mut App) -> bool {
-  match key.code {
+  if app.browse.focus == BrowseFocus::Feed {
+    app.focus.focused_pane = PaneId::Feed;
+    match key.code {
+      KeyCode::Char('l') | KeyCode::Right => {
+        app.browse.focus = BrowseFocus::Rail;
+        true
+      }
+      KeyCode::Char('j') | KeyCode::Down => {
+        if kbd_scroll_ok(app) {
+          app.move_down();
+        }
+        true
+      }
+      KeyCode::Char('k') | KeyCode::Up => {
+        if kbd_scroll_ok(app) {
+          app.move_up();
+        }
+        true
+      }
+      KeyCode::Char('g') => {
+        app.go_to_top();
+        true
+      }
+      KeyCode::Char('G') => {
+        app.go_to_bottom();
+        true
+      }
+      _ => false,
+    }
+  } else {
+    handle_browse_rail_key(key, app)
+  }
+}
+
+fn handle_browse_rail_key(key: KeyEvent, app: &mut App) -> bool {
+  // Moving the rail cursor or drilling changes which subject is followed.
+  // When subject-follow is on, that shifts the feed scope, so the visible
+  // cache and cursor must be reset afterwards (see `toggle_subject_follow`).
+  // `'p'` (promotion) and `'x'/'F'` (follow toggle, which resets itself)
+  // are excluded.
+  let scope_moving = matches!(
+    key.code,
+    KeyCode::Char('j' | 'k' | 'h' | 'l')
+      | KeyCode::Down
+      | KeyCode::Up
+      | KeyCode::Left
+      | KeyCode::Right
+      | KeyCode::Backspace
+      | KeyCode::Esc
+      | KeyCode::Enter
+  );
+  let consumed = match key.code {
     KeyCode::Char('j') | KeyCode::Down => {
       // Refresh the count bound in case the level changed since last
       // navigation (e.g. drill-back).
@@ -278,12 +331,22 @@ fn handle_browse_tab(key: KeyEvent, app: &mut App) -> bool {
     }
     KeyCode::Char('h') | KeyCode::Left | KeyCode::Backspace | KeyCode::Esc => {
       // ADR-011 §E2: pop one drill level. At root this is a no-op
-      // (the drill_back impl handles that internally).
-      app.browse.drill_back();
+      // for the drill stack, so h/Left returns to the feed pane.
+      if app.browse.rail_path.is_empty() {
+        app.browse.focus = BrowseFocus::Feed;
+        app.focus.focused_pane = PaneId::Feed;
+      } else {
+        app.browse.drill_back();
+      }
       true
     }
-    KeyCode::Char('l') | KeyCode::Right | KeyCode::Enter => {
-      // Drill or fetch depending on the current depth.
+    KeyCode::Char('l') | KeyCode::Right => {
+      // Drill through Groups / Archives. At Category leaves, `l` enters
+      // the paper feed; `Enter` remains the load-recent action.
+      drill_or_enter_feed(app);
+      true
+    }
+    KeyCode::Enter => {
       drill_or_fetch(app);
       true
     }
@@ -293,37 +356,53 @@ fn handle_browse_tab(key: KeyEvent, app: &mut App) -> bool {
       toggle_browse_promotion_for_selected(app);
       true
     }
-    KeyCode::Char('F') => {
-      // ADR-011 §E4: subject-follow quick-toggle. Capital F (no
-      // leader) flips the toggle without opening the filter pane.
-      // Rail footer renders the current state so the user can always
-      // see it.
-      app.feed.subject_follow = !app.feed.subject_follow;
-      app.status_message = Some(
-        if app.feed.subject_follow {
-          "Subject follow ON — feed narrows to rail subject"
-        } else {
-          "Subject follow OFF — feed shows everything"
-        }
-        .to_string(),
-      );
+    KeyCode::Char('x' | 'F') => {
+      toggle_subject_follow(app);
       true
     }
     _ => false,
+  };
+  if consumed && scope_moving && app.feed.subject_follow {
+    app.reset_active_feed_position();
+  }
+  consumed
+}
+
+fn drill_or_enter_feed(app: &mut App) {
+  if let Some(target) = app.browse.drill_target() {
+    app.browse.drill_into(target);
+  } else {
+    app.browse.focus = BrowseFocus::Feed;
+    app.focus.focused_pane = PaneId::Feed;
   }
 }
 
-/// On Enter / l / Right: drill one level deeper when the cursor is on
-/// a Group or Archive; fetch the category's recent papers when on a
-/// Category leaf (no further drill).
+fn toggle_subject_follow(app: &mut App) {
+  app.feed.subject_follow = !app.feed.subject_follow;
+  // The visible set just changed shape (scoped <-> everything). Drop the
+  // stale visible cache and clamp the cursor so `selected_item()` resolves
+  // against the same list the feed pane now renders — otherwise Enter
+  // opens whatever sat at the old index in the unscoped list.
+  app.reset_active_feed_position();
+  app.status_message = Some(
+    if app.feed.subject_follow {
+      "Subject follow ON — feed narrows to rail subject"
+    } else {
+      "Subject follow OFF — feed shows everything"
+    }
+    .to_string(),
+  );
+}
+
+/// On Enter: drill one level deeper when the cursor is on a Group or
+/// Archive; fetch the category's recent papers when on a Category leaf.
 fn drill_or_fetch(app: &mut App) {
   if let Some(target) = app.browse.drill_target() {
     app.browse.drill_into(target);
     return;
   }
   // At depth 2 (Categories) — Enter fires a fetch via the existing
-  // ADR-010 §D3 worker pipeline. PR 3 of ADR-011 wires subject-follow
-  // to also scope the feed when this fires.
+  // ADR-010 §D3 worker pipeline.
   spawn_browse_fetch_for_selected(app);
 }
 
@@ -687,6 +766,22 @@ fn handle_search_bar_input(key: KeyEvent, app: &mut App) {
       app.reset_active_feed_position();
     }
     KeyCode::Enter => {
+      // Submit: pull matches from arXiv (title/abstract/authors) so a
+      // paper that isn't cached locally still resolves. Results merge
+      // into the store and surface through the retained query filter.
+      // `exit_search` keeps the query text, so the filter stays applied.
+      let query = app.feed.search_query.trim().to_string();
+      if !query.is_empty() && !app.feed.search_loading {
+        app.feed.search_loading = true;
+        app.set_notification(format!(
+          "Searching arXiv: {}…",
+          truncate_for_notif(&query, 40)
+        ));
+        crate::browse::pipeline::spawn_arxiv_search(
+          query,
+          app.browse.tx.clone(),
+        );
+      }
       app.feed.exit_search();
     }
     KeyCode::Backspace => {

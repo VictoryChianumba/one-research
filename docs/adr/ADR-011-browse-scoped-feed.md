@@ -1,4 +1,4 @@
-# ADR-011 — Browse is the feed surface itself, scoped by a left-rail subject filter
+# ADR-011 — Browse is the feed surface itself, scoped by a right-rail subject filter
 
 - **Status:** Accepted (2026-05-19). All three PRs landed: PR 1 (this ADR + `BrowseModel` rail refactor with `rail_path` + `rail_cursor` replacing the three parallel cursors + single-column drill UI in `ui/layout/browse.rs` + tab-order swap to Browse-first in `feed/mod.rs` + `keys/reader.rs` + `ui/layout/title.rs` + two cycle-test updates + 8 new rail-state tests; commit `bddb34a`). PR 2 (`FeedSortMode { Dated, Random, Popular, Trending }` enum + `sort_mode` + `subject_follow` + `random_seed` fields on `FeedModel` + `apply_sort_mode` helper + `SubjectScope` predicate + `visible_indices_for` extended with both seams + `selected_url` / `set_workflow_state_at_cursor` signatures gain `&BrowseModel` + `F` quick-toggle in `handle_browse_tab` + rail footer `Follow: ✓/✗` indicator + filter pane Sort section + Browse section + 7 inline tests covering the four sort modes and the two SubjectScope arms; uncommitted at flip time). PR 3 (Subject column in Browse-only branch of `draw_item_table` reading `domain_tags` via `arxiv_taxonomy::find_category`; arxiv.rs ingestion now preserves raw category codes alongside human labels in `domain_tags` so the subject-follow predicate and Subject column both resolve correctly + `scripts/check-subject-browser.sh` extended with P1-P5 invariants + README Subject Browser / Sort modes sections rewritten + flip to Accepted; uncommitted at flip time).
 - **Date:** 2026-05-19
@@ -11,7 +11,7 @@
 Reshape the Browse tab so it stops being *"a taxonomy navigator that loads papers into a side panel"* and becomes *"the main reading surface itself, with an optional subject-scope filter."* The user's framing from 2026-05-19: *"It's not exactly doing anything for you"* — referring to the 3-column Miller layout consuming the full pane width without earning that real estate.
 
 After the slice, the Browse tab presents:
-1. A narrow left rail that shows one taxonomy level at a time and replaces — not stacks — when you drill in. Breadcrumb up top.
+1. A narrow right rail that shows one taxonomy level at a time and replaces — not stacks — when you drill in. Breadcrumb up top.
 2. The actual feed table on the right, taking the rest of the pane. Same shape as Inbox/Library, plus a new **Subject** column.
 3. New sort modes (`dated`/`random`/`popular`/`trending`) selectable from the filter pane.
 4. A subject-follow toggle that, when ON, narrows the feed to whatever subject the rail is currently drilled into.
@@ -50,7 +50,7 @@ The 3-column Miller layout is removed because the user found it isn't *doing any
 
 #### E1. Browse is the feed surface itself; the rail is a scope filter
 
-The right-hand area of the Browse tab is the actual `draw_item_table` (or a Browse-specific variant of it), populated from `workspace.items_store.items()` and filtered by the rail's current subject scope. There is no separate "Recent papers" pane anymore.
+The left-hand area of the Browse tab is the actual `draw_item_table` (or a Browse-specific variant of it), populated from `workspace.items_store.items()` and filtered by the rail's current subject scope. There is no separate "Recent papers" pane anymore.
 
 Subject-follow off (the default): the feed area shows the mixed view across every subscribed category plus any browse-fetched items. The rail navigates the taxonomy independently — it does not scope the feed.
 
@@ -98,11 +98,11 @@ The Browse feed table gains a leading **Subject** column (e.g., `cs.LG` or `Math
 
 This is a *render-only* decision. The Subject data already exists on every `FeedItem` via `domain_tags`. The Browse renderer prepends the column; other tabs don't.
 
-#### E6. Tab order: Browse first
+#### E6. Tab order: Inbox first, Browse second
 
-`cycle_tab` order becomes `Browse → Inbox → Library → Discoveries → History → Browse`. Default landing tab stays **Inbox**, not Browse — the user wants their curated feed on launch, not the firehose. `Tab` from Inbox cycles to Library (forward) or Browse (backward / `Shift-Tab`).
+`cycle_tab` order becomes `Inbox → Browse → Library → Discoveries → History → Inbox`. Default landing tab stays **Inbox** — the user wants their curated feed on launch, with Browse adjacent as the corpus surface. `Tab` from Inbox cycles to Browse; `Shift-Tab` from Inbox cycles to History.
 
-The reasoning the user gave: *"the browse feed should be the first one because that has everything"* — Browse is the corpus surface, naturally the leftmost / first tab. Inbox is the day-to-day, second. Library is what you've engaged with, third. Discoveries is AI-driven search, fourth. History is the audit trail, last.
+The updated reasoning: Inbox remains the day-to-day first surface; Browse is the next step out from the curated feed when the user wants the broader corpus. Library is what you've engaged with, Discoveries is AI-driven search, and History is the audit trail.
 
 ### Invariants for PR 3 tripwire (extends `scripts/check-subject-browser.sh` from O1-O5 → adds P1-P5)
 

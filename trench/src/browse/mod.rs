@@ -27,15 +27,17 @@ pub enum BrowseMessage {
   /// Successful fetch — items will be merged into `workspace.items` by
   /// the shared dedup helper, then the `category → Vec<url>` mapping
   /// is recorded in `BrowseModel.loaded_categories`.
-  Items {
-    category: String,
-    items: Vec<FeedItem>,
-  },
+  Items { category: String, items: Vec<FeedItem> },
   /// Fetch failed (HTTP / parse error). The category is removed from
   /// `inflight` and a status notification is shown. No partial items
   /// land in the cache.
-  Error {
-    category: String,
-    error: String,
-  },
+  Error { category: String, error: String },
+  /// Free-text arXiv search results (see `pipeline::spawn_arxiv_search`).
+  /// Reuses the long-lived browse channel rather than its own — search,
+  /// like a category fetch, is "async arXiv items → merge into the
+  /// store." Items merge via the shared dedup helper; unlike `Items`
+  /// these are *not* recorded in `loaded_categories` (a free-text query
+  /// isn't a taxonomy node). On error the worker sends an empty `items`
+  /// and logs the cause, so the search-loading flag always clears.
+  SearchResults { query: String, items: Vec<FeedItem> },
 }

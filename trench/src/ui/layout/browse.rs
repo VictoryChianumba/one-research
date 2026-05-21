@@ -1,13 +1,13 @@
 //! Subject Browser tab renderer (ADR-011).
 //!
-//! Single left-rail with drill-replace semantics. The rail shows one
+//! Single right-side rail with drill-replace semantics. The rail shows one
 //! taxonomy level at a time:
 //!     - Groups (default)
 //!     - Archives of a selected Group (after one `Enter` drill)
 //!     - Categories of a selected Archive (after two drills)
 //!
 //! A one-line breadcrumb sits above the rail showing the current path
-//! (`Mathematics ›` or `Mathematics › Mathematics ›`). The right-hand
+//! (`Mathematics ›` or `Mathematics › Mathematics ›`). The left-hand
 //! pane is the regular feed table — populated by `draw_feed_pane` in
 //! `main_row.rs`. There is no longer a separate "details panel" — the
 //! ADR-010 `draw_browse_detail_panel` was deleted in PR 1 of ADR-011.
@@ -16,15 +16,15 @@
 //! render with a leading `★` marker (ADR-010 §D5 stays in force).
 
 use ratatui::{
+  Frame,
   layout::Rect,
   style::{Modifier, Style},
   text::{Line, Span},
   widgets::Paragraph,
-  Frame,
 };
 
 use super::widgets::{pane_inset, truncate_str};
-use crate::app::BrowseModel;
+use crate::app::{BrowseFocus, BrowseModel};
 use crate::models::arxiv_taxonomy::TAXONOMY;
 
 /// Render the taxonomy rail into the area allocated by `main_row.rs`.
@@ -68,29 +68,35 @@ pub fn draw_browse_tab(
     None
   };
 
-  draw_breadcrumb(frame, browse, theme, breadcrumb_area);
+  let rail_focused = browse.focus == BrowseFocus::Rail;
+
+  draw_breadcrumb(frame, browse, theme, breadcrumb_area, rail_focused);
   draw_rail_rows(frame, browse, promoted, theme, body);
   if let Some(fa) = footer_area {
-    draw_rail_footer(frame, subject_follow, theme, fa);
+    draw_rail_footer(frame, subject_follow, theme, fa, rail_focused);
   }
 }
 
-/// Subject-follow indicator pinned at the bottom of the rail. Renders
-/// `Follow: ✓` (accent) or `Follow: ✗` (dim). Toggled via `F`.
+/// Subject-follow indicator pinned at the bottom of the rail. Toggled
+/// via `x` while the rail is focused.
 fn draw_rail_footer(
   frame: &mut Frame,
   subject_follow: bool,
   theme: &ui_theme::Theme,
   area: Rect,
+  focused: bool,
 ) {
-  let (label, label_style) = if subject_follow {
+  let (label, mut label_style) = if subject_follow {
     (
-      "Follow: ✓",
+      "Follow: x",
       Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
     )
   } else {
-    ("Follow: ✗", Style::default().fg(theme.text_dim))
+    ("Follow: .", Style::default().fg(theme.text_dim))
   };
+  if !focused {
+    label_style = Style::default().fg(theme.border);
+  }
   let text = truncate_str(label, area.width.saturating_sub(1) as usize);
   frame.render_widget(
     Paragraph::new(Span::styled(format!(" {text}"), label_style)),
@@ -103,14 +109,17 @@ fn draw_breadcrumb(
   browse: &BrowseModel,
   theme: &ui_theme::Theme,
   area: Rect,
+  focused: bool,
 ) {
   let crumbs = breadcrumb_for(browse);
   let crumb = truncate_str(&crumbs, area.width.saturating_sub(1) as usize);
+  let style = if focused {
+    Style::default().fg(theme.header).add_modifier(Modifier::BOLD)
+  } else {
+    Style::default().fg(theme.text_dim)
+  };
   frame.render_widget(
-    Paragraph::new(Span::styled(
-      format!(" {crumb}"),
-      Style::default().fg(theme.header).add_modifier(Modifier::BOLD),
-    )),
+    Paragraph::new(Span::styled(format!(" {crumb}"), style)),
     Rect { height: 1, ..area },
   );
 }
@@ -136,6 +145,7 @@ fn draw_rail_rows(
   theme: &ui_theme::Theme,
   area: Rect,
 ) {
+  let rail_focused = browse.focus == BrowseFocus::Rail;
   let selected = browse.rail_cursor.selected();
   let len = browse.current_level_len();
   let visible = visible_range(selected, len, area.height);
@@ -151,6 +161,7 @@ fn draw_rail_rows(
         rail_row(
           theme,
           i == selected,
+          rail_focused,
           /* marker = */ None,
           g.name,
           Some(g.archives.len()),
@@ -169,6 +180,7 @@ fn draw_rail_rows(
           rail_row(
             theme,
             i == selected,
+            rail_focused,
             None,
             a.name,
             Some(a.categories.len()),
@@ -192,7 +204,15 @@ fn draw_rail_rows(
           };
           let is_promoted = promoted.iter().any(|p| p == c.code);
           let marker = if is_promoted { Some("★") } else { None };
-          rail_row(theme, i == selected, marker, &label, None, max_text)
+          rail_row(
+            theme,
+            i == selected,
+            rail_focused,
+            marker,
+            &label,
+            None,
+            max_text,
+          )
         })
         .collect()
     }
@@ -207,6 +227,7 @@ fn draw_rail_rows(
 fn rail_row(
   theme: &ui_theme::Theme,
   selected: bool,
+  focused: bool,
   marker: Option<&'static str>,
   label: &str,
   count: Option<usize>,
@@ -216,9 +237,10 @@ fn rail_row(
   let marker_w = 1;
   let label_w = width.saturating_sub(marker_w + count_w);
   let truncated = truncate_str(label, label_w);
-  let text_style = row_text_style(theme, selected);
-  let marker_style = Style::default().fg(theme.accent);
-  let count_style = if selected {
+  let text_style = row_text_style(theme, selected, focused);
+  let marker_style =
+    Style::default().fg(if focused { theme.accent } else { theme.border });
+  let count_style = if selected && focused {
     theme.style_selection_dim()
   } else {
     Style::default().fg(theme.text_dim)
@@ -226,7 +248,10 @@ fn rail_row(
 
   let mut spans = vec![
     Span::styled(marker.unwrap_or(" ").to_string(), marker_style),
-    Span::styled(format!("{:<label_w$}", truncated, label_w = label_w), text_style),
+    Span::styled(
+      format!("{:<label_w$}", truncated, label_w = label_w),
+      text_style,
+    ),
   ];
   if let Some(n) = count {
     spans.push(Span::styled(format!(" {n:>2} "), count_style));
@@ -234,9 +259,15 @@ fn rail_row(
   Line::from(spans)
 }
 
-fn row_text_style(theme: &ui_theme::Theme, selected: bool) -> Style {
-  if selected {
+fn row_text_style(
+  theme: &ui_theme::Theme,
+  selected: bool,
+  focused: bool,
+) -> Style {
+  if selected && focused {
     theme.style_selection_text()
+  } else if selected {
+    Style::default().fg(theme.header)
   } else {
     Style::default().fg(theme.text_dim)
   }
@@ -259,4 +290,3 @@ fn visible_range(
   let end = (start + visible).min(len);
   start..end
 }
-

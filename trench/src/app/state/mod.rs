@@ -21,7 +21,9 @@ mod theme_picker;
 mod view_flags;
 
 pub use async_jobs::AsyncJobs;
-pub use browse::BrowseModel;
+#[cfg(test)]
+pub use browse::RailNode;
+pub use browse::{BrowseFocus, BrowseModel};
 pub use chat::ChatState;
 pub use debounce::DebounceState;
 pub use discovery::DiscoveryModel;

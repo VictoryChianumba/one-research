@@ -65,7 +65,9 @@ pub fn find_category(code: &str) -> Option<&'static Category> {
 /// Iterate every category across every group. Used by tripwire K1 to
 /// assert the table size and by the Browser to compute column-4 counts.
 pub fn all_categories() -> impl Iterator<Item = &'static Category> {
-  TAXONOMY.iter().flat_map(|g| g.archives.iter().flat_map(|a| a.categories.iter()))
+  TAXONOMY
+    .iter()
+    .flat_map(|g| g.archives.iter().flat_map(|a| a.categories.iter()))
 }
 
 /// Total number of top-level groups. Locked by tripwire K1 at 8 — arXiv
@@ -88,68 +90,122 @@ pub const TAXONOMY: &[Group] = &[
         id: "astro-ph",
         name: "Astrophysics",
         categories: &[
-          Category { code: "astro-ph.CO", name: "Cosmology and Nongalactic Astrophysics" },
-          Category { code: "astro-ph.EP", name: "Earth and Planetary Astrophysics" },
+          Category {
+            code: "astro-ph.CO",
+            name: "Cosmology and Nongalactic Astrophysics",
+          },
+          Category {
+            code: "astro-ph.EP",
+            name: "Earth and Planetary Astrophysics",
+          },
           Category { code: "astro-ph.GA", name: "Astrophysics of Galaxies" },
-          Category { code: "astro-ph.HE", name: "High Energy Astrophysical Phenomena" },
-          Category { code: "astro-ph.IM", name: "Instrumentation and Methods for Astrophysics" },
-          Category { code: "astro-ph.SR", name: "Solar and Stellar Astrophysics" },
+          Category {
+            code: "astro-ph.HE",
+            name: "High Energy Astrophysical Phenomena",
+          },
+          Category {
+            code: "astro-ph.IM",
+            name: "Instrumentation and Methods for Astrophysics",
+          },
+          Category {
+            code: "astro-ph.SR",
+            name: "Solar and Stellar Astrophysics",
+          },
         ],
       },
       Archive {
         id: "cond-mat",
         name: "Condensed Matter",
         categories: &[
-          Category { code: "cond-mat.dis-nn", name: "Disordered Systems and Neural Networks" },
-          Category { code: "cond-mat.mes-hall", name: "Mesoscale and Nanoscale Physics" },
+          Category {
+            code: "cond-mat.dis-nn",
+            name: "Disordered Systems and Neural Networks",
+          },
+          Category {
+            code: "cond-mat.mes-hall",
+            name: "Mesoscale and Nanoscale Physics",
+          },
           Category { code: "cond-mat.mtrl-sci", name: "Materials Science" },
           Category { code: "cond-mat.other", name: "Other Condensed Matter" },
           Category { code: "cond-mat.quant-gas", name: "Quantum Gases" },
           Category { code: "cond-mat.soft", name: "Soft Condensed Matter" },
-          Category { code: "cond-mat.stat-mech", name: "Statistical Mechanics" },
-          Category { code: "cond-mat.str-el", name: "Strongly Correlated Electrons" },
+          Category {
+            code: "cond-mat.stat-mech",
+            name: "Statistical Mechanics",
+          },
+          Category {
+            code: "cond-mat.str-el",
+            name: "Strongly Correlated Electrons",
+          },
           Category { code: "cond-mat.supr-con", name: "Superconductivity" },
         ],
       },
       Archive {
         id: "gr-qc",
         name: "General Relativity and Quantum Cosmology",
-        categories: &[Category { code: "gr-qc", name: "General Relativity and Quantum Cosmology" }],
+        categories: &[Category {
+          code: "gr-qc",
+          name: "General Relativity and Quantum Cosmology",
+        }],
       },
       Archive {
         id: "hep-ex",
         name: "High Energy Physics — Experiment",
-        categories: &[Category { code: "hep-ex", name: "High Energy Physics — Experiment" }],
+        categories: &[Category {
+          code: "hep-ex",
+          name: "High Energy Physics — Experiment",
+        }],
       },
       Archive {
         id: "hep-lat",
         name: "High Energy Physics — Lattice",
-        categories: &[Category { code: "hep-lat", name: "High Energy Physics — Lattice" }],
+        categories: &[Category {
+          code: "hep-lat",
+          name: "High Energy Physics — Lattice",
+        }],
       },
       Archive {
         id: "hep-ph",
         name: "High Energy Physics — Phenomenology",
-        categories: &[Category { code: "hep-ph", name: "High Energy Physics — Phenomenology" }],
+        categories: &[Category {
+          code: "hep-ph",
+          name: "High Energy Physics — Phenomenology",
+        }],
       },
       Archive {
         id: "hep-th",
         name: "High Energy Physics — Theory",
-        categories: &[Category { code: "hep-th", name: "High Energy Physics — Theory" }],
+        categories: &[Category {
+          code: "hep-th",
+          name: "High Energy Physics — Theory",
+        }],
       },
       Archive {
         id: "math-ph",
         name: "Mathematical Physics",
-        categories: &[Category { code: "math-ph", name: "Mathematical Physics" }],
+        categories: &[Category {
+          code: "math-ph",
+          name: "Mathematical Physics",
+        }],
       },
       Archive {
         id: "nlin",
         name: "Nonlinear Sciences",
         categories: &[
-          Category { code: "nlin.AO", name: "Adaptation and Self-Organizing Systems" },
+          Category {
+            code: "nlin.AO",
+            name: "Adaptation and Self-Organizing Systems",
+          },
           Category { code: "nlin.CD", name: "Chaotic Dynamics" },
-          Category { code: "nlin.CG", name: "Cellular Automata and Lattice Gases" },
+          Category {
+            code: "nlin.CG",
+            name: "Cellular Automata and Lattice Gases",
+          },
           Category { code: "nlin.PS", name: "Pattern Formation and Solitons" },
-          Category { code: "nlin.SI", name: "Exactly Solvable and Integrable Systems" },
+          Category {
+            code: "nlin.SI",
+            name: "Exactly Solvable and Integrable Systems",
+          },
         ],
       },
       Archive {
@@ -167,21 +223,36 @@ pub const TAXONOMY: &[Group] = &[
         name: "Physics (other)",
         categories: &[
           Category { code: "physics.acc-ph", name: "Accelerator Physics" },
-          Category { code: "physics.ao-ph", name: "Atmospheric and Oceanic Physics" },
+          Category {
+            code: "physics.ao-ph",
+            name: "Atmospheric and Oceanic Physics",
+          },
           Category { code: "physics.app-ph", name: "Applied Physics" },
-          Category { code: "physics.atm-clus", name: "Atomic and Molecular Clusters" },
+          Category {
+            code: "physics.atm-clus",
+            name: "Atomic and Molecular Clusters",
+          },
           Category { code: "physics.atom-ph", name: "Atomic Physics" },
           Category { code: "physics.bio-ph", name: "Biological Physics" },
           Category { code: "physics.chem-ph", name: "Chemical Physics" },
           Category { code: "physics.class-ph", name: "Classical Physics" },
           Category { code: "physics.comp-ph", name: "Computational Physics" },
-          Category { code: "physics.data-an", name: "Data Analysis, Statistics and Probability" },
+          Category {
+            code: "physics.data-an",
+            name: "Data Analysis, Statistics and Probability",
+          },
           Category { code: "physics.ed-ph", name: "Physics Education" },
           Category { code: "physics.flu-dyn", name: "Fluid Dynamics" },
           Category { code: "physics.gen-ph", name: "General Physics" },
           Category { code: "physics.geo-ph", name: "Geophysics" },
-          Category { code: "physics.hist-ph", name: "History and Philosophy of Physics" },
-          Category { code: "physics.ins-det", name: "Instrumentation and Detectors" },
+          Category {
+            code: "physics.hist-ph",
+            name: "History and Philosophy of Physics",
+          },
+          Category {
+            code: "physics.ins-det",
+            name: "Instrumentation and Detectors",
+          },
           Category { code: "physics.med-ph", name: "Medical Physics" },
           Category { code: "physics.optics", name: "Optics" },
           Category { code: "physics.plasm-ph", name: "Plasma Physics" },
@@ -249,19 +320,31 @@ pub const TAXONOMY: &[Group] = &[
         Category { code: "cs.AI", name: "Artificial Intelligence" },
         Category { code: "cs.AR", name: "Hardware Architecture" },
         Category { code: "cs.CC", name: "Computational Complexity" },
-        Category { code: "cs.CE", name: "Computational Engineering, Finance, and Science" },
+        Category {
+          code: "cs.CE",
+          name: "Computational Engineering, Finance, and Science",
+        },
         Category { code: "cs.CG", name: "Computational Geometry" },
         Category { code: "cs.CL", name: "Computation and Language" },
         Category { code: "cs.CR", name: "Cryptography and Security" },
-        Category { code: "cs.CV", name: "Computer Vision and Pattern Recognition" },
+        Category {
+          code: "cs.CV",
+          name: "Computer Vision and Pattern Recognition",
+        },
         Category { code: "cs.CY", name: "Computers and Society" },
         Category { code: "cs.DB", name: "Databases" },
-        Category { code: "cs.DC", name: "Distributed, Parallel, and Cluster Computing" },
+        Category {
+          code: "cs.DC",
+          name: "Distributed, Parallel, and Cluster Computing",
+        },
         Category { code: "cs.DL", name: "Digital Libraries" },
         Category { code: "cs.DM", name: "Discrete Mathematics" },
         Category { code: "cs.DS", name: "Data Structures and Algorithms" },
         Category { code: "cs.ET", name: "Emerging Technologies" },
-        Category { code: "cs.FL", name: "Formal Languages and Automata Theory" },
+        Category {
+          code: "cs.FL",
+          name: "Formal Languages and Automata Theory",
+        },
         Category { code: "cs.GL", name: "General Literature" },
         Category { code: "cs.GR", name: "Graphics" },
         Category { code: "cs.GT", name: "Computer Science and Game Theory" },
@@ -275,7 +358,10 @@ pub const TAXONOMY: &[Group] = &[
         Category { code: "cs.MS", name: "Mathematical Software" },
         Category { code: "cs.NA", name: "Numerical Analysis" },
         Category { code: "cs.NE", name: "Neural and Evolutionary Computing" },
-        Category { code: "cs.NI", name: "Networking and Internet Architecture" },
+        Category {
+          code: "cs.NI",
+          name: "Networking and Internet Architecture",
+        },
         Category { code: "cs.OH", name: "Other Computer Science" },
         Category { code: "cs.OS", name: "Operating Systems" },
         Category { code: "cs.PF", name: "Performance" },
@@ -324,7 +410,10 @@ pub const TAXONOMY: &[Group] = &[
         Category { code: "q-fin.PR", name: "Pricing of Securities" },
         Category { code: "q-fin.RM", name: "Risk Management" },
         Category { code: "q-fin.ST", name: "Statistical Finance" },
-        Category { code: "q-fin.TR", name: "Trading and Market Microstructure" },
+        Category {
+          code: "q-fin.TR",
+          name: "Trading and Market Microstructure",
+        },
       ],
     }],
   },
@@ -418,6 +507,10 @@ mod tests {
     codes.sort_unstable();
     let n = codes.len();
     codes.dedup();
-    assert_eq!(codes.len(), n, "category codes must be unique across the table");
+    assert_eq!(
+      codes.len(),
+      n,
+      "category codes must be unique across the table"
+    );
   }
 }

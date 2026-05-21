@@ -41,8 +41,7 @@ impl App {
       return ItemMergeOutcome::Updated;
     }
     if let Some(aid) = arxiv_id_from_url(&item.url) {
-      if let Some(pos) =
-        self.workspace.items_store.find_index_by_arxiv_id(aid)
+      if let Some(pos) = self.workspace.items_store.find_index_by_arxiv_id(aid)
       {
         if item.source_platform == SourcePlatform::ArXiv {
           let ws = self
@@ -396,6 +395,25 @@ impl App {
           log::error!("browse[{category}]: {error}");
           self.status_message = Some(format!("{category}: fetch failed"));
         }
+        BrowseMessage::SearchResults { query, items } => {
+          let n = items.len();
+          for item in items {
+            match self.merge_fetched_item(item) {
+              ItemMergeOutcome::NewPushed => {
+                had_structural_changes = true;
+                had_updates = true;
+              }
+              ItemMergeOutcome::Updated => had_updates = true,
+              ItemMergeOutcome::DroppedDuplicate => {}
+            }
+          }
+          self.feed.search_loading = false;
+          self.status_message = Some(if n == 0 {
+            format!("No arXiv results for “{query}”")
+          } else {
+            format!("Found {n} arXiv result(s) for “{query}”")
+          });
+        }
       }
     }
 
@@ -588,7 +606,10 @@ mod tests {
     let mut app = App::new();
     let url = "test://merge/persisted-state-005";
     // Pre-seed a persisted workflow state for this URL.
-    app.workspace.persisted_states.insert(url.to_string(), WorkflowState::Queued);
+    app
+      .workspace
+      .persisted_states
+      .insert(url.to_string(), WorkflowState::Queued);
 
     // Incoming item has WorkflowState::Inbox by default — should be
     // overridden by the persisted state at merge time.
@@ -611,14 +632,10 @@ mod tests {
   fn process_incoming_browse_populates_loaded_categories() {
     let mut app = App::new();
     let category = "test-merge-cat".to_string();
-    let item_a = make_item(
-      "test://merge/browse-incoming-a-006",
-      SourcePlatform::ArXiv,
-    );
-    let item_b = make_item(
-      "test://merge/browse-incoming-b-006",
-      SourcePlatform::ArXiv,
-    );
+    let item_a =
+      make_item("test://merge/browse-incoming-a-006", SourcePlatform::ArXiv);
+    let item_b =
+      make_item("test://merge/browse-incoming-b-006", SourcePlatform::ArXiv);
     let url_a = item_a.url.clone();
     let url_b = item_b.url.clone();
 
@@ -666,6 +683,56 @@ mod tests {
     assert!(
       !app.browse.loaded_categories.contains_key(&category),
       "errors do not populate loaded_categories"
+    );
+  }
+
+  /// Regression: the visible cache is keyed only on `FeedTab`, but the
+  /// Browse list also depends on `subject_follow` + the rail drill point.
+  /// Toggling follow used to leave the stale (unscoped) index set in
+  /// place, so `selected_item()` resolved against a different list than
+  /// the feed pane rendered — pressing Enter opened whatever sat at the
+  /// old index instead of the highlighted paper. The toggle must realign
+  /// selection with the now-scoped feed.
+  #[test]
+  fn browse_subject_follow_toggle_realigns_selection_with_scoped_feed() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = App::new();
+    // One item outside the scope, one inside. With the rail drilled to
+    // the physics group's first archive (astro-ph), follow-on must hide
+    // the cs.LG paper and surface only the astro-ph one.
+    let mut cs = make_item("test://browse/cs", SourcePlatform::ArXiv);
+    cs.domain_tags = vec!["cs.LG".to_string()];
+    let mut astro = make_item("test://browse/astro", SourcePlatform::ArXiv);
+    astro.domain_tags = vec!["astro-ph.CO".to_string()];
+    let astro_url = astro.url.clone();
+    app.merge_fetched_item(cs);
+    app.merge_fetched_item(astro);
+
+    app.feed.feed_tab = crate::app::FeedTab::Browse;
+    // Drill to physics → archives level; cursor at row 0 = astro-ph.
+    app.browse.rail_path = vec![crate::app::RailNode::Group("physics")];
+    assert_eq!(app.browse.focus, crate::app::BrowseFocus::Rail);
+
+    // Follow off: both papers visible. Warm the cache at index 0.
+    assert_eq!(app.visible_count(), 2, "unscoped feed shows both papers");
+
+    // Toggle subject-follow through the real key path ('x' on the rail).
+    crate::keys::dispatch(
+      KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE),
+      &mut app,
+    );
+    assert!(app.feed.subject_follow, "'x' turns subject-follow on");
+
+    // Scoped feed now holds only the astro-ph paper, and the selection
+    // (read by Enter via `selected_item`) must point at it — not the
+    // stale index-0 item from the unscoped list.
+    assert_eq!(app.visible_count(), 1, "feed narrows to the scoped archive");
+    assert_eq!(
+      app.selected_item().map(|i| i.url.as_str()),
+      Some(astro_url.as_str()),
+      "selection must resolve against the scoped feed, so Enter opens \
+       the paper that is actually displayed",
     );
   }
 }

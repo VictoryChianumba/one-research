@@ -378,11 +378,13 @@ impl App {
   /// - `is_refreshing` — same
   /// - any open `repo_context.scroll_velocity` non-zero (momentum scroll)
   /// - `discovery_loading` — discovery agent in flight
+  /// - `feed.search_loading` — online arXiv search in flight
   /// - `settings_save_time` — TTL window for the "Saved." indicator
   pub fn has_active_animation(&self) -> bool {
     if self.async_jobs.is_loading
       || self.is_refreshing
       || self.discovery.loading
+      || self.feed.search_loading
     {
       return true;
     }
@@ -451,59 +453,18 @@ impl App {
         }
       }
     }
-    let q = self.feed.search_query_lower.as_str();
     let items = self.items_for_tab();
-    let indices: Vec<usize> = items
-      .iter()
-      .enumerate()
-      .filter(|(_, item)| {
-        // Tab-scoped pre-filter: Inbox shows only Inbox-state items, Library
-        // shows whichever workflow chip is active.
-        match self.feed.feed_tab {
-          FeedTab::Inbox => {
-            if item.workflow_state != WorkflowState::Inbox {
-              return false;
-            }
-          }
-          FeedTab::Library => {
-            if !self.feed.library_filter.matches(item.workflow_state) {
-              return false;
-            }
-          }
-          _ => {}
-        }
-        let key = if item.source_platform
-          == crate::models::SourcePlatform::HuggingFace
-        {
-          "huggingface"
-        } else {
-          &item.source_name
-        };
-        if let Some(&enabled) = self.config.sources.enabled_sources.get(key) {
-          if !enabled {
-            return false;
-          }
-        }
-        if !q.is_empty()
-          && !item.title_lower.contains(&q)
-          && !item.authors_lower.iter().any(|a| a.contains(&q))
-        {
-          return false;
-        }
-        if !self.feed.active_filters.tags.is_empty() {
-          let item_tags =
-            crate::tags::for_url(&self.workspace.item_tags, &item.url);
-          if !item_tags
-            .iter()
-            .any(|t| self.feed.active_filters.tags.contains(t))
-          {
-            return false;
-          }
-        }
-        self.feed.active_filters.matches(item)
-      })
-      .map(|(i, _)| i)
-      .collect();
+    // Single source of truth for the visible set across every tab: the
+    // rendered list (main_row) and selection/navigation must agree on
+    // both membership and order, otherwise relevance ranking would point
+    // the cursor at a different paper than the one drawn in row 1.
+    let indices: Vec<usize> = crate::feed::visible_indices_for(
+      &self.workspace,
+      &self.feed,
+      &self.discovery,
+      &self.browse,
+      &self.config,
+    );
     *self.render_caches.visible.borrow_mut() =
       Some((self.feed.feed_tab, indices.clone()));
     indices.iter().map(|&i| &items[i]).collect()
@@ -606,9 +567,7 @@ impl App {
       FeedTab::Inbox => self.workspace.items_store.items(),
       FeedTab::Library => self.workspace.items_store.items(),
       FeedTab::Discoveries => &self.discovery.items,
-      // Browse: renders from BrowseModel.loaded_categories (PR 2);
-      // single-slice abstraction doesn't apply. Same trick History uses.
-      FeedTab::Browse => &[],
+      FeedTab::Browse => self.workspace.items_store.items(),
       FeedTab::History => &[],
     }
   }
@@ -618,10 +577,7 @@ impl App {
       FeedTab::Inbox => self.feed.inbox_list.selected(),
       FeedTab::Library => self.feed.library_list.selected(),
       FeedTab::Discoveries => self.discovery.list.selected(),
-      // Browse owns four column cursors; this single-cursor helper is
-      // inert. handle_browse_tab intercepts navigation before this is
-      // consulted (mirror of feed/mod.rs::active_list rationale).
-      FeedTab::Browse => 0,
+      FeedTab::Browse => self.feed.inbox_list.selected(),
       FeedTab::History => self.feed.history_list.selected(),
     }
   }
@@ -649,11 +605,10 @@ impl App {
         self.discovery.list.set_count(count);
         self.discovery.list.set_selected(value);
       }
-      // Browse routes through its own column ListStates in BrowseModel;
-      // reset_active_feed_position calls this on tab switch but Browse's
-      // cursors are reset separately by the BrowseModel constructor /
-      // explicit reset in handle_browse_tab.
-      FeedTab::Browse => {}
+      FeedTab::Browse => {
+        self.feed.inbox_list.set_count(count);
+        self.feed.inbox_list.set_selected(value);
+      }
       FeedTab::History => {
         self.feed.history_list.set_count(count);
         self.feed.history_list.set_selected(value);
@@ -666,8 +621,7 @@ impl App {
       FeedTab::Inbox => self.feed.inbox_list.set_offset(value),
       FeedTab::Library => self.feed.library_list.set_offset(value),
       FeedTab::Discoveries => self.discovery.list.set_offset(value),
-      // Browse: column offsets managed by BrowseModel directly.
-      FeedTab::Browse => {}
+      FeedTab::Browse => self.feed.inbox_list.set_offset(value),
       FeedTab::History => self.feed.history_list.set_offset(value),
     }
   }

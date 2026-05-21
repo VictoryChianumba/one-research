@@ -38,6 +38,7 @@ textwrap = "0.16"
 regex = "1"
 html2text = "0.15"
 pulldown-cmark = "0.12"
+fuzzy-matcher = "0.3"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

@@ -8,13 +8,13 @@ use crate::primitives::ListState;
 /// Composition-root model for the Subject Browser tab (`FeedTab::Browse`).
 /// Sibling to `FeedModel`, `DiscoveryModel`, etc.
 ///
-/// ADR-011 reshape: a single left-rail with drill-replace semantics.
+/// ADR-011 reshape: a single right-side rail with drill-replace semantics.
 /// The rail shows one taxonomy level at a time (Groups by default).
 /// `Enter` on a Group pushes onto `rail_path` and the rail repaints
 /// to show that Group's Archives. `Enter` on an Archive drills again
 /// to Categories. `Enter` on a Category fires `spawn_browse_fetch`
 /// (the ADR-010 §D3 worker pattern) and surfaces results in the
-/// right-hand feed table. `Esc` / `h` / `Backspace` pops the path
+/// left-hand feed table. `Esc` / `h` / `Backspace` pops the path
 /// back up one level.
 ///
 /// The replaced state — `focused_column: u8`, parallel `archives` /
@@ -34,6 +34,11 @@ pub struct BrowseModel {
   /// Cursor over the current rail level's rows. Reset on every push /
   /// pop because the underlying row set changes.
   pub rail_cursor: ListState,
+
+  /// Local focus inside the Browse tab. `Tab` remains the global tab
+  /// switcher; Browse uses `h` / `l` to move between the subject rail
+  /// and the paper feed.
+  pub focus: BrowseFocus,
 
   /// Per-category list of URLs fetched in this session. The Browse
   /// renderer resolves these URLs against `workspace.items_store` via
@@ -66,6 +71,12 @@ pub enum RailNode {
   Archive(&'static str, &'static str),
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum BrowseFocus {
+  Rail,
+  Feed,
+}
+
 impl Default for BrowseModel {
   fn default() -> Self {
     Self::new()
@@ -83,6 +94,7 @@ impl BrowseModel {
     Self {
       rail_path: Vec::new(),
       rail_cursor,
+      focus: BrowseFocus::Rail,
       loaded_categories: HashMap::new(),
       inflight: HashSet::new(),
       tx,
@@ -197,6 +209,7 @@ mod tests {
   fn default_starts_at_groups_level() {
     let m = BrowseModel::new();
     assert!(m.rail_path.is_empty());
+    assert_eq!(m.focus, BrowseFocus::Rail);
     assert_eq!(m.rail_cursor.selected(), 0);
     assert_eq!(
       m.rail_cursor.count(),
@@ -264,7 +277,10 @@ mod tests {
     let mut m = BrowseModel::new();
     assert!(m.rail_selected_group().is_some());
     m.drill_into(RailNode::Group("cs"));
-    assert!(m.rail_selected_group().is_none(), "no group selected once drilled");
+    assert!(
+      m.rail_selected_group().is_none(),
+      "no group selected once drilled"
+    );
   }
 
   #[test]

@@ -13,6 +13,7 @@ use super::reader::{drawer_feed_header_line, drawer_feed_row_line};
 use super::widgets::{pane_inset, safe_truncate_chars, truncate, truncate_str};
 use crate::app::FeedTab;
 use crate::models::SourcePlatform;
+use crate::models::arxiv_taxonomy::TAXONOMY;
 
 pub fn draw_feed_pane(
   frame: &mut Frame,
@@ -46,8 +47,7 @@ pub fn draw_feed_pane(
 
   // Browse (ADR-011): the rail is rendered separately by main_row.rs;
   // here we fall through to draw_item_table so Browse's feed area
-  // looks and behaves like Inbox / Library. The Subject column scope
-  // for Browse arrives in ADR-011 PR 3.
+  // looks and behaves like Inbox / Library.
 
   // Narrow pane: switch to title-only list to avoid squished columns.
   if area.width < 70 {
@@ -844,8 +844,11 @@ pub fn draw_item_table(
 ) {
   let t = ctx.theme;
   let t_item_table = std::time::Instant::now();
+  let browse_feed_dimmed =
+    model.feed_tab == FeedTab::Browse && !ctx.browse_feed_focused;
   // Header: color carries the emphasis; no bold (single-channel emphasis).
-  let header_style = Style::default().fg(t.header);
+  let header_style =
+    Style::default().fg(if browse_feed_dimmed { t.text_dim } else { t.header });
 
   // ADR-011 §E5: Subject column appears in Browse only. Width 12 chars
   // fits codes like `astro-ph.GA` (11); longer codes like
@@ -976,17 +979,21 @@ pub fn draw_item_table(
       let is_cursor = item_idx == selected_idx;
       let in_visual =
         visual_mode && model.library_selected_urls.contains(&item.url);
-      let is_selected = is_cursor || in_visual;
+      let is_selected = (is_cursor || in_visual) && !browse_feed_dimmed;
       let (content_height, title_lines) = &window_data[i];
 
       let vm = crate::view_models::FeedRowVm::from_item(item);
 
-      let signal_style = match vm.signal {
-        crate::models::SignalLevel::Primary => Style::default().fg(t.accent),
-        crate::models::SignalLevel::Secondary => {
-          Style::default().fg(t.text_dim)
+      let signal_style = if browse_feed_dimmed {
+        Style::default().fg(t.border)
+      } else {
+        match vm.signal {
+          crate::models::SignalLevel::Primary => Style::default().fg(t.accent),
+          crate::models::SignalLevel::Secondary => {
+            Style::default().fg(t.text_dim)
+          }
+          crate::models::SignalLevel::Tertiary => Style::default().fg(t.border),
         }
-        crate::models::SignalLevel::Tertiary => Style::default().fg(t.border),
       };
 
       let row_style =
@@ -1006,8 +1013,13 @@ pub fn draw_item_table(
         if is_selected { selected_text_style } else { signal_style },
       );
       let title_cell = Cell::from(Text::from({
-        let title_style =
-          if is_selected { selected_text_style } else { Style::default() };
+        let title_style = if is_selected {
+          selected_text_style
+        } else if browse_feed_dimmed {
+          Style::default().fg(t.text_dim)
+        } else {
+          Style::default()
+        };
         let lines: Vec<Line<'static>> = title_lines
           .iter()
           .map(|s| Line::from(Span::styled(s.clone(), title_style)))
@@ -1019,28 +1031,25 @@ pub fn draw_item_table(
         item.published_at.as_str(),
         if is_selected {
           selected_text_style
+        } else if browse_feed_dimmed {
+          Style::default().fg(t.border)
         } else {
           Style::default().fg(t.text_dim)
         },
       );
 
       let cells = if show_subject_col {
-        // Pick the first arxiv-code-shaped tag from domain_tags via the
-        // taxonomy lookup. Falls back to blank when the item has no
-        // canonical code (HF / RSS items where domain_tags carries
-        // detected subtopics rather than codes).
-        let subject = item
-          .domain_tags
-          .iter()
-          .find(|t| {
-            crate::models::arxiv_taxonomy::find_category(t.as_str()).is_some()
-          })
-          .map(|s| safe_truncate_chars(s, SUBJECT_COL_W as usize).to_string())
-          .unwrap_or_default();
+        let subject = browse_subject_label(
+          item,
+          SUBJECT_COL_W as usize,
+          ctx.browse_subject_depth,
+        );
         let subject_cell = feed_cell(
           &subject,
           if is_selected {
             selected_text_style
+          } else if browse_feed_dimmed {
+            Style::default().fg(t.border)
           } else {
             Style::default().fg(t.accent)
           },
@@ -1120,6 +1129,73 @@ fn feed_cell(value: &str, style: Style) -> Cell<'static> {
     Line::from(Span::styled(value.to_string(), style)),
     Line::from(""),
   ]))
+}
+
+fn browse_subject_label(
+  item: &crate::models::FeedItem,
+  max: usize,
+  depth: usize,
+) -> String {
+  let label = item
+    .domain_tags
+    .iter()
+    .find_map(|tag| taxonomy_path_for_tag(tag))
+    .map(|path| path.label_for_depth(depth).to_string())
+    .unwrap_or_else(|| feed_source_label(item));
+  safe_truncate_chars(&label, max).to_string()
+}
+
+struct TaxonomyPath {
+  group_name: &'static str,
+  archive_name: &'static str,
+  archive_id: &'static str,
+  category_code: &'static str,
+}
+
+impl TaxonomyPath {
+  fn label_for_depth(&self, depth: usize) -> &'static str {
+    match depth {
+      0 => self.group_name,
+      1 => self.archive_name,
+      _ if self.category_code.is_empty() => self.archive_id,
+      _ => self.category_code,
+    }
+  }
+}
+
+fn taxonomy_path_for_tag(tag: &str) -> Option<TaxonomyPath> {
+  TAXONOMY.iter().find_map(|group| {
+    group.archives.iter().find_map(|archive| {
+      if archive.id.eq_ignore_ascii_case(tag)
+        || archive.name.eq_ignore_ascii_case(tag)
+      {
+        return Some(TaxonomyPath {
+          group_name: group.name,
+          archive_name: archive.name,
+          archive_id: archive.id,
+          category_code: archive
+            .categories
+            .first()
+            .map(|c| c.code)
+            .unwrap_or(""),
+        });
+      }
+      archive.categories.iter().find_map(|category| {
+        if category.code.eq_ignore_ascii_case(tag)
+          || category.name.eq_ignore_ascii_case(tag)
+        {
+          Some(TaxonomyPath {
+            group_name: group.name,
+            archive_name: archive.name,
+            archive_id: archive.id,
+            category_code: category.code,
+          })
+        } else {
+          None
+        }
+      })
+    })
+  })
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────

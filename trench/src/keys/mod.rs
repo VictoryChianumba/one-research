@@ -1002,6 +1002,13 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
       app.show_quit_popup();
     }
     KeyCode::Char('h') => {
+      if app.feed.feed_tab == FeedTab::Browse
+        && app.browse.focus == crate::app::BrowseFocus::Rail
+      {
+        app.browse.focus = crate::app::BrowseFocus::Feed;
+        app.focus.focused_pane = PaneId::Feed;
+        return;
+      }
       if app.reader_bottom.focused {
         return;
       }
@@ -1055,6 +1062,12 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
       }
     }
     KeyCode::Char('l') => {
+      if app.feed.feed_tab == FeedTab::Browse
+        && app.browse.focus == crate::app::BrowseFocus::Feed
+      {
+        app.browse.focus = crate::app::BrowseFocus::Rail;
+        return;
+      }
       if app.reader_bottom.focused {
         return;
       }

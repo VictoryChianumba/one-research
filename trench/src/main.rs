@@ -23,6 +23,7 @@ mod models;
 mod primitives;
 mod reader;
 mod sanitize;
+mod search;
 mod services;
 mod store;
 mod surfaces;

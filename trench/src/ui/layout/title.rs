@@ -1,9 +1,9 @@
 use ratatui::{
+  Frame,
   layout::{Constraint, Direction, Layout, Rect},
   style::{Modifier, Style},
   text::{Line, Span},
   widgets::Paragraph,
-  Frame,
 };
 
 use std::collections::HashSet;
@@ -85,7 +85,7 @@ fn draw_compact_title_bar(frame: &mut Frame, app: &App, area: Rect) {
   // "you can browse this many subject categories." See ADR-010 §D2.
   let browse_total = crate::models::arxiv_taxonomy::all_categories().count();
   let nav_text = format!(
-    "Browse {browse_total}  Inbox {inbox_count}  Library {library_count}  Discoveries {}{}  History {}  Total {total}",
+    "Inbox {inbox_count}  Browse {browse_total}  Library {library_count}  Discoveries {}{}  History {}  Total {total}",
     app.discovery.items.len(),
     discovery_spin,
     app.workspace.history.len(),
@@ -105,10 +105,10 @@ fn draw_compact_title_bar(frame: &mut Frame, app: &App, area: Rect) {
   let nav = Line::from(vec![
     Span::styled(WORDMARK[1], logo_style),
     Span::raw(" ".repeat(logo_gap)),
-    Span::styled("Browse ", browse_style),
-    Span::styled(browse_total.to_string(), browse_style),
-    Span::styled("  Inbox ", inbox_style),
+    Span::styled("Inbox ", inbox_style),
     Span::styled(inbox_count.to_string(), inbox_style),
+    Span::styled("  Browse ", browse_style),
+    Span::styled(browse_total.to_string(), browse_style),
     Span::styled("  Library ", library_style),
     Span::styled(library_count.to_string(), library_style),
     Span::styled("  Discoveries ", discoveries_style),
@@ -148,12 +148,13 @@ pub fn draw_search_row(frame: &mut Frame, app: &App, area: Rect) {
     .constraints([Constraint::Min(0), Constraint::Length(RIGHT_COL_WIDTH)])
     .split(content_area);
 
-  let search_text =
-    if app.feed.search_active || !app.feed.search_query.is_empty() {
-      format!(" / {}", app.feed.search_query)
-    } else {
-      " / Search items...".to_string()
-    };
+  let search_text = if !app.feed.search_query.is_empty() {
+    format!(" / {}", app.feed.search_query)
+  } else if app.feed.search_active {
+    " / search · author:  year:  ti:  abs:".to_string()
+  } else {
+    " / Search items...".to_string()
+  };
   let search_style = if app.feed.search_active {
     Style::default().fg(t.text)
   } else {

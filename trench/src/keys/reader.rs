@@ -94,19 +94,19 @@ pub(super) fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
     }
     KeyCode::Tab => {
       app.feed.feed_tab = match app.feed.feed_tab {
-        FeedTab::Browse => FeedTab::Inbox,
-        FeedTab::Inbox => FeedTab::Library,
+        FeedTab::Inbox => FeedTab::Browse,
+        FeedTab::Browse => FeedTab::Library,
         FeedTab::Library => FeedTab::Discoveries,
         FeedTab::Discoveries => FeedTab::History,
-        FeedTab::History => FeedTab::Browse,
+        FeedTab::History => FeedTab::Inbox,
       };
       app.reset_active_feed_position();
     }
     KeyCode::BackTab => {
       app.feed.feed_tab = match app.feed.feed_tab {
-        FeedTab::Browse => FeedTab::History,
-        FeedTab::Inbox => FeedTab::Browse,
-        FeedTab::Library => FeedTab::Inbox,
+        FeedTab::Inbox => FeedTab::History,
+        FeedTab::Browse => FeedTab::Inbox,
+        FeedTab::Library => FeedTab::Browse,
         FeedTab::Discoveries => FeedTab::Library,
         FeedTab::History => FeedTab::Discoveries,
       };

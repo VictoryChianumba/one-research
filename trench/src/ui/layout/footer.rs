@@ -1,9 +1,9 @@
 use ratatui::{
+  Frame,
   layout::{Constraint, Direction, Layout, Rect},
   style::{Modifier, Style},
   text::{Line, Span},
   widgets::Paragraph,
-  Frame,
 };
 
 use crate::app::{App, FeedTab, FocusedReader, NotesMode, PaneId};
@@ -111,7 +111,7 @@ fn footer_command_line(app: &App) -> Line<'static> {
   if app.feed.filter_focus {
     spans.push(Span::styled("filters", accent));
     spans.push(Span::styled(
-      ": j/k move | Space toggle | c clear | f/Tab return | Esc clear",
+      ": j/k move | Space toggle | c clear | f/Tab/Esc close",
       ordinary,
     ));
     return Line::from(spans);
@@ -195,15 +195,23 @@ fn footer_command_line(app: &App) -> Line<'static> {
       ordinary,
     ));
   } else if app.feed.feed_tab == FeedTab::Browse {
-    spans.push(Span::styled("browse", accent));
-    spans.push(Span::styled(
-      ": h/l column | j/k move | Enter load recent | p promote | Tab history | ? help",
-      ordinary,
-    ));
+    if app.browse.focus == crate::app::BrowseFocus::Feed {
+      spans.push(Span::styled("browse feed", accent));
+      spans.push(Span::styled(
+        ": j/k move | Enter read | Space details | l subjects | x archive | Tab library | ? help",
+        ordinary,
+      ));
+    } else {
+      spans.push(Span::styled("browse", accent));
+      spans.push(Span::styled(
+        ": h back/feed | l drill | j/k move | Enter load | p promote | x follow | Tab library",
+        ordinary,
+      ));
+    }
   } else {
     spans.push(Span::styled("feed", accent));
     spans.push(Span::styled(
-      ": j/k move | Enter read | Space details | f filters | Tab library",
+      ": j/k move | Enter read | Space details | f filters | Tab browse",
       ordinary,
     ));
     spans.push(Span::styled(" | ", ordinary));
