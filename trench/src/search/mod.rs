@@ -23,6 +23,14 @@ use fuzzy_matcher::skim::SkimMatcherV2;
 
 use crate::models::FeedItem;
 
+// ADR-013: async, incremental ranking engine (nucleo). Standalone in
+// PR 1 — not yet wired into the feed pipeline; the synchronous `Query`
+// scorer above remains the live path until PR 2. `dead_code` allowed
+// until the wiring lands (mirrors the staged-work pattern in
+// `models/arxiv_taxonomy.rs`); remove the attribute in PR 2.
+#[allow(dead_code)]
+pub mod engine;
+
 // Relative field weights: at equal fuzzy quality a title hit outranks an
 // author hit outranks an abstract hit. This is what surfaces the "right"
 // paper first when a term could match in several places.
