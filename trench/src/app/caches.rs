@@ -43,6 +43,13 @@ impl App {
   pub fn push_search_char(&mut self, c: char) {
     self.mutate_search_query(|q| q.push(c));
     self.reset_active_feed_position();
+    // A longer query can only shrink the match set, so `append = true`
+    // lets nucleo re-match prior survivors instead of the whole corpus.
+    if self.feed_search.is_none() {
+      self.activate_feed_search();
+    } else {
+      self.refresh_feed_search_query(true);
+    }
   }
 
   pub fn pop_search_char(&mut self) {
@@ -50,10 +57,56 @@ impl App {
       q.pop();
     });
     self.reset_active_feed_position();
+    if self.feed.search_query.is_empty() {
+      self.deactivate_feed_search();
+    } else {
+      // Query shrank — nucleo must re-evaluate from scratch (`append = false`).
+      self.refresh_feed_search_query(false);
+    }
   }
 
   pub fn clear_search_query(&mut self) {
     self.mutate_search_query(|q| q.clear());
+    self.deactivate_feed_search();
+  }
+
+  /// Create the nucleo search worker (if absent) and inject the current
+  /// items_store corpus, then push the active query. Called on the first
+  /// typed search char (ADR-013 §D1).
+  pub fn activate_feed_search(&mut self) {
+    if self.feed_search.is_none() {
+      let mut engine = crate::search::engine::FeedSearch::new();
+      engine.reload(self.workspace.items_store.items());
+      self.feed_search = Some(engine);
+    }
+    self.refresh_feed_search_query(false);
+  }
+
+  /// Drop the worker, freeing its thread pool. Called when search clears.
+  pub fn deactivate_feed_search(&mut self) {
+    self.feed_search = None;
+  }
+
+  /// Push the current parsed query into the worker's pattern.
+  pub(crate) fn refresh_feed_search_query(&mut self, append: bool) {
+    let query = crate::search::Query::parse(&self.feed.search_query);
+    if let Some(engine) = self.feed_search.as_mut() {
+      engine.set_query(&query, append);
+    }
+  }
+
+  /// Re-inject the corpus after an ingestion merge, but only while a
+  /// search worker exists (ADR-013 §D5 — `ItemsChanged` is the sync point).
+  pub fn reload_feed_search_corpus(&mut self) {
+    if self.feed_search.is_none() {
+      return;
+    }
+    let query = crate::search::Query::parse(&self.feed.search_query);
+    let items = self.workspace.items_store.items();
+    if let Some(engine) = self.feed_search.as_mut() {
+      engine.reload(items);
+      engine.set_query(&query, false);
+    }
   }
 
   // Discovery search-bar gestures live on `DiscoveryModel` directly

@@ -37,6 +37,7 @@ fn dispatch_feed_pane(frame: &mut Frame, app: &mut App, area: Rect) {
     &app.discovery,
     &app.browse,
     &app.config,
+    app.feed_search.as_ref(),
   );
   let filtered_history =
     crate::feed::filtered_history_for(&app.workspace, &app.feed);

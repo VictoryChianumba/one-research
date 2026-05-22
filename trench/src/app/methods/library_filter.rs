@@ -347,6 +347,7 @@ impl App {
       &mut self.discovery,
       &self.browse,
       &self.config,
+      self.feed_search.as_ref(),
       state,
     );
     if !effects.is_empty() {

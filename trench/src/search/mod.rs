@@ -1,9 +1,10 @@
-//! Structured, fuzzy feed search (ADR-012).
+//! Structured feed-search query parsing + non-text gates (ADR-012 grammar,
+//! ADR-013 mechanism).
 //!
-//! The search bar text is parsed once into field-scoped terms, free
-//! text, and an optional year constraint, then each [`FeedItem`] is
-//! scored with a field-weighted fuzzy match. The best match floats to
-//! the top — relevance ordering, not just a filter.
+//! The search bar text is parsed once into field-scoped terms, free text,
+//! a category list, and an optional year constraint. Fuzzy *ranking* runs
+//! off-thread in [`engine::FeedSearch`] (nucleo); this module owns the
+//! parse plus the `cat:` / `year:` gates and a substring fallback.
 //!
 //! Grammar (whitespace-separated; double quotes group a value with
 //! spaces, e.g. `author:"Yann LeCun"`):
@@ -18,25 +19,13 @@
 //! match for the item to appear. An empty query is the "no search"
 //! state — callers keep their normal [`crate::feed::FeedSortMode`].
 
-use fuzzy_matcher::FuzzyMatcher;
-use fuzzy_matcher::skim::SkimMatcherV2;
-
 use crate::models::FeedItem;
 
-// ADR-013: async, incremental ranking engine (nucleo). Standalone in
-// PR 1 — not yet wired into the feed pipeline; the synchronous `Query`
-// scorer above remains the live path until PR 2. `dead_code` allowed
-// until the wiring lands (mirrors the staged-work pattern in
-// `models/arxiv_taxonomy.rs`); remove the attribute in PR 2.
-#[allow(dead_code)]
+// ADR-013: async, incremental ranking runs in `engine::FeedSearch`
+// (nucleo, off-thread). This module owns query *parsing* and the
+// non-text *gates* (`cat:`, `year:`) that nucleo can't express, plus a
+// substring fallback for tabs the engine doesn't index.
 pub mod engine;
-
-// Relative field weights: at equal fuzzy quality a title hit outranks an
-// author hit outranks an abstract hit. This is what surfaces the "right"
-// paper first when a term could match in several places.
-const W_TITLE: i64 = 3;
-const W_AUTHOR: i64 = 2;
-const W_ABSTRACT: i64 = 1;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum YearConstraint {
@@ -148,55 +137,46 @@ impl Query {
     q
   }
 
-  /// Relevance score for `item`, or `None` if any required term fails.
-  /// Higher is better. Only meaningful when `!self.is_empty()`.
-  pub fn score(&self, item: &FeedItem, matcher: &SkimMatcherV2) -> Option<i64> {
+  /// Controlled-vocabulary / numeric gates (`cat:`, `year:`) that the
+  /// nucleo text matcher can't express. `true` if the item satisfies all
+  /// of them. Applied alongside the nucleo ranking (ADR-013 §D4).
+  pub fn passes_gates(&self, item: &FeedItem) -> bool {
     if let Some(yc) = &self.year {
       match item_year(item) {
         Some(y) if yc.satisfied_by(y) => {}
-        _ => return None,
+        _ => return false,
       }
     }
-
-    // Category is controlled vocabulary, not free text — a hard gate
-    // (like year), resolved via the taxonomy rather than fuzzy-matched.
     for cat in &self.category {
       if !crate::models::arxiv_taxonomy::item_matches_category(
         &item.domain_tags,
         cat,
       ) {
-        return None;
+        return false;
       }
     }
-
-    let mut total: i64 = 0;
-    for term in &self.title {
-      total += matcher.fuzzy_match(&item.title, term)? * W_TITLE;
-    }
-    for term in &self.summary {
-      total += matcher.fuzzy_match(&item.summary_short, term)? * W_ABSTRACT;
-    }
-    for term in &self.author {
-      total += best_author_score(matcher, &item.authors, term)? * W_AUTHOR;
-    }
-    for term in &self.free {
-      let t = matcher.fuzzy_match(&item.title, term).map(|s| s * W_TITLE);
-      let a =
-        best_author_score(matcher, &item.authors, term).map(|s| s * W_AUTHOR);
-      let b =
-        matcher.fuzzy_match(&item.summary_short, term).map(|s| s * W_ABSTRACT);
-      total += [t, a, b].into_iter().flatten().max()?;
-    }
-    Some(total)
+    true
   }
-}
 
-fn best_author_score(
-  matcher: &SkimMatcherV2,
-  authors: &[String],
-  term: &str,
-) -> Option<i64> {
-  authors.iter().filter_map(|a| matcher.fuzzy_match(a, term)).max()
+  /// Case-insensitive substring fallback for tabs the nucleo engine
+  /// doesn't index (Discoveries) or before its first snapshot. Every
+  /// field-scoped and free term must appear in its field(s); `cat:` /
+  /// `year:` gates apply too. Not fuzzy — that's the engine's job.
+  pub fn matches_substring(&self, item: &FeedItem) -> bool {
+    if !self.passes_gates(item) {
+      return false;
+    }
+    let has = |hay: &str, needle: &str| {
+      hay.to_lowercase().contains(&needle.to_lowercase())
+    };
+    let in_authors = |needle: &str| item.authors.iter().any(|a| has(a, needle));
+    self.title.iter().all(|t| has(&item.title, t))
+      && self.summary.iter().all(|t| has(&item.summary_short, t))
+      && self.author.iter().all(|t| in_authors(t))
+      && self.free.iter().all(|t| {
+        has(&item.title, t) || has(&item.summary_short, t) || in_authors(t)
+      })
+  }
 }
 
 /// Year from an ISO `published_at` ("2024-05-21" / "2024-05-21T…").
@@ -307,37 +287,49 @@ mod tests {
   }
 
   #[test]
-  fn year_filter_excludes_out_of_range() {
-    let m = SkimMatcherV2::default();
+  fn year_gate_excludes_out_of_range() {
     let q = Query::parse("year:2024");
-    let hit = item("Any", &["A"], "x", "2024");
-    let miss = item("Any", &["A"], "x", "2019");
-    assert!(q.score(&hit, &m).is_some());
-    assert!(q.score(&miss, &m).is_none());
+    assert!(q.passes_gates(&item("Any", &["A"], "x", "2024")));
+    assert!(!q.passes_gates(&item("Any", &["A"], "x", "2019")));
   }
 
   #[test]
-  fn field_term_excludes_non_matching_item() {
-    let m = SkimMatcherV2::default();
+  fn cat_gate_matches_exact_code_and_archive() {
+    let mut paper = item("Some Paper", &["A"], "x", "2024");
+    paper.domain_tags = vec!["cs.LG".to_string()];
+    assert!(Query::parse("cat:cs.LG").passes_gates(&paper)); // exact code
+    assert!(Query::parse("cat:cs").passes_gates(&paper)); // archive-level
+    assert!(Query::parse("cat:CS.lg").passes_gates(&paper)); // case-insensitive
+    assert!(!Query::parse("cat:math.NT").passes_gates(&paper)); // different cat
+  }
+
+  #[test]
+  fn substring_field_scope_restricts_to_its_field() {
     let q = Query::parse("au:hinton");
     let by_hinton = item("Capsules", &["Geoffrey Hinton"], "x", "2024");
     let by_other = item("Capsules", &["Yann LeCun"], "x", "2024");
-    assert!(q.score(&by_hinton, &m).is_some());
-    assert!(q.score(&by_other, &m).is_none());
+    assert!(q.matches_substring(&by_hinton));
+    assert!(!q.matches_substring(&by_other));
   }
 
   #[test]
-  fn title_hit_outranks_abstract_hit() {
-    // "attention" in the title should beat "attention" only in the
-    // abstract — the whole point of relevance ranking.
-    let m = SkimMatcherV2::default();
-    let q = Query::parse("attention");
-    let in_title = item("Attention Is All You Need", &["A"], "a model", "2017");
-    let in_abstract =
-      item("A Model", &["A"], "we revisit attention mechanisms", "2017");
-    let st = q.score(&in_title, &m).unwrap();
-    let sa = q.score(&in_abstract, &m).unwrap();
-    assert!(st > sa, "title score {st} should beat abstract score {sa}");
+  fn substring_all_free_terms_must_match() {
+    let q = Query::parse("diffusion robotics");
+    let both = item("Diffusion Policies for Robotics", &["A"], "", "2023");
+    let one = item("Diffusion Models", &["A"], "image synthesis", "2023");
+    assert!(q.matches_substring(&both));
+    assert!(!q.matches_substring(&one));
+  }
+
+  #[test]
+  fn substring_respects_cat_gate() {
+    let mut ml = item("Attention", &["A"], "x", "2024");
+    ml.domain_tags = vec!["cs.LG".to_string()];
+    let mut nt = item("Attention", &["A"], "x", "2024");
+    nt.domain_tags = vec!["math.NT".to_string()];
+    let q = Query::parse("cat:cs attention");
+    assert!(q.matches_substring(&ml));
+    assert!(!q.matches_substring(&nt));
   }
 
   #[test]
@@ -345,45 +337,5 @@ mod tests {
     let q = Query::parse("cat:cs.LG transformers");
     assert_eq!(q.category, vec!["cs.LG"]);
     assert_eq!(q.free, vec!["transformers"]);
-  }
-
-  #[test]
-  fn cat_matches_exact_code_and_archive() {
-    let m = SkimMatcherV2::default();
-    let mut paper = item("Some Paper", &["A"], "x", "2024");
-    paper.domain_tags = vec!["cs.LG".to_string()];
-
-    // Exact category code.
-    assert!(Query::parse("cat:cs.LG").score(&paper, &m).is_some());
-    // Archive-level query matches any cs.* category.
-    assert!(Query::parse("cat:cs").score(&paper, &m).is_some());
-    // Case-insensitive.
-    assert!(Query::parse("cat:CS.lg").score(&paper, &m).is_some());
-    // Different category is excluded.
-    assert!(Query::parse("cat:math.NT").score(&paper, &m).is_none());
-  }
-
-  #[test]
-  fn cat_combines_with_free_text_as_a_gate() {
-    let m = SkimMatcherV2::default();
-    let mut ml = item("Attention", &["A"], "x", "2024");
-    ml.domain_tags = vec!["cs.LG".to_string()];
-    let mut nt = item("Attention", &["A"], "x", "2024");
-    nt.domain_tags = vec!["math.NT".to_string()];
-
-    let q = Query::parse("cat:cs attention");
-    // Same title match, but the category gate keeps only the cs paper.
-    assert!(q.score(&ml, &m).is_some());
-    assert!(q.score(&nt, &m).is_none());
-  }
-
-  #[test]
-  fn all_free_terms_must_match() {
-    let m = SkimMatcherV2::default();
-    let q = Query::parse("diffusion robotics");
-    let both = item("Diffusion Policies for Robotics", &["A"], "", "2023");
-    let one = item("Diffusion Models", &["A"], "image synthesis", "2023");
-    assert!(q.score(&both, &m).is_some());
-    assert!(q.score(&one, &m).is_none());
   }
 }

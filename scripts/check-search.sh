@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 #
-# Feed-search invariants for ADR-012 (fuzzy, field-scoped, ranked search).
+# Feed-search invariants for ADR-012 (grammar) + ADR-013 (mechanism:
+# async, off-thread, incremental ranking via nucleo).
 #
-# Sibling to scripts/check-subject-browser.sh. That one guards the
-# Browse surface; this one guards the search slice: the single
-# visible-set function, the relevance-ranking pass, the parser grammar,
-# and the move off the lowercase-substring path.
+# Sibling to scripts/check-subject-browser.sh. This one guards the search
+# slice: the single visible-set function, the off-thread nucleo engine,
+# the parser grammar, and that the synchronous SkimMatcherV2 path stays
+# removed.
 #
 # Exit codes:
 #   0  all invariants hold
@@ -17,34 +18,43 @@ cd "$(dirname "$0")/.."
 
 fail=0
 
-# ── Slice-12 (fuzzy ranked search, ADR-012) ────────────────────────────
+# ── Search slice (ADR-012 grammar, ADR-013 mechanism) ──────────────────
 
 # Q1.  No inline substring search left in app/mod.rs::visible_items.
-#      ADR-012 §D5 collapses every tab onto visible_indices_for; a stray
+#      Every tab collapses onto visible_indices_for; a stray
 #      `title_lower.contains` in app/mod.rs would mean the duplicate
 #      filter is back and selection could disagree with the rendered
 #      ranked list. (History's title_lower.contains lives in
-#      app/methods/history.rs and feed/mod.rs::filtered_history_for —
-#      out of scope here.)
+#      app/methods/history.rs and feed/mod.rs::filtered_history_for.)
 if grep -nE '\.title_lower\.contains' trench/src/app/mod.rs; then
-  echo "FAIL: inline title_lower substring search found in app/mod.rs (ADR-012 §D5 — visible_items must delegate to visible_indices_for)"
+  echo "FAIL: inline title_lower substring search found in app/mod.rs (visible_items must delegate to visible_indices_for)"
   fail=1
 fi
 
-# Q2.  Relevance ranking is wired into visible_indices_for: the scoring
-#      call and the stable score-sort must both be present.
-if ! grep -qE 'query\.score\(' trench/src/feed/mod.rs; then
-  echo "FAIL: feed/mod.rs does not call query.score(...) (ADR-012 §D4 relevance scoring missing)"
+# Q2.  Ranking runs OFF-THREAD via nucleo (ADR-013 §D1): the dependency
+#      exists and the feed consumes the engine's ranked snapshot.
+if ! grep -qE '^nucleo *=' trench/Cargo.toml; then
+  echo "FAIL: nucleo dependency missing from trench/Cargo.toml (ADR-013 §D1)"
   fail=1
 fi
-if ! grep -qE 'scored\.sort_by' trench/src/feed/mod.rs; then
-  echo "FAIL: feed/mod.rs missing the relevance sort (scored.sort_by) (ADR-012 §D4)"
+if ! grep -qE 'ranked_indices\(\)' trench/src/feed/mod.rs; then
+  echo "FAIL: visible_indices_for does not consume the nucleo snapshot (engine.ranked_indices()) (ADR-013 §D1)"
   fail=1
 fi
 
-# Q3.  The parser grammar exists: all four field prefixes are recognised
-#      in the search module. Catches an accidental rename/drop of a
-#      prefix arm.
+# Q3.  The synchronous fuzzy matcher stays removed (ADR-013 supersedes
+#      ADR-012 §D3-D4). No fuzzy-matcher dependency, no SkimMatcherV2,
+#      no per-item Query::score in the render path.
+if grep -qE '^fuzzy-matcher *=' trench/Cargo.toml; then
+  echo "FAIL: fuzzy-matcher dependency is back — synchronous matching must stay off the render thread (ADR-013)"
+  fail=1
+fi
+if grep -rqE 'SkimMatcherV2|fuzzy_matcher' trench/src; then
+  echo "FAIL: SkimMatcherV2 / fuzzy_matcher reference found in trench/src (ADR-013 removed the synchronous matcher)"
+  fail=1
+fi
+
+# Q4.  The parser grammar exists: all five field prefixes are recognised.
 for prefix in '"ti"' '"abs"' '"au"' '"cat"' '"year"'; do
   if ! grep -qF "$prefix" trench/src/search/mod.rs; then
     echo "FAIL: search/mod.rs parser missing field prefix arm ${prefix} (ADR-012 §D2)"
@@ -52,30 +62,26 @@ for prefix in '"ti"' '"abs"' '"au"' '"cat"' '"year"'; do
   fi
 done
 
-# Q4.  The feed search path parses the raw query, not the lowercase
-#      mirror. SkimMatcherV2 is smart-case (ADR-012 §D3); reintroducing
-#      search_query_lower into visible_indices_for would mean someone
-#      rebuilt the old substring path.
+# Q5.  The feed search path parses the raw query (the engine + gates read
+#      feed.search_query directly; the lowercase mirror belongs to History).
 if grep -nE 'fn visible_indices_for' trench/src/feed/mod.rs >/dev/null; then
   body=$(awk '/pub fn visible_indices_for/{p=1} p; /^}/{if(p)exit}' trench/src/feed/mod.rs)
   if ! grep -qE 'Query::parse\(&feed\.search_query\)' <<<"$body"; then
-    echo "FAIL: visible_indices_for does not parse feed.search_query via search::Query::parse (ADR-012 §D1)"
-    fail=1
-  fi
-  if grep -qE 'search_query_lower' <<<"$body"; then
-    echo "FAIL: visible_indices_for references search_query_lower — feed search must use the fuzzy path, not the lowercase substring mirror (ADR-012 §D3)"
+    echo "FAIL: visible_indices_for does not parse feed.search_query via search::Query::parse"
     fail=1
   fi
 fi
 
-# Q5.  ADR-012 cadence text references the shipped PR. Mirror of P5/O5.
-adr12="docs/adr/ADR-012-fuzzy-ranked-search.md"
-if ! grep -qF "PR 1 (" "$adr12"; then
-  echo "FAIL: ${adr12} status block missing reference to 'PR 1 ('"
-  fail=1
-fi
+# Q6.  ADR-013 cadence text references the shipped PRs. Mirror of P5/O5.
+adr13="docs/adr/ADR-013-async-incremental-search.md"
+for tag in "PR 1" "PR 2"; do
+  if ! grep -qF "$tag" "$adr13"; then
+    echo "FAIL: ${adr13} status block missing reference to '${tag}'"
+    fail=1
+  fi
+done
 
 if [[ "$fail" -eq 0 ]]; then
-  echo "OK: search invariants hold (single visible-set fn, relevance sort + query.score present, 5 field prefixes incl. cat:, raw-query fuzzy path, ADR-012 cadence intact)"
+  echo "OK: search invariants hold (single visible-set fn, off-thread nucleo ranking, no SkimMatcherV2, 5 field prefixes, raw-query path, ADR-013 cadence intact)"
 fi
 exit $fail

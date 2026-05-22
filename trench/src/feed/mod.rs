@@ -13,8 +13,6 @@
 
 use std::collections::HashSet;
 
-use fuzzy_matcher::skim::SkimMatcherV2;
-
 use crate::app::{DiscoveryModel, FeedTab, FilterState};
 // C7 PR 2 (ADR-005 §S2): `discovery: DiscoveryModel` field moved from
 // `FeedModel.discovery` to `App.discovery`. Methods and free fns that
@@ -289,9 +287,10 @@ impl FeedModel {
     discovery: &DiscoveryModel,
     browse: &crate::app::BrowseModel,
     config: &crate::config::Config,
+    search: Option<&crate::search::engine::FeedSearch>,
   ) -> Option<String> {
     let visible =
-      visible_indices_for(workspace, self, discovery, browse, config);
+      visible_indices_for(workspace, self, discovery, browse, config, search);
     let selected = self.active_list(discovery).selected();
     let idx = *visible.get(selected)?;
     let items = items_for_tab(workspace, self, discovery);
@@ -348,9 +347,11 @@ impl FeedModel {
     discovery: &mut DiscoveryModel,
     browse: &crate::app::BrowseModel,
     config: &crate::config::Config,
+    search: Option<&crate::search::engine::FeedSearch>,
     state: crate::models::WorkflowState,
   ) -> Vec<crate::effect::Effect> {
-    let Some(url) = self.selected_url(workspace, discovery, browse, config)
+    let Some(url) =
+      self.selected_url(workspace, discovery, browse, config, search)
     else {
       return Vec::new();
     };
@@ -523,10 +524,10 @@ pub fn visible_indices_for(
   discovery: &DiscoveryModel,
   browse: &crate::app::BrowseModel,
   config: &crate::config::Config,
+  search: Option<&crate::search::engine::FeedSearch>,
 ) -> Vec<usize> {
   let items = items_for_tab(workspace, feed, discovery);
   let query = crate::search::Query::parse(&feed.search_query);
-  let matcher = SkimMatcherV2::default();
 
   // Subject-follow scope only applies on the Browse tab when the user
   // has actually drilled at least once. At depth 0 (Groups level) the
@@ -540,73 +541,85 @@ pub fn visible_indices_for(
     None
   };
 
-  // Non-search filters first (tab, subject scope, source toggles, tags,
-  // tab-local views). Search is applied as a separate scoring pass so a
-  // live query can reorder the survivors by relevance.
-  let mut scored: Vec<(usize, i64)> = items
-    .iter()
-    .enumerate()
-    .filter(|(_, item)| {
-      match feed.feed_tab {
-        FeedTab::Inbox => {
-          if item.workflow_state != crate::models::WorkflowState::Inbox {
-            return false;
-          }
-        }
-        FeedTab::Library => {
-          if !feed.library_filter.matches(item.workflow_state) {
-            return false;
-          }
-        }
-        // Browse, Discoveries, History: no workflow-state pre-filter
-        // (Browse shows items regardless of workflow state — the
-        // user's drilling, not workflow-managing).
-        _ => {}
-      }
-      if let Some(scope) = &subject_scope {
-        if !scope.matches(item) {
+  // Non-search predicates (tab, subject scope, source toggles, tags,
+  // tab-local views). Applied on top of whichever search ordering wins
+  // below.
+  let passes = |item: &crate::models::FeedItem| -> bool {
+    match feed.feed_tab {
+      FeedTab::Inbox => {
+        if item.workflow_state != crate::models::WorkflowState::Inbox {
           return false;
         }
       }
-      let key =
-        if item.source_platform == crate::models::SourcePlatform::HuggingFace {
-          "huggingface"
-        } else {
-          &item.source_name
-        };
-      if let Some(&enabled) = config.sources.enabled_sources.get(key) {
-        if !enabled {
+      FeedTab::Library => {
+        if !feed.library_filter.matches(item.workflow_state) {
           return false;
         }
       }
-      if !feed.active_filters.tags.is_empty() {
-        let item_tags = crate::tags::for_url(&workspace.item_tags, &item.url);
-        if !item_tags.iter().any(|t| feed.active_filters.tags.contains(t)) {
-          return false;
-        }
+      // Browse, Discoveries, History: no workflow-state pre-filter.
+      _ => {}
+    }
+    if let Some(scope) = &subject_scope {
+      if !scope.matches(item) {
+        return false;
       }
-      feed.active_filters.matches(item)
-    })
-    .filter_map(|(i, item)| {
-      if query.is_empty() {
-        Some((i, 0))
+    }
+    let key =
+      if item.source_platform == crate::models::SourcePlatform::HuggingFace {
+        "huggingface"
       } else {
-        query.score(item, &matcher).map(|score| (i, score))
+        &item.source_name
+      };
+    if let Some(&enabled) = config.sources.enabled_sources.get(key) {
+      if !enabled {
+        return false;
       }
-    })
-    .collect();
+    }
+    if !feed.active_filters.tags.is_empty() {
+      let item_tags = crate::tags::for_url(&workspace.item_tags, &item.url);
+      if !item_tags.iter().any(|t| feed.active_filters.tags.contains(t)) {
+        return false;
+      }
+    }
+    feed.active_filters.matches(item)
+  };
 
+  // No active query: filter, then apply the session sort mode (ADR-011).
   if query.is_empty() {
-    let mut indices: Vec<usize> = scored.into_iter().map(|(i, _)| i).collect();
+    let mut indices: Vec<usize> = items
+      .iter()
+      .enumerate()
+      .filter(|(_, it)| passes(it))
+      .map(|(i, _)| i)
+      .collect();
     apply_sort_mode(&mut indices, items, feed.sort_mode, feed.random_seed);
-    indices
-  } else {
-    // Relevance order: best score first. `sort_by` is stable, so equal
-    // scores keep items_store's published_at-desc order (newest wins
-    // ties) and the active FeedSortMode is intentionally bypassed —
-    // when you're searching, match quality is the ordering.
-    scored.sort_by(|a, b| b.1.cmp(&a.1));
-    scored.into_iter().map(|(i, _)| i).collect()
+    return indices;
+  }
+
+  // Active query. The items_store-backed tabs consume the nucleo engine's
+  // ranked snapshot (already best-match-first, computed off-thread, ADR-013);
+  // the non-search predicates and `cat:`/`year:` gates filter it in place,
+  // preserving rank order. Discoveries (and the moment before the engine's
+  // first snapshot) fall back to the substring matcher.
+  let item_store_tab = matches!(
+    feed.feed_tab,
+    FeedTab::Inbox | FeedTab::Library | FeedTab::Browse
+  );
+  match search {
+    Some(engine) if item_store_tab => engine
+      .ranked_indices()
+      .into_iter()
+      .map(|i| i as usize)
+      .filter(|&i| {
+        items.get(i).is_some_and(|it| passes(it) && query.passes_gates(it))
+      })
+      .collect(),
+    _ => items
+      .iter()
+      .enumerate()
+      .filter(|(_, it)| passes(it) && query.matches_substring(it))
+      .map(|(i, _)| i)
+      .collect(),
   }
 }
 

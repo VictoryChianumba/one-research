@@ -167,6 +167,12 @@ pub struct App {
   /// the per-cache invalidator methods that lived in `caches.rs`.  The
   /// effect→cache routing contract moved onto [`RenderCaches::observe`].
   pub render_caches: RenderCaches,
+
+  /// Background fuzzy-search worker (ADR-013). `None` until the user
+  /// activates search; created (and the items_store corpus injected) on
+  /// activation, dropped on clear so the nucleo thread pool only exists
+  /// while searching.
+  pub feed_search: Option<crate::search::engine::FeedSearch>,
 }
 
 // Filter panel cursor positions are computed dynamically in
@@ -249,6 +255,7 @@ impl App {
       focus: FocusManager::new(),
       help: HelpState::default(),
       render_caches: RenderCaches::default(),
+      feed_search: None,
     }
   }
 
@@ -464,6 +471,7 @@ impl App {
       &self.discovery,
       &self.browse,
       &self.config,
+      self.feed_search.as_ref(),
     );
     *self.render_caches.visible.borrow_mut() =
       Some((self.feed.feed_tab, indices.clone()));

@@ -892,7 +892,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
       // Drain any pending fetch results before drawing. process_incoming +
       // process_incoming_discovery internally call mark_dirty when state
       // changes; the spinner increment is now gated on is_loading.
+      let corpus_len_before = app.workspace.items_store.items().len();
       app.process_incoming();
+      // Newly-merged items (background fetch / online arXiv search) must
+      // reach the search worker's corpus while a search is active.
+      if app.feed_search.is_some()
+        && app.workspace.items_store.items().len() != corpus_len_before
+      {
+        app.reload_feed_search_corpus();
+      }
+
+      // Tick the feed-search worker (ADR-013). While it's still matching,
+      // mark dirty so results stream in across frames; invalidate the
+      // visible cache on each snapshot change so the rendered and
+      // selected lists pick up the new ranking together.
+      let search_status =
+        app.feed_search.as_mut().map(|engine| engine.tick(10));
+      if let Some(status) = search_status {
+        if status.changed {
+          app.render_caches.invalidate_visible();
+        }
+        if status.changed || status.running {
+          app.mark_dirty();
+        }
+      }
 
       // Tick the embedded reader(s) each frame so voice playback state
       // (active-word highlight, paragraph advance during continuous
