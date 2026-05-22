@@ -76,7 +76,7 @@ impl App {
   pub fn activate_feed_search(&mut self) {
     if self.feed_search.is_none() {
       let mut engine = crate::search::engine::FeedSearch::new();
-      engine.reload(self.workspace.items_store.items());
+      engine.sync(self.workspace.items_store.items());
       self.feed_search = Some(engine);
     }
     self.refresh_feed_search_query(false);
@@ -95,16 +95,30 @@ impl App {
     }
   }
 
-  /// Re-inject the corpus after an ingestion merge, but only while a
-  /// search worker exists (ADR-013 §D5 — `ItemsChanged` is the sync point).
-  pub fn reload_feed_search_corpus(&mut self) {
+  /// Inject newly-arrived items into the worker (incremental, by URL).
+  /// Cheap after any merge: re-sorts are a no-op and already-seen URLs
+  /// are skipped (ADR-013 §D5).
+  pub fn sync_feed_search_corpus(&mut self) {
+    if self.feed_search.is_none() {
+      return;
+    }
+    let items = self.workspace.items_store.items();
+    if let Some(engine) = self.feed_search.as_mut() {
+      engine.sync(items);
+    }
+  }
+
+  /// Rebuild the worker corpus from scratch — used when items_store was
+  /// replaced wholesale (a refresh `clear` shrinks the corpus).
+  pub fn rebuild_feed_search_corpus(&mut self) {
     if self.feed_search.is_none() {
       return;
     }
     let query = crate::search::Query::parse(&self.feed.search_query);
     let items = self.workspace.items_store.items();
     if let Some(engine) = self.feed_search.as_mut() {
-      engine.reload(items);
+      engine.reset();
+      engine.sync(items);
       engine.set_query(&query, false);
     }
   }
