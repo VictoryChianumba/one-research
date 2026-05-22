@@ -894,18 +894,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
       // changes; the spinner increment is now gated on is_loading.
       let corpus_len_before = app.workspace.items_store.items().len();
       app.process_incoming();
-      // Keep the search worker's corpus in step with items_store while a
-      // search is active. Growth (background fetch / online arXiv) injects
-      // incrementally by URL; a shrink (refresh `clear`) rebuilds. A
-      // same-length re-sort needs no action — the worker is keyed on URL,
-      // so the snapshot→index mapping re-resolves each frame (ADR-013 §D5).
-      if app.feed_search.is_some() {
-        let now = app.workspace.items_store.items().len();
-        if now < corpus_len_before {
-          app.rebuild_feed_search_corpus();
-        } else if now > corpus_len_before {
-          app.sync_feed_search_corpus();
-        }
+      // Newly-merged items (background fetch / online arXiv search) must
+      // reach the search worker's corpus while a search is active.
+      if app.feed_search.is_some()
+        && app.workspace.items_store.items().len() != corpus_len_before
+      {
+        app.reload_feed_search_corpus();
       }
 
       // Tick the feed-search worker (ADR-013). While it's still matching,
