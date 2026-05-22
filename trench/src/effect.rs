@@ -35,7 +35,7 @@ pub enum Effect {
   /// Observer invalidates: render_caches.filtered_history.
   HistoryFilterChanged,
 
-  /// The library workflow-state chip filter changed.
+  /// The library workflow-state view filter changed.
   /// Observer invalidates: render_caches.visible.
   LibraryFilterChanged,
 

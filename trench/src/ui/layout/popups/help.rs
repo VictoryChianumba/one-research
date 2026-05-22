@@ -73,7 +73,8 @@ const HELP_SECTIONS: &[(&str, &[(&str, &str)])] = &[
     "Library",
     &[
       ("Scope", "Items where state ≠ Inbox"),
-      ("[ / ]", "Cycle workflow chip (All/Queue/Read/Archived)"),
+      ("[ / ]", "Cycle workflow filter (All/Queue/Read/Archived)"),
+      ("Filter panel", "f opens the Library workflow filter"),
       ("V", "Enter visual selection mode (Shift+v)"),
       ("t", "Open tag picker"),
       ("Workflow keys", "i / r / w / x apply to current row"),
@@ -96,6 +97,7 @@ const HELP_SECTIONS: &[(&str, &[(&str, &str)])] = &[
     &[
       ("Scope", "Paper opens + discovery queries"),
       ("[ / ]", "Cycle time filter (All/Today/24h/48h/Week/Month)"),
+      ("Filter panel", "f opens the History time window filter"),
       ("/", "Search by title (filters within current window)"),
       ("Enter", "Reopen paper · re-run query"),
       ("Ctrl+D", "Delete selected entry"),

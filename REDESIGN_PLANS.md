@@ -1,5 +1,8 @@
 # Trench Redesign Plans
 
+Historical planning record. Current behavior is documented in `README.md`,
+`docs/CONTEXT.md`, the ADRs, and the in-app help.
+
 This file records the local TUI redesign plans discussed with Codex so future
 work can continue without relying on chat history.
 

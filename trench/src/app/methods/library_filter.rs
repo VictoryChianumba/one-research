@@ -171,16 +171,21 @@ impl App {
   }
 
   /// Total number of selectable rows in the filter panel (dynamic source +
-  /// tag counts + fixed sections). Workflow-state filtering moved to the
-  /// Library tab chips, so the panel covers sources, signals, content types,
-  /// tags, sort modes, the subject-follow toggle, and clear-all.
+  /// tag counts + fixed sections). Library, History, and Browse append their
+  /// own scoped rows after the shared filters.
   pub fn filter_total_items(&self) -> usize {
+    let tab_rows = match self.feed.feed_tab {
+      crate::app::FeedTab::Library => 4,
+      crate::app::FeedTab::History => 6,
+      crate::app::FeedTab::Browse => 1,
+      _ => 0,
+    };
     self.filter_source_names().len()
       + 3
       + 3
       + crate::tags::all_tags(&self.workspace.item_tags).len()
       + 4 // sort modes (Dated / Random / Popular / Trending)
-      + 1 // follow toggle
+      + tab_rows
       + 1 // clear-all
   }
 
@@ -227,20 +232,19 @@ impl App {
     let tag_count = tag_names.len();
     let c = self.feed.filter_cursor;
 
-    // Layout (ADR-011 §E3/§E4 added Sort + Follow before clear-all):
+    // Layout:
     //   [sources] [3 signals] [3 content types] [tags]
-    //   [4 sort modes] [1 follow toggle] [clear-all]
+    //   [4 sort modes] [tab-local rows] [clear-all]
     let signals_start = src_count;
     let content_start = signals_start + 3;
     let tags_start = content_start + 3;
     let sort_start = tags_start + tag_count;
-    let follow_start = sort_start + 4;
-    let clear_all = follow_start + 1;
+    let tab_start = sort_start + 4;
 
-    // Sort + Follow live on FeedModel directly, not FilterState. The
+    // Sort + tab-local controls live on FeedModel directly, not FilterState. The
     // visible-items cache must still be invalidated, so we mutate then
     // route Effect::FiltersChanged explicitly (mirrors mutate_filters).
-    if c >= sort_start && c < follow_start {
+    if c >= sort_start && c < tab_start {
       let mode = match c - sort_start {
         0 => crate::feed::FeedSortMode::Dated,
         1 => crate::feed::FeedSortMode::Random,
@@ -260,12 +264,42 @@ impl App {
       self.reset_active_feed_position();
       return;
     }
-    if c == follow_start {
-      self.feed.subject_follow = !self.feed.subject_follow;
-      self.route_effects(&[crate::effect::Effect::FiltersChanged]);
-      self.reset_active_feed_position();
-      return;
-    }
+
+    let clear_all = match self.feed.feed_tab {
+      crate::app::FeedTab::Library => {
+        let end = tab_start + crate::library::LibraryFilter::ORDER.len();
+        if c >= tab_start && c < end {
+          self.mutate_library_filter(|f| {
+            *f = crate::library::LibraryFilter::ORDER[c - tab_start];
+          });
+          self.feed.library_list.reset();
+          self.reset_active_feed_position();
+          return;
+        }
+        end
+      }
+      crate::app::FeedTab::History => {
+        let end = tab_start + crate::history::HistoryFilter::ORDER.len();
+        if c >= tab_start && c < end {
+          self.mutate_history_filter(|f| {
+            *f = crate::history::HistoryFilter::ORDER[c - tab_start];
+          });
+          self.feed.history_list.reset();
+          return;
+        }
+        end
+      }
+      crate::app::FeedTab::Browse => {
+        if c == tab_start {
+          self.feed.subject_follow = !self.feed.subject_follow;
+          self.route_effects(&[crate::effect::Effect::FiltersChanged]);
+          self.reset_active_feed_position();
+          return;
+        }
+        tab_start + 1
+      }
+      _ => tab_start,
+    };
 
     self.mutate_filters(|filters| {
       if c < src_count {

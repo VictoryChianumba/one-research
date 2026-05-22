@@ -1,8 +1,8 @@
 # Performance Checklist
 
-A working checklist for performance investigation across this workspace
-(hygg-reader, cli-text-reader, trench, block-reader). Walk top-to-bottom when
-chasing a regression; jump to a single axis when scoping a planned improvement.
+A working checklist for performance investigation across the trench workspace
+and its reader integration. Walk top-to-bottom when chasing a regression; jump
+to a single axis when scoping a planned improvement.
 
 Performance work splits along eight axes. The original triad —
 **latency / throughput / footprint+background** — is a steady-state snapshot;
@@ -54,13 +54,14 @@ where time/memory actually goes.
 
 ## 2. Throughput (ops per unit time)
 
-- [ ] **Pipeline stage bottleneck.** The ingestion pipeline (`arxiv` →
-      `huggingface` → `rss` → `semantic_scholar enrich`) runs **sequentially**
-      in one background thread. Measure each stage's wall time. Is the
-      slowest 80% of the total?
-- [ ] **Parallelizable stages.** arXiv, HuggingFace, RSS feeds are independent
-      network calls — could run concurrently via `std::thread::scope` or
-      `rayon` for a 3–4× wall-time reduction with no async runtime.
+- [ ] **Pipeline stage bottleneck.** The ingestion pipeline groups `Source`s by
+      `host_group()` and runs groups in parallel, then runs enrichments
+      sequentially. Measure each host group and each enrichment stage. Is one
+      stage still 80% of the total?
+- [ ] **Parallelism envelope.** arXiv and HuggingFace intentionally share the
+      `"arxiv"` host group and run serially inside it; RSS/OpenReview/CORE can
+      overlap when enabled. Verify any proposed concurrency change respects the
+      remote rate-limit envelope before measuring a throughput win.
 - [ ] **Batching.** Semantic Scholar's `enrich()` — one batched call or N
       small ones? HuggingFace's per-item arXiv fill is already batched (good).
 - [ ] **Backpressure.** mpsc unbounded. If a downstream consumer stalls, does
@@ -725,7 +726,7 @@ Round 2 — per-feature deep coverage of trench (tread treated as black box).
   (state.json, ui.json, tags.json, history.json).
 - **Save call sites + frequency**:
   - `store::save` (state.json — workflow states): user-initiated
-    workflow gestures (mark Skimmed/Queued/etc.) at
+    workflow gestures (mark Inbox/Queued/Deep Read/Archived) at
     `library_filter.rs:113,278`. **Batched** for multi-select
     (apply once per selection group, not once per item). ~2KB,
     ~2ms.

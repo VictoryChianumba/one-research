@@ -22,13 +22,12 @@ use crate::app::{App, BrowseFocus, FeedTab, FocusedReader};
 /// the orchestrator level because it crosses fields of `App` — `feed.rs`
 /// itself is forbidden to take `&mut App` post-PR-4c (ADR-001 D4).
 ///
-/// The local owned values (`visible`, `history`, `counts`) anchor the
-/// FeedContext's lifetimes — once they're constructed the `&app` borrow
-/// from the method calls is released and `&app.workspace` / `&mut
-/// app.feed` can split-borrow cleanly.
+/// The local owned values (`visible`, `history`) anchor the FeedContext's
+/// lifetimes — once they're constructed the `&app` borrow from the method
+/// calls is released and `&app.workspace` / `&mut app.feed` can split-borrow
+/// cleanly.
 fn dispatch_feed_pane(frame: &mut Frame, app: &mut App, area: Rect) {
   let theme = app.theme();
-  let counts: crate::app::ItemCounts = (*app.item_counts()).clone();
   // Both helpers take field-scoped borrows so the resulting owned
   // values (Vec<usize>, Vec<&HistoryEntry>) carry no live borrow on
   // `app` beyond `app.workspace` — leaving `&mut app.feed` free below.
@@ -48,7 +47,6 @@ fn dispatch_feed_pane(frame: &mut Frame, app: &mut App, area: Rect) {
     browse_subject_depth: app.browse.rail_path.len(),
     visible_indices,
     filtered_history,
-    item_counts: counts,
   };
   // Split-borrow App into disjoint &mut fields so draw_feed_pane can
   // hold `&mut FeedModel` + `&mut DiscoveryModel` at once. The drawer

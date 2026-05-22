@@ -27,7 +27,7 @@ pub struct App {
   pub quit_popup: QuitPopupState,
 
   /// Feed-pane composition-root model. Owns: tab selection, per-tab list
-  /// cursors, library/history filter chips, library bulk-select, search
+  /// cursors, library/history scoped filters, library bulk-select, search
   /// bar state, filter panel state. Slice 1 PR 2 lifted these fields off
   /// `App`; see `docs/adr/ADR-001-render-purification.md`. Discovery used
   /// to live nested at `feed.discovery` — C7 PR 2 (ADR-005) promoted it
@@ -1007,6 +1007,46 @@ mod tests {
     assert!(fresh.contains(&"hf".to_string()));
     // No source labels beyond the always-included seeds when items is empty.
     assert_eq!(fresh.len(), 2);
+  }
+
+  #[test]
+  fn filter_panel_row_count_appends_active_tab_controls() {
+    let mut app = App::new();
+    let shared_rows = app.filter_total_items();
+
+    app.feed.feed_tab = FeedTab::Library;
+    assert_eq!(
+      app.filter_total_items(),
+      shared_rows + crate::library::LibraryFilter::ORDER.len()
+    );
+
+    app.feed.feed_tab = FeedTab::History;
+    assert_eq!(
+      app.filter_total_items(),
+      shared_rows + crate::history::HistoryFilter::ORDER.len()
+    );
+
+    app.feed.feed_tab = FeedTab::Browse;
+    assert_eq!(app.filter_total_items(), shared_rows + 1);
+  }
+
+  #[test]
+  fn filter_panel_radio_rows_set_library_and_history_filters() {
+    let mut app = App::new();
+
+    app.feed.feed_tab = FeedTab::Library;
+    app.feed.filter_cursor =
+      app.filter_total_items() - 1 - crate::library::LibraryFilter::ORDER.len()
+        + 1;
+    app.toggle_filter_at_cursor();
+    assert_eq!(app.feed.library_filter, crate::library::LibraryFilter::Queue);
+
+    app.feed.feed_tab = FeedTab::History;
+    app.feed.filter_cursor =
+      app.filter_total_items() - 1 - crate::history::HistoryFilter::ORDER.len()
+        + 3;
+    app.toggle_filter_at_cursor();
+    assert_eq!(app.feed.history_filter, crate::history::HistoryFilter::Last48h);
   }
 
   #[test]

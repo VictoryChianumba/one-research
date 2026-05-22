@@ -179,8 +179,11 @@ fn footer_command_line(app: &App) -> Line<'static> {
       ordinary,
     ));
   } else if app.feed.feed_tab == FeedTab::Library {
-    let label =
-      if app.feed.library_visual_mode { "library visual" } else { "library" };
+    let label = if app.feed.library_visual_mode {
+      "library visual".to_string()
+    } else {
+      format!("library · {}", app.feed.library_filter.label())
+    };
     let keys = if app.feed.library_visual_mode {
       ": j/k select | r read | w queue | x archive | t tag | Esc cancel"
     } else {
@@ -189,7 +192,10 @@ fn footer_command_line(app: &App) -> Line<'static> {
     spans.push(Span::styled(label, accent));
     spans.push(Span::styled(keys, ordinary));
   } else if app.feed.feed_tab == FeedTab::History {
-    spans.push(Span::styled("history", accent));
+    spans.push(Span::styled(
+      format!("history · {}", app.feed.history_filter.label()),
+      accent,
+    ));
     spans.push(Span::styled(
       ": [/] time | Enter reopen | Ctrl+D delete | / search | Tab inbox | ? help",
       ordinary,

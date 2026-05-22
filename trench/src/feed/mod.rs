@@ -70,7 +70,7 @@ pub struct FeedModel {
   pub library_list: crate::primitives::ListState,
   pub history_list: crate::primitives::ListState,
 
-  // Tab-specific filter chips.
+  // Tab-specific filter views.
   pub library_filter: crate::library::LibraryFilter,
   pub history_filter: crate::history::HistoryFilter,
 
@@ -485,7 +485,6 @@ pub struct FeedContext<'a> {
   pub visible_indices: Vec<usize>,
   /// History entries after the History tab's filter, in render order.
   pub filtered_history: Vec<&'a crate::history::HistoryEntry>,
-  pub item_counts: crate::app::ItemCounts,
 }
 
 /// The item slice the current tab is reading from.
@@ -542,7 +541,7 @@ pub fn visible_indices_for(
   };
 
   // Non-search filters first (tab, subject scope, source toggles, tags,
-  // chip filters). Search is applied as a separate scoring pass so a
+  // tab-local views). Search is applied as a separate scoring pass so a
   // live query can reorder the survivors by relevance.
   let mut scored: Vec<(usize, i64)> = items
     .iter()

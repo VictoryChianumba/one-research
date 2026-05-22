@@ -6,9 +6,9 @@ A terminal UI for following AI research — aggregates arXiv, HuggingFace daily 
 
 ## Features
 
-- Aggregates arXiv (cs.LG, cs.AI, stat.ML and more), HuggingFace daily papers, OpenAI blog, DeepMind blog, BAIR blog, MIT News AI, Import AI newsletter, and any custom RSS/Atom feed
+- Aggregates arXiv (cs.LG, cs.AI, stat.ML and more), HuggingFace daily papers, OpenReview, optional CORE, OpenAI blog, DeepMind blog, BAIR blog, MIT News AI, Import AI newsletter, and any custom RSS/Atom feed
 - **Subject Browser** — navigate arXiv's full taxonomy (8 groups, ~155 categories) and promote any subject into your daily feed with one keystroke
-- Workflow states per item: Inbox, Skimmed, Queued, Deep Read, Archived — persisted across sessions
+- Workflow states per item: Inbox, Queued, Deep Read, Archived — persisted across sessions
 - Full-text reader: opens papers and articles inline without leaving the TUI
 - Split-view reader: primary feed alongside a persistent reader pane, independently scrollable
 - Floating reader popup: open a paper in a centered overlay without leaving the feed
@@ -47,6 +47,8 @@ cargo install --path trench
 - Optional: OpenAI API key (`openai_api_key` in config) for AI chat with GPT models
 - Optional: GitHub token (`github_token` in config) for the repository browser
 - Optional: Semantic Scholar API key (`semantic_scholar_key` in config) for citation enrichment
+- Optional: CORE API key (`core_api_key` in config) to enable CORE ingestion
+- Optional: Perplexity API key (`perplexity_api_key` in config) for discovery web search
 
 ## Configuration
 
@@ -60,6 +62,8 @@ The file is created automatically on first run. All fields are optional.
   "semantic_scholar_key": "...",
   "claude_api_key": "sk-ant-...",
   "openai_api_key": "sk-...",
+  "core_api_key": "...",
+  "perplexity_api_key": "...",
   "default_chat_provider": "claude",
   "sources": {
     "arxiv_categories": ["cs.LG", "cs.AI", "stat.ML"],
@@ -69,7 +73,9 @@ The file is created automatically on first run. All fields are optional.
       "deepmind": true,
       "import_ai": true,
       "bair": true,
-      "mit_news_ai": true
+      "mit_news_ai": true,
+      "openreview": true,
+      "core": false
     },
     "custom_feeds": []
   }
@@ -82,6 +88,8 @@ The file is created automatically on first run. All fields are optional.
 | `semantic_scholar_key` | API key for citation enrichment (unauthenticated requests are rate-limited) |
 | `claude_api_key` | Anthropic API key for Claude chat and AI source discovery |
 | `openai_api_key` | OpenAI API key for GPT chat |
+| `core_api_key` | CORE API key; CORE stays disabled by default until configured and enabled |
+| `perplexity_api_key` | Optional web-search key used by the discovery agent |
 | `default_chat_provider` | `"claude"` or `"openai"` |
 | `sources.arxiv_categories` | arXiv category codes to fetch (e.g. `"cs.CL"`, `"cs.CV"`) |
 | `sources.enabled_sources` | Toggle predefined sources on or off |
@@ -112,10 +120,12 @@ Runtime data files:
 | BAIR blog | RSS |
 | MIT News AI | RSS |
 | Import AI | Substack RSS |
+| OpenReview | API |
+| CORE | API, disabled by default and requires `core_api_key` |
 
 ### Adding sources
 
-**arXiv categories** — switch to the Browse tab (`Tab` cycles to it), navigate the three-column taxonomy with `h`/`l`/`j`/`k`, and press `p` on any category to add it to your daily feed. `Enter` on a category loads its recent papers into the details pane without promoting (useful for one-off gleaning). Promoted categories show a `★` marker; press `p` again to un-promote.
+**arXiv categories** — switch to the Browse tab (`Tab` cycles to it), use the right-side subject rail with `h`/`l`/`j`/`k`, and press `p` on any category to add it to your daily feed. `Enter` on a category loads recent papers into the Browse feed without promoting it. Promoted categories show a `★` marker; press `p` again to un-promote.
 
 **AI source discovery** — switch to the Discoveries tab (`Ldr+d`), press `/`, and describe a research topic. trench will query the model and return a list of relevant arXiv categories and RSS feeds you can add with a single keystroke.
 
@@ -175,15 +185,14 @@ term to one field, and multiple terms are conjunctive (all must match):
 | Key | State |
 |---|---|
 | `i` | Inbox |
-| `s` | Skimmed |
 | `q` | Queued |
 | `w` | Deep Read |
 | `x` | Archived |
 
 ### Subject Browser (Browse tab)
 
-`Tab` cycles tabs in the order **Browse → Inbox → Library → Discoveries →
-History → Browse**. Default landing tab is Inbox (the curated feed);
+`Tab` cycles tabs in the order **Inbox → Browse → Library → Discoveries →
+History → Inbox**. Default landing tab is Inbox (the curated feed);
 Browse is the firehose surface for arXiv's full taxonomy.
 
 The Browse tab has a narrow right rail showing one taxonomy level at a
@@ -193,14 +202,17 @@ column. The breadcrumb above the rail shows your current drill path
 
 | Key | Action |
 |---|---|
+| `l` / `→` from the feed | Focus the right-side subject rail |
 | `j` / `k` | Move the rail cursor |
-| `l` / `→` / `Enter` | Drill into the highlighted Group / Archive, or load recent papers when on a Category |
-| `h` / `←` / `Esc` / `Backspace` | Drill back one level |
+| `l` / `→` in the rail | Drill into the highlighted Group / Archive; from a Category return focus to the feed |
+| `Enter` | Drill into a Group / Archive, or load recent papers when on a Category |
+| `h` / `←` / `Esc` / `Backspace` | Drill back one level; from the rail root return focus to the feed |
 | `p` | Promote / un-promote the selected Category — toggles membership in your daily feed. `★` marks promoted categories. |
-| `F` | Quick-toggle subject-follow — when on, the feed area narrows to the rail's current drill point |
+| `x` / `F` | Quick-toggle subject-follow — when on, the feed area narrows to the rail's current drill point |
 
-The rail footer always shows the follow state (`Follow: ✓` or
-`Follow: ✗`). Promotions take effect on the next manual refresh
+The rail footer always shows the follow state. Pressing `f` swaps the
+right rail to the filter panel until `f`, `Tab`, or `Esc` closes it.
+Promotions take effect on the next manual refresh
 (`R`). Browse-fetched papers merge into the global cache (dedup +
 workflow state preserved) but only appear in Inbox if their category
 is promoted.

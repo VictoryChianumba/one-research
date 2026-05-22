@@ -6,6 +6,11 @@
 - **Supersedes:** none
 - **Extends:** [ADR-004](ADR-004-ingestion-seam.md) §D1 (`Source` is bulk-refresh-only; on-demand fetches use worker threads).
 
+> Current shape: [ADR-011](ADR-011-browse-scoped-feed.md) supersedes this
+> ADR's Miller-column presentation and session-scope feed flow. ADR-010 remains
+> the foundation for the taxonomy table, Browse fetch worker, promotion gesture,
+> and removal of `KNOWN_ARXIV_CATS`.
+
 ## Goal
 
 Let the user browse arXiv's full ~155-category taxonomy inside trench — three-level hierarchy `Group → Archive → Category` mirroring [arxiv.org's home page](https://arxiv.org/) — without forcing every category into the general feed. The existing curated feed (`config.sources.arxiv_categories`) stays small; the browser is where new subjects are discovered, with a gesture to promote a category into the feed permanently.

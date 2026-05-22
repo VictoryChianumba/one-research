@@ -33,15 +33,10 @@ pub fn draw_feed_pane(
     return;
   }
 
-  // History tab: filter chips + activity log.
+  // History rows are activity entries rather than FeedItems, so they keep
+  // their own table renderer while sharing the same list-first surface.
   if model.feed_tab == FeedTab::History {
     draw_history_tab(frame, model, discovery, ctx, content_area);
-    return;
-  }
-
-  // Library tab: workflow-state filter chips + filtered item list.
-  if model.feed_tab == FeedTab::Library {
-    draw_library_tab(frame, model, discovery, ctx, content_area);
     return;
   }
 
@@ -261,111 +256,6 @@ fn draw_discovery_palette(
   );
 }
 
-pub fn draw_library_tab(
-  frame: &mut Frame,
-  model: &mut crate::feed::FeedModel,
-  discovery: &mut crate::app::DiscoveryModel,
-  ctx: &crate::feed::FeedContext,
-  area: Rect,
-) {
-  let t = ctx.theme;
-  if area.height == 0 {
-    return;
-  }
-
-  // ── Filter chip row ───────────────────────────────────────────────────
-  let chips_area = Rect { height: 1, ..area };
-  let chips_sep_area = Rect { y: area.y + 1, height: 1, ..area };
-
-  // Per-chip count from the pre-computed aggregate carried in FeedContext.
-  let count_queued = ctx.item_counts.queued;
-  let count_deep_read = ctx.item_counts.deep_read;
-  let count_archived = ctx.item_counts.archived;
-  let chip_count = |filter: crate::library::LibraryFilter| -> usize {
-    match filter {
-      crate::library::LibraryFilter::All => count_queued + count_deep_read,
-      crate::library::LibraryFilter::Queue => count_queued,
-      crate::library::LibraryFilter::Read => count_deep_read,
-      crate::library::LibraryFilter::Archived => count_archived,
-    }
-  };
-
-  let mut chip_spans: Vec<Span> = vec![Span::raw("  ")];
-  let mut chip_width: usize = 2;
-  for (i, filter) in crate::library::LibraryFilter::ORDER.iter().enumerate() {
-    let active = *filter == model.library_filter;
-    let style = if active {
-      Style::default().fg(t.accent).add_modifier(Modifier::BOLD)
-    } else {
-      Style::default().fg(t.text_dim)
-    };
-    let text = format!("[{} {}]", filter.label(), chip_count(*filter));
-    chip_width += text.chars().count();
-    chip_spans.push(Span::styled(text, style));
-    if i + 1 < crate::library::LibraryFilter::ORDER.len() {
-      chip_spans.push(Span::raw("  "));
-      chip_width += 2;
-    }
-  }
-  let hint = if model.library_visual_mode {
-    let n = model.library_selected_urls.len();
-    format!("VISUAL · {n} selected · r read · w queue · x archive · Esc cancel")
-  } else {
-    "[ ] cycle  ·  v select  ·  f filter  ·  / search".to_string()
-  };
-  let hint_style = if model.library_visual_mode {
-    Style::default().fg(t.accent).add_modifier(Modifier::BOLD)
-  } else {
-    Style::default().fg(t.text_dim)
-  };
-  let total = area.width as usize;
-  if total > chip_width + hint.chars().count() + 4 {
-    let pad = total - chip_width - hint.chars().count() - 2;
-    chip_spans.push(Span::raw(" ".repeat(pad)));
-    chip_spans.push(Span::styled(hint, hint_style));
-  }
-  frame.render_widget(Paragraph::new(Line::from(chip_spans)), chips_area);
-
-  frame.render_widget(
-    Paragraph::new("─".repeat(area.width as usize))
-      .style(Style::default().fg(t.border)),
-    chips_sep_area,
-  );
-
-  // ── Item list (reuse the table renderer) ─────────────────────────────
-  let list_area = Rect {
-    x: area.x,
-    y: area.y + 2,
-    width: area.width,
-    height: area.height.saturating_sub(2),
-  };
-  if list_area.height == 0 {
-    return;
-  }
-
-  if ctx.visible_indices.is_empty() {
-    let msg = if ctx.workspace.items_store.is_empty() {
-      "No items yet — fetch a feed first."
-    } else {
-      "No items match this filter."
-    };
-    frame.render_widget(
-      Paragraph::new(Line::from(Span::styled(
-        format!("  {msg}"),
-        Style::default().fg(t.text_dim),
-      ))),
-      list_area,
-    );
-    return;
-  }
-
-  if list_area.width < 70 {
-    draw_narrow_feed(frame, model, discovery, ctx, list_area);
-  } else {
-    draw_item_table(frame, model, discovery, ctx, list_area);
-  }
-}
-
 fn draw_history_tab(
   frame: &mut Frame,
   model: &mut crate::feed::FeedModel,
@@ -378,47 +268,7 @@ fn draw_history_tab(
     return;
   }
 
-  // ── Filter chips row ────────────────────────────────────────────────
-  let chips_area = Rect { height: 1, ..area };
-  let chips_sep_area = Rect { y: area.y + 1, height: 1, ..area };
-  let mut chip_spans: Vec<Span> = vec![Span::styled("  ", Style::default())];
-  let mut chip_width: usize = 2;
-  for (i, filter) in crate::history::HistoryFilter::ORDER.iter().enumerate() {
-    let active = *filter == model.history_filter;
-    let style = if active {
-      Style::default().fg(t.accent).add_modifier(Modifier::BOLD)
-    } else {
-      Style::default().fg(t.text_dim)
-    };
-    let text = format!("[{}]", filter.label());
-    chip_width += text.chars().count();
-    chip_spans.push(Span::styled(text, style));
-    if i + 1 < crate::history::HistoryFilter::ORDER.len() {
-      chip_spans.push(Span::raw("  "));
-      chip_width += 2;
-    }
-  }
-  let hint = "[ ] cycle  ·  f filter  ·  / search";
-  let total = area.width as usize;
-  if total > chip_width + hint.chars().count() + 4 {
-    let pad = total - chip_width - hint.chars().count() - 2;
-    chip_spans.push(Span::raw(" ".repeat(pad)));
-    chip_spans.push(Span::styled(hint, Style::default().fg(t.text_dim)));
-  }
-  frame.render_widget(Paragraph::new(Line::from(chip_spans)), chips_area);
-  frame.render_widget(
-    Paragraph::new("─".repeat(area.width as usize))
-      .style(Style::default().fg(t.border)),
-    chips_sep_area,
-  );
-
-  // ── Activity list ──────────────────────────────────────────────────
-  let list_area = Rect {
-    x: area.x,
-    y: area.y + 2,
-    width: area.width,
-    height: area.height.saturating_sub(2),
-  };
+  let list_area = area;
   if list_area.height == 0 {
     return;
   }

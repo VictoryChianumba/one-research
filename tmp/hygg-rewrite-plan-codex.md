@@ -1,5 +1,8 @@
 # Hygg `cli-text-reader` ratatui Rewrite Plan
 
+Historical rewrite plan for the pre-tread reader path. trench now treats tread
+as the reader boundary; this file is kept only as older design context.
+
 ## Goal
 
 Rewrite `cli-text-reader` from direct `crossterm` drawing into a ratatui-rendered document widget that can either:

@@ -101,7 +101,7 @@ impl App {
   }
 
   /// Mutator chokepoint for `library_filter`. The visible_cache for the
-  /// Library tab depends on this filter; cycling the chip selection must
+  /// Library tab depends on this filter; changing the scoped view must
   /// invalidate.
   pub fn mutate_library_filter(
     &mut self,

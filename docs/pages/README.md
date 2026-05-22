@@ -1,1 +1,1 @@
-### [<-](../README.md)
+[Back to docs](../README.md)

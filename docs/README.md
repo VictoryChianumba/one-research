@@ -1,8 +1,9 @@
-### [<-](../README.md)
+# trench docs
 
-## TOC
-- [Getting Started](pages/getting-started.md) 
-- [Online Client](pages/online-client.md) 
-- [Development](pages/development.md) 
-- [Reference](pages/reference.md) 
-- [Benchmark](pages/benchmark.md) 
+- [Getting Started](pages/getting-started.md)
+- [Development](pages/development.md)
+- [Reference](pages/reference.md)
+- [Benchmarking](pages/benchmark.md)
+- [Architecture vocabulary](CONTEXT.md)
+- [Architecture decisions](adr/)
+- [Performance checklist](PERFORMANCE.md)

@@ -1,9 +1,10 @@
 # Trench — Hotkey Reference
 
 Private. Gitignored. Source of truth for every binding shipped in trench.
-Mirror this against `HELP_SECTIONS` in `trench/src/ui/layout.rs` when adding
-new hotkeys; the in-app help is the user-facing terse view, this file is the
-exhaustive developer/agent reference.
+Mirror this against `HELP_SECTIONS` in
+`trench/src/ui/layout/popups/help.rs` when adding new hotkeys; the in-app help
+is the user-facing terse view, this file is the exhaustive developer/agent
+reference.
 
 ---
 
@@ -29,8 +30,8 @@ exhaustive developer/agent reference.
 
 | Key | Action |
 |---|---|
-| `Tab` | Cycle tabs forward: Inbox → Library → Discoveries → History → Inbox |
-| `Shift+Tab` | Cycle tabs backward: Inbox → History → Discoveries → Library → Inbox |
+| `Tab` | Cycle tabs forward: Inbox → Browse → Library → Discoveries → History → Inbox |
+| `Shift+Tab` | Cycle tabs backward: Inbox → History → Discoveries → Library → Browse → Inbox |
 | `j` / `k` or `↓`/`↑` | Move down / up |
 | `g` / `G` | Jump to top / bottom |
 | `Enter` | Open paper in reader (Inbox/Library/Discoveries) |
@@ -51,11 +52,11 @@ exhaustive developer/agent reference.
 - All generic feed keys above apply.
 
 ### Library tab
-- Shows items where state ≠ Inbox, narrowed by chip filter.
+- Shows items where state != Inbox, narrowed by the Library workflow filter.
 | Key | Action |
 |---|---|
-| `[` / `]` | Cycle workflow chip backward / forward (All / Queue / Read / Archived) |
-| `{` / `}` | Cycle time chip backward / forward (Anytime / Today / 24h / 48h / Week / Month) |
+| `[` / `]` | Cycle workflow filter backward / forward (All / Queue / Read / Archived) |
+| `f` | Open filter panel, including the Library workflow section |
 | `v` | Enter visual selection mode |
 | `t` | Open tag picker for current item |
 
@@ -82,10 +83,26 @@ exhaustive developer/agent reference.
 | In palette: `Enter` | Run selected command |
 | `Esc` | Cancel / unfocus search bar |
 
+### Browse tab
+The feed stays on the left. The right companion pane shows the subject rail,
+or the filter panel while filter focus is active.
+
+| Key | Action |
+|---|---|
+| `l` / `Right` from feed | Focus the right-side subject rail |
+| `h` / `Left` at rail root | Return focus to the feed |
+| `j` / `k` | Move the rail cursor |
+| `l` / `Right` in rail | Drill into Group / Archive; from Category return to feed |
+| `Enter` | Drill into Group / Archive, or load recent papers at Category |
+| `h` / `Left` / `Backspace` / `Esc` | Drill back one rail level |
+| `p` | Promote / un-promote the selected Category |
+| `x` / `F` | Toggle subject-follow scope |
+
 ### History tab
 | Key | Action |
 |---|---|
 | `[` / `]` | Cycle time filter backward / forward (All / Today / 24h / 48h / Week / Month) |
+| `f` | Open filter panel, including the History time-window section |
 | `j` / `k` / `g` / `G` | Navigate (own list, not generic feed) |
 | `Enter` | Reopen paper, or re-run query (clears session for fresh result) |
 | `Ctrl+D` | Delete selected entry |
@@ -111,9 +128,9 @@ exhaustive developer/agent reference.
 | `Space` | Toggle selected filter |
 | `c` | Clear all filters |
 | `f` / `Tab` | Close panel without clearing filters |
-| `Esc` | Clear all filters and close panel |
+| `Esc` | Close panel without clearing filters |
 
-Sections: Source · Signal · Type · Tags · Clear All
+Sections: Sources · Signal · Content · Tags · Sort · Browse · Clear filters
 (Tags section appears only when at least one tag exists)
 
 ---
@@ -135,7 +152,7 @@ multi-toggle).
 
 ---
 
-## Reader (cli-text-reader inside trench)
+## Reader (tread inside trench)
 
 | Key | Action |
 |---|---|
@@ -303,9 +320,8 @@ History/Library/tag work. Sanity-check: if any of these are unfamiliar to a
 user, they belong in onboarding/help update notes.
 
 - `Tab` cycles 4 tabs (was 2)
-- `[` / `]` cycle workflow chips on Library
-- `{` / `}` cycle time chips on Library
-- `[` / `]` cycle time filter chips on History
+- `[` / `]` cycle workflow filters on Library
+- `[` / `]` cycle time filters on History
 - `v` enters visual mode (Library only)
 - `t` opens tag picker (Library only)
 - `Ctrl+D` deletes selected History entry

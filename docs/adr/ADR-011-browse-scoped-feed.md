@@ -1,6 +1,8 @@
 # ADR-011 — Browse is the feed surface itself, scoped by a right-rail subject filter
 
-- **Status:** Accepted (2026-05-19). All three PRs landed: PR 1 (this ADR + `BrowseModel` rail refactor with `rail_path` + `rail_cursor` replacing the three parallel cursors + single-column drill UI in `ui/layout/browse.rs` + tab-order swap to Browse-first in `feed/mod.rs` + `keys/reader.rs` + `ui/layout/title.rs` + two cycle-test updates + 8 new rail-state tests; commit `bddb34a`). PR 2 (`FeedSortMode { Dated, Random, Popular, Trending }` enum + `sort_mode` + `subject_follow` + `random_seed` fields on `FeedModel` + `apply_sort_mode` helper + `SubjectScope` predicate + `visible_indices_for` extended with both seams + `selected_url` / `set_workflow_state_at_cursor` signatures gain `&BrowseModel` + `F` quick-toggle in `handle_browse_tab` + rail footer `Follow: ✓/✗` indicator + filter pane Sort section + Browse section + 7 inline tests covering the four sort modes and the two SubjectScope arms; uncommitted at flip time). PR 3 (Subject column in Browse-only branch of `draw_item_table` reading `domain_tags` via `arxiv_taxonomy::find_category`; arxiv.rs ingestion now preserves raw category codes alongside human labels in `domain_tags` so the subject-follow predicate and Subject column both resolve correctly + `scripts/check-subject-browser.sh` extended with P1-P5 invariants + README Subject Browser / Sort modes sections rewritten + flip to Accepted; uncommitted at flip time).
+- **Status:** Accepted (2026-05-19). The shipped Browse surface is a left feed
+  with a Details-width right companion pane: the subject rail is shown by
+  default and Filters replace it while filter focus is active.
 - **Date:** 2026-05-19
 - **Owner:** Victory Chianumba
 - **Supersedes:** [ADR-010](ADR-010-subject-browser.md) §D4 ("merge with session scope") — replaced by §E1 ("Browse is the feed, with a subject-filter overlay"). ADR-010's D2 (typed taxonomy table), D3 (worker thread, not `Source` impl), and D5 (`KNOWN_ARXIV_CATS` stays deleted) remain in force.
@@ -12,7 +14,7 @@ Reshape the Browse tab so it stops being *"a taxonomy navigator that loads paper
 
 After the slice, the Browse tab presents:
 1. A narrow right rail that shows one taxonomy level at a time and replaces — not stacks — when you drill in. Breadcrumb up top.
-2. The actual feed table on the right, taking the rest of the pane. Same shape as Inbox/Library, plus a new **Subject** column.
+2. The actual feed table on the left, taking the rest of the pane. Same shape as Inbox/Library, plus a new **Subject** column.
 3. New sort modes (`dated`/`random`/`popular`/`trending`) selectable from the filter pane.
 4. A subject-follow toggle that, when ON, narrows the feed to whatever subject the rail is currently drilled into.
 
@@ -38,7 +40,7 @@ ADR-011 is a **presentation-layer ADR**. The data model from ADR-010 (`BrowseMod
 
 - `BrowseModel`'s navigation state (rail-path stack instead of 3 parallel cursors).
 - The `draw_browse_tab` renderer (single-column rail).
-- The `main_row.rs` Browse layout (narrow rail + feed area instead of feed area + details pane).
+- The `main_row.rs` Browse layout (feed area + Details-width right rail instead of feed area + details pane).
 - The feed-sort behavior (new `FeedSortMode` enum; new `subject_follow` toggle).
 - The feed table for Browse only (gains a Subject column).
 
@@ -50,7 +52,7 @@ The 3-column Miller layout is removed because the user found it isn't *doing any
 
 #### E1. Browse is the feed surface itself; the rail is a scope filter
 
-The left-hand area of the Browse tab is the actual `draw_item_table` (or a Browse-specific variant of it), populated from `workspace.items_store.items()` and filtered by the rail's current subject scope. There is no separate "Recent papers" pane anymore.
+The left-hand area of the Browse tab is the actual `draw_item_table` (or a Browse-specific variant of it), populated from `workspace.items_store.items()` and filtered by the rail's current subject scope. The right companion pane matches the normal Details width; it shows the subject rail by default and swaps to Filters while filter focus is active. There is no separate "Recent papers" pane anymore.
 
 Subject-follow off (the default): the feed area shows the mixed view across every subscribed category plus any browse-fetched items. The rail navigates the taxonomy independently — it does not scope the feed.
 
@@ -80,15 +82,15 @@ Selectable from the filter pane (`f` opens it; the sort mode is one new line of 
 - **`popular`** — `upvote_count` descending. Works for HuggingFace items natively. arXiv items get their `upvote_count` filled from Semantic Scholar's `citation_count` field where enriched; unenriched arXiv items sort to the bottom.
 - **`trending`** — items published in the last 14 days, sorted by `upvote_count` descending. Arxiv items with no upvote signal fall back to their `compute_signal()` tier (Primary > Secondary > Tertiary). Older items are filtered out entirely under this mode.
 
-The sort mode applies *across every tab*, not just Browse. A user who sets `popular` in Browse and then cycles to Inbox sees Inbox sorted by popularity too. This is consistent with how the existing filter chips work today.
+The sort mode applies *across every tab*, not just Browse. A user who sets `popular` in Browse and then cycles to Inbox sees Inbox sorted by popularity too. This is consistent with how the existing feed filters work today.
 
 #### E4. Subject-follow toggle: filter pane line + `F` quick-toggle, default OFF
 
 `subject_follow: bool` lives on `FeedModel` (sibling to `active_filters`). Default `false`.
 
 Two access paths:
-- **Filter pane (`f`)** — adds a new line at the top of the panel: `[ ] Follow rail subject`. Toggle with `Space` (matches the existing chip-toggle convention).
-- **Quick-toggle `F` (capital, leader-less)** — in the Browse tab only, flips `subject_follow` without opening the filter pane. Rail footer renders `Follow: ✓` or `Follow: ✗` so the current state is always visible.
+- **Filter pane (`f`)** — swaps the right companion pane from the rail to Filters. Its Browse section includes `[ ] Follow rail subject`; toggle with `Space`.
+- **Quick-toggle `x` / `F`** — in the Browse rail, flips `subject_follow` without opening Filters. The rail footer renders the current follow state.
 
 Default OFF rationale: the user enters Browse expecting the firehose, opts in to scoping when they want it. Reversing the default would surprise users who Tab into Browse and find their feed mysteriously narrowed.
 
@@ -116,7 +118,7 @@ The updated reasoning: Inbox remains the day-to-day first surface; Browse is the
 
 ### Positive
 
-- The Browse tab's vertical real estate stops being wasted on 3 always-visible columns. The rail uses ~25-30% of pane width; the feed gets the remaining 70-75% — same aspect ratio as Inbox.
+- The Browse tab's vertical real estate stops being wasted on 3 always-visible columns. Its right rail uses the same fixed companion-pane width as Details, so the feed + side-pane rhythm stays consistent with Inbox.
 - Recent papers and Inbox papers now live in the *same* presentation context (the feed table), so the user's eye doesn't have to context-switch between two tables.
 - Sort modes are a long-overdue feature for the existing feed. Browse drives the requirement, but every tab benefits.
 - The subject-follow toggle gives the user explicit control over scope. Today there's no way to say "show me all arXiv physics papers I have cached, but nothing else" — after this, that's two keystrokes (`F` + drill).
@@ -130,7 +132,7 @@ The updated reasoning: Inbox remains the day-to-day first surface; Browse is the
 ### Trade-offs explicitly accepted
 
 - **Replace, not push-stack.** Some users prefer Miller-column-cascade for visual context of the navigation history. We chose replace + breadcrumb because the user explicitly said the cascade *"isn't doing anything for you."*
-- **Sort mode applies across all tabs.** Could have made it Browse-only for purity, but applying globally is more useful and matches how existing filter chips behave.
+- **Sort mode applies across all tabs.** Could have made it Browse-only for purity, but applying globally is more useful and matches how existing feed filters behave.
 - **Sort mode resets on launch.** Persistence would create launch-time surprise; the cost of re-selection is low.
 - **Subject column in Browse only.** Could be in every tab for consistency, but Browse is the only tab where the feed might span subjects you're not scoped to — the column earns its place there but is noise elsewhere.
 

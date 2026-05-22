@@ -42,7 +42,7 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
     }
   }
 
-  // Library tab — handle workflow-state chip cycling. Other keys (j/k, Enter,
+  // Library tab — handle workflow-state filter cycling. Other keys (j/k, Enter,
   // i/r/w/x, etc.) fall through to the generic feed handler below.
   if app.feed.feed_tab == FeedTab::Library {
     if handle_library_tab(key, app) {
@@ -440,11 +440,11 @@ fn toggle_browse_promotion_for_selected(app: &mut App) {
   app.config.save();
 }
 
-/// Returns true if the key was consumed by the Library tab (chip cycling).
+/// Returns true if the key was consumed by the Library tab (filter cycling).
 /// Anything else falls through to the generic feed handler so navigation,
 /// Enter, and `i/r/w/x` state transitions work as usual.
 fn handle_library_tab(key: KeyEvent, app: &mut App) -> bool {
-  // Visual-mode-only handlers fire before the generic chip ones so j/k extend
+  // Visual-mode-only handlers fire before the generic filter ones so j/k extend
   // selection rather than just moving the cursor.
   if app.feed.library_visual_mode {
     match key.code {

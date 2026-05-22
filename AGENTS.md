@@ -74,27 +74,27 @@ Command: git add -A && git commit -m "$1"
 
 ```sh
 # Build and run (primary development workflow)
-cargo run -p hygg-reader --release -- test-data/pdf/pdfreference1.7old.pdf
+cargo run -p trench --release
 
 # Build all crates
 cargo build --release
 
-# Run tests
+# Run all tests
 cargo test
 
 # Run tests for a specific crate
-cargo test -p cli-text-reader
+cargo test -p trench
 
 # Run a single test
-cargo test -p cli-text-reader test_name
+cargo test -p trench test_name
 
 # Check formatting
 cargo fmt --check
 
 # Lint
-cargo clippy
+cargo clippy --workspace --all-targets
 
-# Build trench separately
+# Build trench release binary
 cargo build -p trench --release
 ```
 
@@ -103,51 +103,26 @@ Rust edition: 2024, MSRV: 1.88. The `ci.sh` script uses the nightly toolchain fo
 ## Workspace Structure
 
 ```
-hygg-reader/       → main reader binary: arg parsing, doc conversion → cli-text-reader
-cli-text-reader/   → the TUI reader (all editor logic lives here)
-cli-pdf-to-text/   → PDF → plain text conversion
-cli-epub-to-text/  → EPUB → plain text conversion
-cli-justify/       → text justification/wrapping
-hygg-shared/       → shared utilities
-redirect-stderr/   → stderr redirection helper
-trench/            → separate binary: AI research feed aggregator TUI
+trench/            → main binary: AI research feed aggregator TUI
+crates/http        → shared HTTP client + RetryPolicy + with_retry
+crates/notes       → notes-pane backend
+crates/chat        → chat-pane backend
+crates/ui-theme    → theme system
 ```
 
-**hygg-reader pipeline**: arg parsing → OCR (optional, via `ocrmypdf`) → format conversion (PDF/EPUB/pandoc) → `cli-justify::justify()` → `cli-text-reader::run_cli_text_reader()`.
+The reader logic now lives in the sibling `tread` repo at
+`../../tread/crates/tread`, consumed through the path dependency in
+`trench/Cargo.toml`. Reader internals belong to tread's docs.
 
 ## Workspace-wide Clippy Allowances
 
 `needless_return`, `unused_imports`, `implicit_saturating_sub`, `single_component_path_imports` are allowed workspace-wide.
 
-## cli-text-reader Architecture
+## Reader (tread) — out of repo
 
-This crate is the core. Everything is implemented as `impl Editor` blocks spread across many files. The `Editor` struct is defined in `src/core_state.rs` and re-exported via `src/editor/core.rs`.
-
-**Main loop** (`src/editor/display_loop.rs`): polls voice status, handles crossterm events, triggers redraws. Uses `needs_redraw` flag — call `self.mark_dirty()` to request a redraw.
-
-**Event routing** (`src/editor/event_handler.rs` → `src/editor/normal_mode.rs`): `handle_event` dispatches to mode-specific handlers. Normal mode calls handlers in priority order: tmux prefix → voice keys → control keys → operator pending → search/visual → navigation.
-
-**Modes** (`src/core_types.rs`): `EditorMode` — Normal, VisualChar, VisualLine, Search, ReverseSearch, Command, CommandExecution, Tutorial. Mode is stored per-buffer in `BufferState`; use `get_active_mode()` / `set_active_mode()`.
-
-**Voice/TTS** (`src/voice/`, `src/editor/voice_control.rs`):
-- `PlaybackController` owns a background thread (`playback_loop`) that receives `PlaybackCommand` over an mpsc channel and drives rodio audio playback.
-- Text is split into ≤4500-char chunks via `chunk_paragraphs()` in `src/voice/mod.rs`.
-- `VoicePlayingInfo` (shared via `Arc<Mutex>`) tracks which doc lines are playing and timing for word-highlight animation.
-- `sync_voice_status()` is called each tick in the display loop — this is the hook point for detecting playback completion.
-- TTS uses ElevenLabs API. Config (`ELEVENLABS_API_KEY`, `VOICE_ID`, `PLAYBACK_SPEED`) lives in `~/.config/hygg-reader/.env`.
-
-**Config** (`src/config.rs`): loaded from `~/.config/hygg-reader/.env` via `dotenvy`. Call `load_config()` at startup; `save_config()` persists changes.
-
-**Persistence**: Progress saved per-document using a hash of the document content (`src/progress.rs`). Bookmarks and highlights also keyed by document hash (`src/bookmarks.rs`, `src/highlights.rs`). All files live under `~/.config/hygg-reader/`.
-
-**Buffers**: The editor supports multiple `BufferState` buffers (used for split-view command output). Buffer 0 is always the document. Active buffer accessed via `self.active_buffer` index.
-
-**Display**: `draw_content_buffered` renders to a `Vec<u8>` then flushes in one write to minimize flicker. Status line rendered separately by `draw_status_line` / `draw_status_line_buffered`.
-
-**Key conventions**:
-- All editor methods are `impl Editor` — no separate structs for subsystems.
-- Handler functions return `Result<Option<bool>, ...>`: `Some(true)` = quit, `Some(false)` = handled (stop propagation), `None` = not handled (continue to next handler).
-- `self.offset` = first visible line index; `self.cursor_y` = cursor row on screen; `self.offset + self.cursor_y` = current doc line.
+The reader boundary in this repo is the tread integration: `tread::Reader`,
+`tread::PaperData`, `tread::ImageState`, and `tread::BurstTracker` are used
+from trench, but reader rendering and input internals are documented in tread.
 
 ## trench Architecture
 
@@ -155,20 +130,19 @@ A separate TUI binary (`trench/src/main.rs`) that aggregates AI research feeds. 
 
 ### Data model (`src/models/`)
 
-`FeedItem` is the central type: `id`, `title`, `source_platform`, `content_type`, `domain_tags`, `signal` (Primary/Secondary/Tertiary), `published_at`, `authors`, `summary_short`, `workflow_state` (Inbox/Skimmed/Queued/DeepRead/Archived), `url`, `upvote_count`. `upvote_count` has `#[serde(default)]` for cache backward-compatibility.
+`FeedItem` is the central type: `id`, `title`, `source_platform`, `content_type`, `domain_tags`, `signal` (Primary/Secondary/Tertiary), `published_at`, `authors`, `summary_short`, `workflow_state` (Inbox/Queued/DeepRead/Archived), `url`, `upvote_count`. `upvote_count` has `#[serde(default)]` for cache backward-compatibility.
 
 `FeedItem::compute_signal()` derives signal from platform and upvote count. `map_arxiv_category()` and `detect_subtopics()` live in `src/models/categories.rs`.
 
 ### Ingestion pipeline (`src/ingestion/`)
 
-Background thread in `main.rs` fetches all sources sequentially then runs enrichment:
+The background refresh builds `Source` and `EnrichmentSource` registries:
 
-1. `arxiv::fetch()` — arXiv Atom API (cs.LG + cs.AI + stat.ML). Maps category codes via `map_arxiv_category()`, detects subtopics via `detect_subtopics()`.
-2. `huggingface::fetch()` — Scrapes HF daily papers page (two-pass: h3 for titles, entity-encoded JSON for upvotes/authors), then makes one batched arXiv API call to fill `summary_short` for all items.
-3. `rss::fetch()` — Generic RSS 2.0 / Atom parser for OpenAI blog, DeepMind blog, Import AI, The Batch. Handles CDATA via `Event::CData`. Anthropic has no RSS feed and is intentionally skipped.
-4. `semantic_scholar::enrich()` — Enriches arXiv items with citation counts and fields of study. 7-day TTL cache at `~/.config/trench/enrichment_cache.json`. Entries with empty `fields_of_study` are invalidated on load.
+1. Bulk `Source`s: arXiv, HuggingFace, OpenReview, CORE when configured, built-in RSS feeds, and custom RSS feeds.
+2. Sources with the same `host_group()` run serially in one scoped thread; different host groups run in parallel.
+3. Post-fetch `EnrichmentSource`s run sequentially over the accumulated items: Semantic Scholar when configured, then HuggingFace repo enrichment.
 
-Each source sends `FetchMessage::Items(Vec<FeedItem>)` + `FetchMessage::SourceComplete(name)` over mpsc. After all sources, sends enriched batch + `AllComplete`.
+Each source sends `FetchMessage::Items(Vec<FeedItem>)` plus completion/error messages over mpsc. After enrichments, the worker sends the enriched batch and `AllComplete`.
 
 ### App state and merge logic (`src/app.rs`)
 

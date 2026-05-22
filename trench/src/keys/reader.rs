@@ -208,7 +208,7 @@ fn clamp_reader_feed_selection(app: &mut App) {
 // browse across feed tabs (Inbox, Library, Discoveries, History)
 // with the same UX as the main feed view. Tab/BackTab here already
 // cycles app.feed.feed_tab globally, but full parity is still missing:
-// per-tab filters, workflow-state chips for Library, etc. Revisit
+// per-tab filters, Library workflow views, etc. Revisit
 // when refactor B settles and we can hoist the tab-aware count/
 // selection into the dispatcher cleanly.
 fn reader_feed_count(app: &App) -> usize {

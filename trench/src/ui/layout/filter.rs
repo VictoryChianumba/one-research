@@ -7,7 +7,7 @@ use ratatui::{
 };
 
 use super::widgets::truncate;
-use crate::app::App;
+use crate::app::{App, FeedTab};
 use crate::models::{ContentType, SignalLevel};
 
 enum FilterRowKind {
@@ -148,9 +148,6 @@ pub fn draw_filter_panel(frame: &mut Frame, app: &App, area: Rect) {
   s += 1;
   lines.push(Line::from(""));
 
-  // Workflow state filtering moved to the Library tab chips — the panel only
-  // covers source / signal / content_type / tags now.
-
   if !tag_names.is_empty() {
     lines.push(section_header(
       "Tags",
@@ -206,29 +203,73 @@ pub fn draw_filter_panel(frame: &mut Frame, app: &App, area: Rect) {
   }
   lines.push(Line::from(""));
 
+  if app.feed.feed_tab == FeedTab::Library {
+    lines.push(section_header("Library", 1, 4, width, &t));
+    for filter in crate::library::LibraryFilter::ORDER {
+      let active = app.feed.library_filter == filter;
+      let cursor = focused && s == c;
+      if cursor {
+        cursor_line = lines.len();
+      }
+      lines.push(filter_row(
+        filter.label(),
+        active,
+        cursor,
+        FilterRowKind::Radio,
+        width,
+        &t,
+      ));
+      s += 1;
+    }
+    lines.push(Line::from(""));
+  }
+
+  if app.feed.feed_tab == FeedTab::History {
+    lines.push(section_header("History", 1, 6, width, &t));
+    for filter in crate::history::HistoryFilter::ORDER {
+      let active = app.feed.history_filter == filter;
+      let cursor = focused && s == c;
+      if cursor {
+        cursor_line = lines.len();
+      }
+      lines.push(filter_row(
+        filter.label(),
+        active,
+        cursor,
+        FilterRowKind::Radio,
+        width,
+        &t,
+      ));
+      s += 1;
+    }
+    lines.push(Line::from(""));
+  }
+
   // ADR-011 §E4 — subject-follow toggle. When ON, the Browse rail's
   // current drill point narrows the visible items.
-  lines.push(section_header(
-    "Browse",
-    usize::from(app.feed.subject_follow),
-    1,
-    width,
-    &t,
-  ));
-  let cursor = focused && s == c;
-  if cursor {
-    cursor_line = lines.len();
+  if app.feed.feed_tab == FeedTab::Browse {
+    lines.push(section_header(
+      "Browse",
+      usize::from(app.feed.subject_follow),
+      1,
+      width,
+      &t,
+    ));
+    let cursor = focused && s == c;
+    if cursor {
+      cursor_line = lines.len();
+    }
+    lines.push(filter_row(
+      "Follow rail subject",
+      app.feed.subject_follow,
+      cursor,
+      FilterRowKind::Toggle,
+      width,
+      &t,
+    ));
+    s += 1;
+    lines.push(Line::from(""));
   }
-  lines.push(filter_row(
-    "Follow rail subject",
-    app.feed.subject_follow,
-    cursor,
-    FilterRowKind::Toggle,
-    width,
-    &t,
-  ));
-  s += 1;
-  lines.push(Line::from(""));
 
   let clear_hl = focused && s == c;
   if clear_hl {
