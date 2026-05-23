@@ -364,6 +364,10 @@ fn handle_browse_rail_key(key: KeyEvent, app: &mut App) -> bool {
   };
   if consumed && scope_moving && app.feed.subject_follow {
     app.reset_active_feed_position();
+    // Drilling in / back changes whether the feed is actually narrowed,
+    // so refresh the honest status text (avoids a stale "drill to narrow"
+    // after you've drilled, or vice-versa).
+    app.status_message = Some(subject_follow_status(app));
   }
   consumed
 }
@@ -384,14 +388,21 @@ fn toggle_subject_follow(app: &mut App) {
   // against the same list the feed pane now renders — otherwise Enter
   // opens whatever sat at the old index in the unscoped list.
   app.reset_active_feed_position();
-  app.status_message = Some(
-    if app.feed.subject_follow {
-      "Subject follow ON — feed narrows to rail subject"
-    } else {
-      "Subject follow OFF — feed shows everything"
-    }
-    .to_string(),
-  );
+  app.status_message = Some(subject_follow_status(app));
+}
+
+/// Honest status text for the subject-follow state. Follow ON only
+/// narrows once you've drilled into a subject (`rail_path` non-empty); at
+/// the top Groups level it shows everything, so the message must not claim
+/// otherwise (that read as "search is pinned to the top subject").
+fn subject_follow_status(app: &App) -> String {
+  if !app.feed.subject_follow {
+    "Subject follow OFF — feed shows everything".to_string()
+  } else if app.browse.rail_path.is_empty() {
+    "Subject follow ON — drill into a subject to narrow".to_string()
+  } else {
+    "Subject follow ON — feed narrows to rail subject".to_string()
+  }
 }
 
 /// On Enter: drill one level deeper when the cursor is on a Group or
