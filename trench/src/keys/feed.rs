@@ -301,7 +301,7 @@ fn handle_browse_rail_key(key: KeyEvent, app: &mut App) -> bool {
   // Moving the rail cursor or drilling changes which subject is followed.
   // When subject-follow is on, that shifts the feed scope, so the visible
   // cache and cursor must be reset afterwards (see `toggle_subject_follow`).
-  // `'p'` (promotion) and `'x'/'F'` (follow toggle, which resets itself)
+  // `'p'` (promotion) and `'x'` (follow toggle, which resets itself)
   // are excluded.
   let scope_moving = matches!(
     key.code,
@@ -356,7 +356,7 @@ fn handle_browse_rail_key(key: KeyEvent, app: &mut App) -> bool {
       toggle_browse_promotion_for_selected(app);
       true
     }
-    KeyCode::Char('x' | 'F') => {
+    KeyCode::Char('x') => {
       toggle_subject_follow(app);
       true
     }
