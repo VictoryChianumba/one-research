@@ -95,6 +95,11 @@ pub fn fetch_search(query: &str) -> Result<Vec<FeedItem>, String> {
 }
 
 /// Free-text arXiv search using `search_query=all:{query}`.
+///
+/// Sorted by `relevance` (not submission date): this backs the search
+/// bar's online lookup, where the user wants the *best* match for a title
+/// or topic — including older canonical papers — not just the 100 newest
+/// papers that mention the terms.
 pub fn search_query(
   query: &str,
   max_results: usize,
@@ -103,7 +108,7 @@ pub fn search_query(
   let url = format!(
     "https://export.arxiv.org/api/query\
      ?search_query=all:{encoded}\
-     &sortBy=submittedDate&sortOrder=descending&max_results={}",
+     &sortBy=relevance&sortOrder=descending&max_results={}",
     max_results.min(100)
   );
   let resp = crate::http::client()
