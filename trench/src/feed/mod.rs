@@ -606,10 +606,14 @@ pub fn visible_indices_for(
     FeedTab::Inbox | FeedTab::Library | FeedTab::Browse
   );
   match search {
+    // Map each ranked URL back to its *current* corpus index — this is
+    // what makes a mid-search re-sort harmless (the worker stores URLs,
+    // not positions). `items` is the items_store slice here, so the
+    // url_index offsets line up.
     Some(engine) if item_store_tab => engine
-      .ranked_indices()
+      .ranked_urls()
       .into_iter()
-      .map(|i| i as usize)
+      .filter_map(|url| workspace.items_store.find_index_by_url(&url))
       .filter(|&i| {
         items.get(i).is_some_and(|it| passes(it) && query.passes_gates(it))
       })

@@ -37,8 +37,21 @@ if ! grep -qE '^nucleo *=' trench/Cargo.toml; then
   echo "FAIL: nucleo dependency missing from trench/Cargo.toml (ADR-013 §D1)"
   fail=1
 fi
-if ! grep -qE 'ranked_indices\(\)' trench/src/feed/mod.rs; then
-  echo "FAIL: visible_indices_for does not consume the nucleo snapshot (engine.ranked_indices()) (ADR-013 §D1)"
+if ! grep -qE 'ranked_urls\(\)' trench/src/feed/mod.rs; then
+  echo "FAIL: visible_indices_for does not consume the nucleo snapshot (engine.ranked_urls()) (ADR-013 §D1)"
+  fail=1
+fi
+
+# Q2b. The worker is keyed on the stable URL, not the volatile corpus
+#      index (ADR-013 §D5). Indexing by position would go stale whenever
+#      items_store re-sorts on merge; the feed must re-map URL→index via
+#      find_index_by_url instead.
+if grep -qE 'Nucleo<u32>' trench/src/search/engine.rs; then
+  echo "FAIL: search engine still keyed on Nucleo<u32> — must key on the stable URL (ADR-013 §D5)"
+  fail=1
+fi
+if ! grep -qE 'find_index_by_url' trench/src/feed/mod.rs; then
+  echo "FAIL: visible_indices_for must map ranked URLs to current indices via find_index_by_url (ADR-013 §D5)"
   fail=1
 fi
 
