@@ -367,6 +367,7 @@ pub fn draw_main_row(
         &app.browse,
         &app.config.sources.arxiv_categories,
         app.feed.subject_follow,
+        app.feed.search_active,
         &t,
         right_rect,
       );

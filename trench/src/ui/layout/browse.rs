@@ -35,6 +35,7 @@ pub fn draw_browse_tab(
   browse: &BrowseModel,
   promoted: &[String],
   subject_follow: bool,
+  search_active: bool,
   theme: &ui_theme::Theme,
   area: Rect,
 ) {
@@ -73,20 +74,34 @@ pub fn draw_browse_tab(
   draw_breadcrumb(frame, browse, theme, breadcrumb_area, rail_focused);
   draw_rail_rows(frame, browse, promoted, theme, body);
   if let Some(fa) = footer_area {
-    draw_rail_footer(frame, subject_follow, theme, fa, rail_focused);
+    draw_rail_footer(
+      frame,
+      subject_follow,
+      search_active,
+      theme,
+      fa,
+      rail_focused,
+    );
   }
 }
 
 /// Subject-follow indicator pinned at the bottom of the rail. Toggled
-/// via `x` while the rail is focused.
+/// via `x` while the rail is focused. While a search is active the search
+/// bar captures `x` (it types into the query), so the footer tells you to
+/// exit search first rather than implying `x` works.
 fn draw_rail_footer(
   frame: &mut Frame,
   subject_follow: bool,
+  search_active: bool,
   theme: &ui_theme::Theme,
   area: Rect,
   focused: bool,
 ) {
-  let (label, mut label_style) = if subject_follow {
+  let (label, mut label_style) = if search_active {
+    // `x` is being typed into the search bar right now — Esc or Enter
+    // both exit search input, after which `x` toggles follow.
+    ("Follow: Esc/Enter, then x", Style::default().fg(theme.accent))
+  } else if subject_follow {
     (
       "Follow: x",
       Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
@@ -94,7 +109,7 @@ fn draw_rail_footer(
   } else {
     ("Follow: .", Style::default().fg(theme.text_dim))
   };
-  if !focused {
+  if !focused && !search_active {
     label_style = Style::default().fg(theme.border);
   }
   let text = truncate_str(label, area.width.saturating_sub(1) as usize);
