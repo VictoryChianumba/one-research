@@ -21,6 +21,51 @@ A terminal UI for following AI research — aggregates arXiv, HuggingFace daily 
 - Fast startup: cached feed loaded immediately; network fetches run in the background
 - No async runtime — plain threads and blocking I/O throughout
 
+## Architecture
+
+Data flows in one direction: external sources are fetched on a background
+thread, merged and de-duplicated into application state, persisted, and drawn.
+The cache and the workflow-state store are **siblings** — both load at startup
+so the TUI paints from disk before any network call returns.
+
+```
+        arXiv · HuggingFace · OpenReview · CORE · RSS/Atom
+                              │
+                  ┌───────────▼───────────┐
+                  │       Ingestion        │  Source + EnrichmentSource
+                  │   (background thread)   │  registries, grouped by host,
+                  └───────────┬───────────┘  streamed over std::sync::mpsc
+                              │  FetchMessage::Items
+                  ┌───────────▼───────────┐
+                  │          App           │  process_incoming(): URL- and
+                  │     (merge + sort)      │  arXiv-ID dedup, sort by date
+                  └─────┬─────────────┬─────┘
+            ┌───────────┘             └───────────┐
+      ┌─────▼──────┐                       ┌───────▼───────┐
+      │   Cache    │                       │  State Store  │  workflow states
+      │ cache.json │                       │  state.json   │  (Inbox/Queued/…),
+      └────────────┘                       └───────────────┘  keyed by URL
+                              │
+                  ┌───────────▼───────────┐
+                  │       TUI (draw)       │  single draw(frame, app); ratatui
+                  └───────────┬───────────┘
+              ┌───────┬───────┴───────┬───────┐
+          ┌───▼──┐ ┌──▼───┐      ┌────▼───┐ ┌─▼────┐
+          │ Feed │ │Reader│      │ Notes  │ │ Chat │
+          └──────┘ └──────┘      └────────┘ └──────┘
+```
+
+The codebase is evolving through small, documented architectural slices: each
+extracts a seam (ingestion, store, discovery, frame layout, …), records the
+rationale in an ADR, and locks the boundary with a tripwire script. The
+load-bearing references are:
+
+- [`docs/CONTEXT.md`](docs/CONTEXT.md) — domain vocabulary (FeedItem, Workspace,
+  the per-pane model) and architecture boundaries.
+- [`docs/adr/`](docs/adr/) — accepted architecture decisions, including the
+  per-pane **render purification** refactor (separating state updates from the
+  pure render path) and the ingestion, store, and search seams.
+
 ## Installation
 
 ### From source
@@ -275,17 +320,13 @@ re-opening trench never surprises you with a stale random shuffle.
 
 ## Roadmap
 
-- [ ] Floating reader popup — open paper in overlay without leaving feed (`Ldr+Enter`)
 - [ ] Pane navigation with `Ldr+hjkl` spatial movement between all panes
 - [ ] Voice mode — fix ElevenLabs wiring and add word-highlight animation
-- [ ] Help screen — full keybinding reference accessible via `Ldr+?`
-- [ ] Leader key footer — always show `Ldr: Ctrl+T` and available bindings
-- [ ] Notes accessible from reader mode via `Ldr+n`
-- [ ] README hero screenshot and demo GIF
+- [ ] Demo GIF / asciinema cast for the README (hero screenshot is in place)
 
 ## Contributing
 
-Issues and pull requests are welcome. The codebase is intentionally minimal — no async, no macros beyond what Rust requires, no framework beyond ratatui. Read `CLAUDE.md` for architecture notes before contributing.
+Issues and pull requests are welcome. The codebase is intentionally minimal — no async, no macros beyond what Rust requires, no framework beyond ratatui. Read [`docs/CONTEXT.md`](docs/CONTEXT.md) and the [ADRs](docs/adr/) for architecture notes before contributing.
 
 ```sh
 cargo build -p trench --release   # build

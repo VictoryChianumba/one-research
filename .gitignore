@@ -10,8 +10,9 @@ cargo
 .DS_Store
 notes.txt
 FEATURES.md
-HOTKEYS.md
 CLAUDE.md
 V2.md
 code-review/
 debugging.md
+tmp/
+outputs/
