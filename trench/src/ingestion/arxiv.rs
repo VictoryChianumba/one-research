@@ -27,7 +27,24 @@ impl Source for ArxivSource {
   }
 }
 
+/// Bulk / first-page fetch: the 50 most-recent papers in `categories`.
+/// Delegates to [`fetch_page`] at `start = 0` so the bulk-refresh path
+/// (and the discovery agent) keep their exact pre-ADR-015 behaviour —
+/// the `(0, 50)` literal here is the bulk contract guarded by tripwire R1.
 pub fn fetch(categories: &[String]) -> Result<Vec<FeedItem>, String> {
+  fetch_page(categories, 0, 50)
+}
+
+/// Paginating fetch (ADR-015 §F2). Pulls `max_results` papers starting at
+/// arXiv offset `start`, most-recent-first. The Browse pager walks a
+/// category deeper by advancing `start`; `fetch` is the `start = 0`
+/// special case. Single URL builder so the bulk and paged queries can
+/// never drift (tripwire R2).
+pub fn fetch_page(
+  categories: &[String],
+  start: usize,
+  max_results: usize,
+) -> Result<Vec<FeedItem>, String> {
   let query = if categories.is_empty() {
     "cat:cs.LG+OR+cat:cs.AI+OR+cat:stat.ML".to_string()
   } else {
@@ -40,7 +57,8 @@ pub fn fetch(categories: &[String]) -> Result<Vec<FeedItem>, String> {
   let url = format!(
     "https://export.arxiv.org/api/query\
      ?search_query={query}\
-     &sortBy=submittedDate&sortOrder=descending&max_results=50"
+     &sortBy=submittedDate&sortOrder=descending\
+     &start={start}&max_results={max_results}"
   );
   let resp = crate::http::client()
     .get(&url)

@@ -12,26 +12,36 @@ use std::sync::mpsc;
 use super::BrowseMessage;
 use crate::ingestion::arxiv;
 
-/// Spawn a browse-fetch thread for one arXiv category code.
+/// Spawn a browse-fetch thread for one arXiv category code at page
+/// offset `start` (ADR-015 §F2/§F4). `start = 0` is the first page (the
+/// ADR-010 Enter path); the scroll-tail pager passes the buffer's
+/// `next_offset` to walk deeper. The `start` is echoed back in the
+/// `Items` message so the consumer appends rather than replaces.
 ///
 /// Sends a single `Items` or `Error` message on `tx`, then exits. The
 /// caller is responsible for tracking inflight state — `tx` is cloned
 /// per spawn, so multiple in-flight Browse fetches share the same
 /// receiver in `BrowseModel.rx`.
-pub fn spawn_browse_fetch(category: String, tx: mpsc::Sender<BrowseMessage>) {
+pub fn spawn_browse_fetch(
+  category: String,
+  start: usize,
+  page_size: usize,
+  tx: mpsc::Sender<BrowseMessage>,
+) {
   std::thread::spawn(move || {
     let tx_panic = tx.clone();
     let category_panic = category.clone();
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
       let t = std::time::Instant::now();
-      match arxiv::fetch(std::slice::from_ref(&category)) {
+      match arxiv::fetch_page(std::slice::from_ref(&category), start, page_size)
+      {
         Ok(items) => {
           log::info!(
-            "browse::spawn_browse_fetch[{category}]: {} items in {}ms",
+            "browse::spawn_browse_fetch[{category}@{start}]: {} items in {}ms",
             items.len(),
             t.elapsed().as_millis(),
           );
-          let _ = tx.send(BrowseMessage::Items { category, items });
+          let _ = tx.send(BrowseMessage::Items { category, start, items });
         }
         Err(e) => {
           log::error!(

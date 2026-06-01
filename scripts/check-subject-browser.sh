@@ -137,6 +137,66 @@ for tag in "PR 1 (" "PR 2 (" "PR 3 ("; do
   fi
 done
 
+# ── Slice-15 (browse paging buffer, ADR-015) ───────────────────────────
+
+# R1.  arxiv::fetch delegates to fetch_page(categories, 0, 50) — the bulk
+#      / first-page depth contract. A change here silently alters how many
+#      papers every bulk refresh pulls.
+if ! grep -qE 'fetch_page\(categories, 0, 50\)' trench/src/ingestion/arxiv.rs
+then
+  echo "FAIL: arxiv::fetch must delegate to fetch_page(categories, 0, 50) (ADR-015 §F2 R1)"
+  fail=1
+fi
+
+# R2.  Exactly one fetch_page definition, so the bulk and paged queries
+#      share a single URL builder and cannot drift.
+fp_defs=$(grep -cE '^pub fn fetch_page' trench/src/ingestion/arxiv.rs || true)
+if [[ "$fp_defs" -ne 1 ]]; then
+  echo "FAIL: expected exactly 1 fetch_page definition, found ${fp_defs} (ADR-015 §F2 R2)"
+  fail=1
+fi
+
+# R4.  The scroll-tail pager is inflight- and exhausted-guarded. Without
+#      both, a fast scroll fires duplicate page fetches or keeps paging
+#      past the archive's end.
+if ! grep -q 'fn maybe_page_browse_subject' \
+  trench/src/app/methods/history.rs
+then
+  echo "FAIL: scroll-tail pager maybe_page_browse_subject missing (ADR-015 §F4 R4)"
+  fail=1
+fi
+for guard in 'inflight.contains(&code)' 'b.exhausted'; do
+  if ! grep -qF "$guard" trench/src/app/methods/history.rs; then
+    echo "FAIL: Browse pager missing guard '${guard}' (ADR-015 §F4 R4)"
+    fail=1
+  fi
+done
+
+# R3.  The per-category store is a CategoryBuffer carrying next_offset +
+#      exhausted, not a bare Vec<String>. A revert to the flat list loses
+#      the pagination state and silently re-caps Browse at one page.
+if ! grep -qE 'loaded_categories: HashMap<String, CategoryBuffer>' \
+  trench/src/app/state/browse.rs
+then
+  echo "FAIL: loaded_categories must be HashMap<String, CategoryBuffer> (ADR-015 §F1 R3)"
+  fail=1
+fi
+for field in 'pub next_offset: usize' 'pub exhausted: bool'; do
+  if ! grep -qF "$field" trench/src/app/state/browse.rs; then
+    echo "FAIL: CategoryBuffer missing '${field}' (ADR-015 §F1 R3)"
+    fail=1
+  fi
+done
+
+# R5.  ADR-015 cadence text mentions every shipped PR. Mirror of O5 / P5.
+adr15="docs/adr/ADR-015-browse-paging-buffer.md"
+for tag in "PR 1 —" "PR 2 —" "PR 3 —"; do
+  if ! grep -qF "$tag" "$adr15"; then
+    echo "FAIL: ${adr15} cadence block missing reference to '${tag}'"
+    fail=1
+  fi
+done
+
 if [[ "$fail" -eq 0 ]]; then
   echo "OK: subject-browser invariants hold (taxonomy × 8 groups, dispatch coverage, Browse ∉ Source, KNOWN_ARXIV_CATS removed, rail reshape locked: 4 sort modes, Subject col Browse-only, no draw_browse_detail_panel)"
 fi

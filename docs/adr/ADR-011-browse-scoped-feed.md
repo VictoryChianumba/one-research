@@ -2,7 +2,15 @@
 
 - **Status:** Accepted (2026-05-19). The shipped Browse surface is a left feed
   with a Details-width right companion pane: the subject rail is shown by
-  default and Filters replace it while filter focus is active.
+  default and Filters replace it while filter focus is active. All three PRs
+  landed: PR 1 (`bddb34a` — rail reshape to drill-replace left-rail + feed
+  table; `BrowseModel` field removal `focused_column`/`archives`/`categories`;
+  Browse-first tab order). PR 2 (`c0ff2df` — `FeedSortMode` Dated/Random/
+  Popular/Trending + `subject_follow` predicate + filter pane `f` and `F`
+  quick-toggle + rail footer follow-state). PR 3 (`6539912` — Browse-only
+  Subject column; raw arXiv codes preserved in `domain_tags` fixing PR 2's
+  silently-broken predicate; tripwires P1-P5 added to
+  `scripts/check-subject-browser.sh`; README Subject-Browser/Sort sections).
 - **Date:** 2026-05-19
 - **Owner:** Victory Chianumba
 - **Supersedes:** [ADR-010](ADR-010-subject-browser.md) §D4 ("merge with session scope") — replaced by §E1 ("Browse is the feed, with a subject-filter overlay"). ADR-010's D2 (typed taxonomy table), D3 (worker thread, not `Source` impl), and D5 (`KNOWN_ARXIV_CATS` stays deleted) remain in force.

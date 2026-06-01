@@ -368,8 +368,8 @@ impl App {
     let mut had_updates = false;
     for msg in messages {
       match msg {
-        BrowseMessage::Items { category, items } => {
-          let mut urls = Vec::with_capacity(items.len());
+        BrowseMessage::Items { category, start, items } => {
+          let mut fetched = Vec::with_capacity(items.len());
           for item in items {
             let url = item.url.clone();
             match self.merge_fetched_item(item) {
@@ -382,13 +382,36 @@ impl App {
               }
               ItemMergeOutcome::DroppedDuplicate => {}
             }
-            urls.push(url);
+            fetched.push(url);
           }
-          let n = urls.len();
-          self.browse.loaded_categories.insert(category.clone(), urls);
+          // ADR-015 §F4: `start == 0` is the first page — replace any
+          // stale buffer. A later page appends, dedupes against what's
+          // already buffered, and advances the pager. A short page
+          // (fewer than a full `BROWSE_PAGE_SIZE`) exhausts the archive.
+          let page_len = fetched.len();
+          if start == 0 {
+            self.browse.loaded_categories.insert(
+              category.clone(),
+              crate::app::CategoryBuffer::first_page(fetched),
+            );
+          } else {
+            let buf = self
+              .browse
+              .loaded_categories
+              .entry(category.clone())
+              .or_default();
+            for url in fetched {
+              if !buf.urls.contains(&url) {
+                buf.urls.push(url);
+              }
+            }
+            buf.next_offset = start + page_len;
+            buf.exhausted = page_len < crate::app::BROWSE_PAGE_SIZE;
+          }
           self.browse.inflight.remove(&category);
+          let total = self.browse.loaded_count(&category).unwrap_or(0);
           self.status_message =
-            Some(format!("{category}: loaded {n} recent papers"));
+            Some(format!("{category}: {total} papers loaded"));
         }
         BrowseMessage::Error { category, error } => {
           self.browse.inflight.remove(&category);
@@ -643,6 +666,7 @@ mod tests {
     app.browse.inflight.insert(category.clone());
     let _ = app.browse.tx.send(BrowseMessage::Items {
       category: category.clone(),
+      start: 0,
       items: vec![item_a, item_b],
     });
 
@@ -650,18 +674,78 @@ mod tests {
     // and clear the inflight flag.
     app.process_incoming_browse();
 
-    let urls = app
+    let buf = app
       .browse
       .loaded_categories
       .get(&category)
       .expect("category entry recorded");
-    assert_eq!(urls.len(), 2);
-    assert!(urls.iter().any(|u| u == &url_a));
-    assert!(urls.iter().any(|u| u == &url_b));
+    assert_eq!(buf.urls.len(), 2);
+    assert!(buf.urls.iter().any(|u| u == &url_a));
+    assert!(buf.urls.iter().any(|u| u == &url_b));
+    // ADR-015 §F1: the buffer derives where the next page starts and
+    // whether the archive is exhausted. Two items (< BROWSE_PAGE_SIZE)
+    // is a short page, so the next fetch starts at 2 and there is
+    // nothing more to pull. PR 2 reads exactly these two fields to
+    // decide whether a scroll-to-tail should page deeper.
+    assert_eq!(buf.next_offset, 2, "next page starts past what we fetched");
+    assert!(buf.exhausted, "a short first page exhausts the archive");
     assert!(
       !app.browse.inflight.contains(&category),
       "inflight cleared after items message"
     );
+  }
+
+  #[test]
+  fn browse_pagination_appends_advances_and_exhausts() {
+    // ADR-015 §F4: the scroll-tail pager extends an existing buffer.
+    // This locks the handler's append arithmetic — the part PR 2's
+    // pager depends on to know where to resume and when to stop.
+    let mut app = App::new();
+    let category = "test-page-cat".to_string();
+
+    // First page is *full* (BROWSE_PAGE_SIZE items): the archive has
+    // more, so the buffer parks `next_offset` at the page boundary and
+    // stays un-exhausted. WHY it matters: a full page is the signal the
+    // pager uses to keep going.
+    let page1: Vec<_> = (0..crate::app::BROWSE_PAGE_SIZE)
+      .map(|i| {
+        make_item(&format!("test://page/p1-{i:03}"), SourcePlatform::ArXiv)
+      })
+      .collect();
+    let _ = app.browse.tx.send(BrowseMessage::Items {
+      category: category.clone(),
+      start: 0,
+      items: page1,
+    });
+    app.process_incoming_browse();
+    {
+      let buf = app.browse.loaded_categories.get(&category).unwrap();
+      assert_eq!(buf.urls.len(), crate::app::BROWSE_PAGE_SIZE);
+      assert_eq!(buf.next_offset, crate::app::BROWSE_PAGE_SIZE);
+      assert!(!buf.exhausted, "a full first page leaves room for more");
+    }
+
+    // Second page from `next_offset` is short: it appends (not replaces),
+    // advances the offset past it, and exhausts the archive so the pager
+    // stops. WHY it matters: a short page is the terminating signal.
+    let page2 = vec![
+      make_item("test://page/p2-a", SourcePlatform::ArXiv),
+      make_item("test://page/p2-b", SourcePlatform::ArXiv),
+    ];
+    let _ = app.browse.tx.send(BrowseMessage::Items {
+      category: category.clone(),
+      start: crate::app::BROWSE_PAGE_SIZE,
+      items: page2,
+    });
+    app.process_incoming_browse();
+    let buf = app.browse.loaded_categories.get(&category).unwrap();
+    assert_eq!(
+      buf.urls.len(),
+      crate::app::BROWSE_PAGE_SIZE + 2,
+      "second page appends onto the first, not replaces it"
+    );
+    assert_eq!(buf.next_offset, crate::app::BROWSE_PAGE_SIZE + 2);
+    assert!(buf.exhausted, "a short second page exhausts the archive");
   }
 
   #[test]

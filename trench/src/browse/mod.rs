@@ -25,9 +25,11 @@ use crate::models::FeedItem;
 /// `BrowseModel.loaded_categories` / `BrowseModel.inflight`.
 pub enum BrowseMessage {
   /// Successful fetch — items will be merged into `workspace.items` by
-  /// the shared dedup helper, then the `category → Vec<url>` mapping
-  /// is recorded in `BrowseModel.loaded_categories`.
-  Items { category: String, items: Vec<FeedItem> },
+  /// the shared dedup helper, then folded into the category's
+  /// `CategoryBuffer` in `BrowseModel.loaded_categories`. `start` is the
+  /// arXiv page offset this batch was fetched at (ADR-015 §F4): `0`
+  /// replaces the buffer (first page), `> 0` appends and advances it.
+  Items { category: String, start: usize, items: Vec<FeedItem> },
   /// Fetch failed (HTTP / parse error). The category is removed from
   /// `inflight` and a status notification is shown. No partial items
   /// land in the cache.

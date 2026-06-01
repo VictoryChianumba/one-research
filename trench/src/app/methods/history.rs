@@ -2,6 +2,12 @@ use crate::app::{App, FeedTab};
 use crate::library::LibraryFilter;
 use crate::models::{FeedItem, WorkflowState};
 
+/// How many rows from the tail of the visible feed the Browse pager
+/// fires (ADR-015 §F4). Paging a little early keeps the next page in
+/// flight before the user actually reaches the bottom, so the buffer
+/// stays ahead of the scroll rather than stalling at the edge.
+const BROWSE_PAGE_AHEAD_ROWS: usize = 5;
+
 impl App {
   pub fn record_paper_open(&mut self, item: &FeedItem) {
     let meta = crate::history::HistoryPaperMeta {
@@ -81,6 +87,63 @@ impl App {
     if self.reader_bottom.open && self.reader_bottom.details {
       self.reader_bottom.scroll.set_max(usize::MAX);
     }
+
+    self.maybe_page_browse_subject();
+  }
+
+  /// ADR-015 §F4 — scroll-driven Browse pagination. When the feed is
+  /// scoped to a single Category (subject-follow on, rail drilled to
+  /// depth 2) and the cursor nears the tail of the buffered papers,
+  /// fetch the next arXiv page from the buffer's `next_offset`.
+  ///
+  /// Deliberately only *extends* a category that already has a buffer:
+  /// initiating a never-fetched category from a scroll event is PR 3's
+  /// auto-fill, out of scope here. The `inflight` guard blocks duplicate
+  /// page fetches (R4) and `exhausted` stops paging at the archive end;
+  /// because an appended page grows `visible_count` — pushing the cursor
+  /// back from the tail — the per-frame call re-arms only on real scroll.
+  fn maybe_page_browse_subject(&mut self) {
+    if self.feed.feed_tab != FeedTab::Browse || !self.feed.subject_follow {
+      return;
+    }
+    // Only Category scope (depth 2) pages — at Group/Archive scope
+    // "load more" has no single category to extend.
+    if self.browse.rail_path.len() != 2 {
+      return;
+    }
+    let Some(cat) = self.browse.rail_selected_category() else {
+      return;
+    };
+    let code = cat.code.to_string();
+
+    // Extend only an existing, non-exhausted buffer (PR 2, not PR 3).
+    let Some(next_offset) =
+      self
+        .browse
+        .loaded_categories
+        .get(&code)
+        .and_then(|b| if b.exhausted { None } else { Some(b.next_offset) })
+    else {
+      return;
+    };
+    if self.browse.inflight.contains(&code) {
+      return;
+    }
+
+    // Near the tail of what the user can see?
+    let selected = self.active_selected_index();
+    let visible = self.visible_count();
+    if selected + BROWSE_PAGE_AHEAD_ROWS < visible {
+      return;
+    }
+
+    self.browse.inflight.insert(code.clone());
+    crate::browse::pipeline::spawn_browse_fetch(
+      code,
+      next_offset,
+      crate::app::BROWSE_PAGE_SIZE,
+      self.browse.tx.clone(),
+    );
   }
 
   /// Per-frame post-layout hook (ADR-008). Runs between the layout pass

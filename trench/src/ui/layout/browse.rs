@@ -219,13 +219,17 @@ fn draw_rail_rows(
           };
           let is_promoted = promoted.iter().any(|p| p == c.code);
           let marker = if is_promoted { Some("★") } else { None };
+          // ADR-015 §F6: an honest per-category indicator. Blank = never
+          // fetched this session, `0` = fetched but empty, `N` = N papers
+          // buffered. Replaces the silent empty cell that left a drilled
+          // category looking broken when it was simply un-fetched.
           rail_row(
             theme,
             i == selected,
             rail_focused,
             marker,
             &label,
-            None,
+            browse.loaded_count(c.code),
             max_text,
           )
         })

@@ -429,7 +429,14 @@ fn spawn_browse_fetch_for_selected(app: &mut App) {
   }
   app.browse.inflight.insert(code.clone());
   app.status_message = Some(format!("{code}: loading recent papers…"));
-  crate::browse::pipeline::spawn_browse_fetch(code, app.browse.tx.clone());
+  // First page — the scroll-tail pager (ADR-015 §F4) walks deeper from
+  // the buffer's next_offset; Enter always (re)loads from the top.
+  crate::browse::pipeline::spawn_browse_fetch(
+    code,
+    0,
+    crate::app::BROWSE_PAGE_SIZE,
+    app.browse.tx.clone(),
+  );
 }
 
 /// Toggle the selected category's membership in

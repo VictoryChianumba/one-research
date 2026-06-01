@@ -5,6 +5,42 @@ use crate::browse::BrowseMessage;
 use crate::models::arxiv_taxonomy::{Archive, Category, Group, TAXONOMY};
 use crate::primitives::ListState;
 
+/// Papers fetched per Browse page (arXiv `max_results` for the Browse
+/// path). The buffer uses it to tell a *full* page (more may remain)
+/// from a *short* one (archive exhausted). ADR-015 PR 2 threads this
+/// into `arxiv::fetch_page`; today `arxiv::fetch` hardcodes the same
+/// value, so the two stay in lockstep (tripwire R1).
+pub const BROWSE_PAGE_SIZE: usize = 50;
+
+/// Per-category paging buffer (ADR-015 §F1). Supersedes the flat
+/// `Vec<url>` ADR-010 recorded: alongside the fetched URLs it tracks
+/// where the *next* page starts and whether the archive is exhausted.
+/// PR 1 renders an honest per-category count from `urls`; PR 2 reads
+/// `next_offset` / `exhausted` to page deeper on scroll.
+#[derive(Debug, Default, Clone)]
+pub struct CategoryBuffer {
+  /// Fetched URLs in arrival order, resolved against `items_store`.
+  pub urls: Vec<String>,
+  /// arXiv `start` offset for the next page — equals the count fetched
+  /// so far, since pages are contiguous from `start = 0`. Read by the
+  /// scroll-tail pager (ADR-015 §F4).
+  pub next_offset: usize,
+  /// A short page (`< BROWSE_PAGE_SIZE`) came back: nothing more to pull.
+  /// The pager stops once this is set.
+  pub exhausted: bool,
+}
+
+impl CategoryBuffer {
+  /// Build the buffer from a category's first page. `next_offset`
+  /// advances past what we fetched; a short page means the archive is
+  /// already exhausted. PR 2's append path extends this rather than
+  /// replacing it.
+  pub fn first_page(urls: Vec<String>) -> Self {
+    let n = urls.len();
+    Self { urls, next_offset: n, exhausted: n < BROWSE_PAGE_SIZE }
+  }
+}
+
 /// Composition-root model for the Subject Browser tab (`FeedTab::Browse`).
 /// Sibling to `FeedModel`, `DiscoveryModel`, etc.
 ///
@@ -21,8 +57,9 @@ use crate::primitives::ListState;
 /// `categories` cursors, the `recent` cursor for a deleted details
 /// pane — is gone. Only the rail cursor remains. See ADR-011 §E2.
 ///
-/// The worker channel (`tx` / `rx`) and the session-scoped
-/// `loaded_categories` / `inflight` from ADR-010 PR 2 are unchanged.
+/// The worker channel (`tx` / `rx`) and the session-scoped `inflight`
+/// from ADR-010 PR 2 are unchanged; `loaded_categories` is now a
+/// `CategoryBuffer` per code (ADR-015 §F1).
 pub struct BrowseModel {
   /// Drill stack. Empty = at the Groups level. One entry = inside a
   /// Group, showing its Archives. Two entries = inside an Archive,
@@ -40,11 +77,12 @@ pub struct BrowseModel {
   /// and the paper feed.
   pub focus: BrowseFocus,
 
-  /// Per-category list of URLs fetched in this session. The Browse
-  /// renderer resolves these URLs against `workspace.items_store` via
-  /// the `find_by_url` accessor, so dedup + workflow-state
-  /// preservation come for free.
-  pub loaded_categories: HashMap<String, Vec<String>>,
+  /// Per-category paging buffer fetched in this session (ADR-015 §F1).
+  /// The Browse renderer resolves each buffer's URLs against
+  /// `workspace.items_store`, so dedup + workflow-state preservation
+  /// come for free; the rail reads the URL count for an honest
+  /// per-category indicator (§F6).
+  pub loaded_categories: HashMap<String, CategoryBuffer>,
 
   /// Category codes with an outstanding fetch. `Enter` short-circuits
   /// when the code is already in this set so rapid mashing doesn't
@@ -100,6 +138,14 @@ impl BrowseModel {
       tx,
       rx: Some(rx),
     }
+  }
+
+  /// Loaded paper count for a category code, or `None` if it has never
+  /// been fetched this session. Drives the rail's honest per-category
+  /// count (ADR-015 §F6): blank = unfetched, `0` = fetched-but-empty,
+  /// `N` = N papers buffered.
+  pub fn loaded_count(&self, code: &str) -> Option<usize> {
+    self.loaded_categories.get(code).map(|b| b.urls.len())
   }
 
   /// Resolve the `Group` whose drill the user is currently inside, if
