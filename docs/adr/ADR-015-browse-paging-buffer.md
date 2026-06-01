@@ -1,6 +1,6 @@
 # ADR-015 — Browse is a per-category paging buffer with windowed render, not an on-Enter snapshot
 
-- **Status:** Proposed (2026-06-01). PR 1 + PR 2 implemented and verified locally (306 tests, fmt, clippy, tripwires R1-R5 green) but **not yet committed**; PR 3 (arrival auto-fill + background page-ahead) pending. Cadence table below.
+- **Status:** Proposed (2026-06-01). PR 1 + PR 2 committed (`ae40c83`). PR 3 split into **3a** (arrival auto-fill — implemented + verified locally, uncommitted) and **3b** (background page-ahead — pending); the split mirrors slice-1's 4a/4b, keeping each rate-limit-affecting change independently verifiable in the TUI. Cadence table below.
 - **Date:** 2026-06-01
 - **Owner:** Victory Chianumba
 - **Supersedes:** [ADR-011](ADR-011-browse-scoped-feed.md) §E1's *on-Enter snapshot* flow — a Category drill fetched exactly one 50-item page and stopped. Replaced by §F4 (scroll-driven pagination) + §F5 (first page on rail-arrival). ADR-011's rail UI (§E2), sort modes (§E3), subject-follow (§E4), and Subject column (§E5) remain in force.
@@ -100,7 +100,7 @@ This is the only place the user ever sees that Browse talks to a network. It's r
 
 - **PR 1 — buffer + honest empty-state (no new fetch volume).** `CategoryBuffer` type (§F1) + seam-state render (§F6) + tripwires R1-R5 + `ci.sh` wiring + CONTEXT.md vocab. First fetch is still one page of 50; the buffer simply records `next_offset = 50, exhausted = false`. User-visible win: honest states replace silent empty. *(the "honest empty-state" ask)*
 - **PR 2 — deeper results via scroll-driven pagination.** `fetch_page` (§F2) + scroll-tail trigger + append/advance/exhaust (§F4) + `BrowseMessage` offset plumbing. *(the "deeper / paginate" ask)*
-- **PR 3 — first-page-on-arrival + background prefetch.** Rail-settle debounce (§F5) + page-ahead while reading (§F4 extension). *(the "auto-fill on navigate" ask)*
+- **PR 3 — first-page-on-arrival + background prefetch.** Split for independent TUI verification: **3a** rail-settle auto-fill (§F5) — fires page 1 once the cursor rests on a Category past the settle window, gated on subject-follow, polled every loop iteration so the timer advances while idle, attempted-guarded against retry storms (tripwire R6); **3b** page-ahead while reading (§F4 extension) — pending. *(the "auto-fill on navigate" ask)*
 
 ### Invariants for tripwire (`scripts/check-subject-browser.sh`, letters R1-R5)
 

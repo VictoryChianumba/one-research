@@ -197,6 +197,22 @@ for tag in "PR 1 —" "PR 2 —" "PR 3 —"; do
   fi
 done
 
+# R6.  Arrival auto-fill is attempted-guarded so a failing fetch cannot
+#      re-fire every settle window (retry storm). The poll must both
+#      check and record the attempted set.
+if ! grep -q 'fn poll_browse_autofill' trench/src/app/methods/history.rs
+then
+  echo "FAIL: arrival auto-fill poll_browse_autofill missing (ADR-015 §F5 R6)"
+  fail=1
+fi
+for g in 'autofill_attempted.contains(&code)' \
+         'autofill_attempted.insert(code.clone())'; do
+  if ! grep -qF "$g" trench/src/app/methods/history.rs; then
+    echo "FAIL: auto-fill missing retry-storm guard '${g}' (ADR-015 §F5 R6)"
+    fail=1
+  fi
+done
+
 if [[ "$fail" -eq 0 ]]; then
   echo "OK: subject-browser invariants hold (taxonomy × 8 groups, dispatch coverage, Browse ∉ Source, KNOWN_ARXIV_CATS removed, rail reshape locked: 4 sort modes, Subject col Browse-only, no draw_browse_detail_panel)"
 fi

@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use crate::app::{App, FeedTab};
 use crate::library::LibraryFilter;
 use crate::models::{FeedItem, WorkflowState};
@@ -7,6 +9,13 @@ use crate::models::{FeedItem, WorkflowState};
 /// flight before the user actually reaches the bottom, so the buffer
 /// stays ahead of the scroll rather than stalling at the edge.
 const BROWSE_PAGE_AHEAD_ROWS: usize = 5;
+
+/// How long the rail cursor must rest on a Category before arrival
+/// auto-fill fires (ADR-015 §F5). The settle window is the rate-limit
+/// discipline: arrowing through ten categories fires one fetch — the
+/// one you stop on — not ten. The idle event loop wakes every ≤250ms,
+/// so the effective delay is this value rounded up to the next tick.
+const BROWSE_AUTOFILL_SETTLE_MS: u128 = 400;
 
 impl App {
   pub fn record_paper_open(&mut self, item: &FeedItem) {
@@ -117,12 +126,11 @@ impl App {
     let code = cat.code.to_string();
 
     // Extend only an existing, non-exhausted buffer (PR 2, not PR 3).
-    let Some(next_offset) =
-      self
-        .browse
-        .loaded_categories
-        .get(&code)
-        .and_then(|b| if b.exhausted { None } else { Some(b.next_offset) })
+    let Some(next_offset) = self
+      .browse
+      .loaded_categories
+      .get(&code)
+      .and_then(|b| if b.exhausted { None } else { Some(b.next_offset) })
     else {
       return;
     };
@@ -144,6 +152,72 @@ impl App {
       crate::app::BROWSE_PAGE_SIZE,
       self.browse.tx.clone(),
     );
+  }
+
+  /// ADR-015 §F5 — arrival auto-fill. Called every event-loop iteration
+  /// (not just on redraw — the settle timer must advance while idle).
+  /// When the rail cursor rests on a Category past the settle window,
+  /// fetch its first page so a drilled-to category fills itself instead
+  /// of waiting for `Enter`.
+  ///
+  /// Gated on subject-follow ON: that's the deliberate "browse
+  /// categories" mode where the feed is scoped to the landed category,
+  /// so landing→fill has a visible payoff. With follow off the feed is
+  /// the firehose and the fetched items wouldn't be shown — auto-fetching
+  /// everything cursored past would spend arXiv's budget for nothing.
+  pub fn poll_browse_autofill(&mut self) {
+    let resting_on = if self.feed.feed_tab == FeedTab::Browse
+      && self.feed.subject_follow
+      && self.browse.rail_path.len() == 2
+    {
+      self.browse.rail_selected_category().map(|c| c.code.to_string())
+    } else {
+      None
+    };
+
+    let Some(code) = resting_on else {
+      self.browse.autofill_anchor = None;
+      return;
+    };
+
+    // New arrival on a different category — (re)start the settle clock
+    // and wait for the next poll.
+    let still_resting = matches!(
+      &self.browse.autofill_anchor,
+      Some((anchor, _)) if *anchor == code,
+    );
+    if !still_resting {
+      self.browse.autofill_anchor = Some((code, Instant::now()));
+      return;
+    }
+
+    let settled =
+      self.browse.autofill_anchor.as_ref().is_some_and(|(_, since)| {
+        since.elapsed().as_millis() >= BROWSE_AUTOFILL_SETTLE_MS
+      });
+    if !settled {
+      return;
+    }
+
+    // Fire page 1 once. Buffered / inflight / already-attempted all skip
+    // — the attempted guard is what stops a failing fetch from re-firing
+    // every settle window.
+    if self.browse.loaded_categories.contains_key(&code)
+      || self.browse.inflight.contains(&code)
+      || self.browse.autofill_attempted.contains(&code)
+    {
+      return;
+    }
+    self.browse.autofill_attempted.insert(code.clone());
+    self.browse.inflight.insert(code.clone());
+    self.status_message = Some(format!("{code}: auto-loading…"));
+    crate::browse::pipeline::spawn_browse_fetch(
+      code,
+      0,
+      crate::app::BROWSE_PAGE_SIZE,
+      self.browse.tx.clone(),
+    );
+    self.mark_dirty();
   }
 
   /// Per-frame post-layout hook (ADR-008). Runs between the layout pass

@@ -749,6 +749,41 @@ mod tests {
   }
 
   #[test]
+  fn browse_autofill_fires_after_settle_and_guards_against_restorm() {
+    use std::time::{Duration, Instant};
+    // ADR-015 §F5: resting on a Category past the settle window auto-
+    // loads its first page; a failed fetch must not re-fire forever.
+    let mut app = App::new();
+    app.feed.feed_tab = crate::app::FeedTab::Browse;
+    app.feed.subject_follow = true;
+    app.browse.drill_into(crate::app::RailNode::Group("cs"));
+    app.browse.drill_into(crate::app::RailNode::Archive("cs", "cs"));
+    let code = app.browse.rail_selected_category().unwrap().code.to_string();
+
+    // Cursor has rested past the settle window → fires page 1.
+    app.browse.autofill_anchor =
+      Some((code.clone(), Instant::now() - Duration::from_millis(500)));
+    app.poll_browse_autofill();
+    assert!(
+      app.browse.inflight.contains(&code),
+      "a settled rest on an unfetched category auto-fires page 1"
+    );
+    assert!(app.browse.autofill_attempted.contains(&code));
+
+    // A failed fetch clears inflight but leaves no buffer. WHY it
+    // matters: without the attempted guard the next settle window would
+    // re-fire, hammering arXiv on a persistently-failing category.
+    app.browse.inflight.remove(&code);
+    app.browse.autofill_anchor =
+      Some((code.clone(), Instant::now() - Duration::from_millis(500)));
+    app.poll_browse_autofill();
+    assert!(
+      !app.browse.inflight.contains(&code),
+      "attempted guard prevents an auto-fill retry storm"
+    );
+  }
+
+  #[test]
   fn process_incoming_browse_error_clears_inflight() {
     let mut app = App::new();
     let category = "test-merge-cat-error".to_string();

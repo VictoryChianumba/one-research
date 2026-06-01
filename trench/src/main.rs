@@ -894,6 +894,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
       // changes; the spinner increment is now gated on is_loading.
       let corpus_len_before = app.workspace.items_store.items().len();
       app.process_incoming();
+      // Arrival auto-fill (ADR-015 §F5): runs every iteration, not just on
+      // redraw, so the rail-settle timer advances while the UI is idle.
+      app.poll_browse_autofill();
       // Keep the search worker's corpus in step with items_store while a
       // search is active. Growth (background fetch / online arXiv) injects
       // incrementally by URL; a shrink (refresh `clear`) rebuilds. A

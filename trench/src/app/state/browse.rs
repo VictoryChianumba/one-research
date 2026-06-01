@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc;
+use std::time::Instant;
 
 use crate::browse::BrowseMessage;
 use crate::models::arxiv_taxonomy::{Archive, Category, Group, TAXONOMY};
@@ -89,6 +90,18 @@ pub struct BrowseModel {
   /// fire parallel duplicate fetches.
   pub inflight: HashSet<String>,
 
+  /// Arrival auto-fill settle anchor (ADR-015 §F5): the Category code the
+  /// rail cursor currently rests on, plus when it arrived there. Reset
+  /// whenever the cursor moves to a different category. The idle poll
+  /// fires page 1 once the cursor has rested past the settle window.
+  pub autofill_anchor: Option<(String, Instant)>,
+
+  /// Categories already auto-filled this session. Prevents a failed
+  /// fetch (which clears `inflight` but leaves no buffer) from re-firing
+  /// every settle window — i.e. an auto-fill retry storm. `Enter` is
+  /// unaffected, so a manual retry still works.
+  pub autofill_attempted: HashSet<String>,
+
   /// Sender end of the persistent browse channel. Cloned by
   /// `spawn_browse_fetch` per spawn. Lives for the App lifetime.
   pub tx: mpsc::Sender<BrowseMessage>,
@@ -135,6 +148,8 @@ impl BrowseModel {
       focus: BrowseFocus::Rail,
       loaded_categories: HashMap::new(),
       inflight: HashSet::new(),
+      autofill_anchor: None,
+      autofill_attempted: HashSet::new(),
       tx,
       rx: Some(rx),
     }
