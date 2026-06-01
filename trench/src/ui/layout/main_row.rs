@@ -355,9 +355,8 @@ pub fn draw_main_row(
 
     let inner_w = area.width.saturating_sub(2);
     let right_w = RIGHT_COL_WIDTH.min(inner_w.saturating_sub(2));
-    let right_title = if app.feed.filter_focus { "Filters" } else { "Browse" };
     let (feed_rect, right_rect) =
-      draw_horiz_split_box(frame, area, right_w, "", right_title, &t);
+      draw_horiz_split_box(frame, area, right_w, "", "", &t);
     dispatch_feed_pane(frame, app, feed_rect);
     if app.feed.filter_focus {
       draw_filter_panel(frame, app, right_rect);
@@ -386,8 +385,6 @@ pub fn draw_main_row(
   if area.width < 100 {
     let bottom_title = if app.notes.primary_visible {
       app.notes.primary.mode.title()
-    } else if app.feed.filter_focus {
-      "Filters"
     } else {
       ""
     };
@@ -452,13 +449,8 @@ pub fn draw_main_row(
   } else {
     RIGHT_COL_WIDTH.min(inner_w.saturating_sub(2))
   };
-  let right_title = if app.notes.primary_visible {
-    app.notes.primary.mode.title()
-  } else if app.feed.filter_focus {
-    "Filters"
-  } else {
-    ""
-  };
+  let right_title =
+    if app.notes.primary_visible { app.notes.primary.mode.title() } else { "" };
 
   let (feed_rect, right_rect) =
     draw_horiz_split_box(frame, area, right_w, "", right_title, &t);

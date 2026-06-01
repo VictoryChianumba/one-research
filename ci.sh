@@ -18,12 +18,16 @@ ci () {
   #   - check-item-store.sh:          ADR-007 (ItemStore encapsulates Workspace triple)
   #   - check-frame-layout.sh:        ADR-008 (FrameLayout / apply_frame_layout)
   #   - check-subject-browser.sh:     ADR-010 (FeedTab::Browse + arXiv taxonomy)
+  #   - check-search.sh:              ADR-012/013 (off-thread nucleo feed search)
+  #   - check-design-language.sh:     minimal surfaces (plain dividers, no section titles)
   scripts/check-render-purification.sh
   scripts/check-ingestion-seam.sh
   scripts/check-store-seam.sh
   scripts/check-item-store.sh
   scripts/check-frame-layout.sh
   scripts/check-subject-browser.sh
+  scripts/check-search.sh
+  scripts/check-design-language.sh
 
   cargo +nightly check && cargo +nightly fix --allow-dirty && cargo +nightly clippy --fix --allow-dirty && cargo +nightly fmt --all && cargo +nightly test
   #cargo +nightly fmt --all

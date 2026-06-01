@@ -167,7 +167,8 @@ Single `draw(frame, app)` entry point. Feed view: tab bar → search row → ite
 Tentative should use a quiet research-interface design language:
 - Shared frames and split containers over independently boxed widgets.
 - Muted slate borders and separators.
-- Section titles embedded into divider/header lines.
+- Plain, unlabelled dividers — no section-title text embedded in divider/header
+  lines on the core surfaces (feed, details, browse, filters). Retired pattern.
 - Baby blue for primary accent/actionable content.
 - Darker luminous blue for section and column headers.
 - Selection should use row/background treatment, not bright borders.

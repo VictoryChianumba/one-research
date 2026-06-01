@@ -23,17 +23,8 @@ pub fn draw_details_panel(frame: &mut Frame, app: &mut App, area: Rect) {
 
   // Divider between selected-paper detail and the activity summary.
   let sb = Style::default().fg(t.border);
-  let activity_title = " Activity ";
-  let activity_w = activity_title.chars().count();
-  let left_rule_w = (area.width as usize).saturating_sub(activity_w) / 2;
-  let right_rule_w =
-    (area.width as usize).saturating_sub(activity_w + left_rule_w);
   frame.render_widget(
-    Paragraph::new(Line::from(vec![
-      Span::styled("─".repeat(left_rule_w), sb),
-      Span::styled(activity_title, Style::default().fg(t.header)),
-      Span::styled("─".repeat(right_rule_w), sb),
-    ])),
+    Paragraph::new(Span::styled("─".repeat(area.width as usize), sb)),
     Rect { x: area.x, y: div_y, width: area.width, height: 1 },
   );
   frame.render_widget(
