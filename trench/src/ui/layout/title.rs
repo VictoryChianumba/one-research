@@ -90,74 +90,91 @@ fn draw_compact_title_bar(frame: &mut Frame, app: &App, area: Rect) {
   let logo = Line::from(Span::styled(WORDMARK[0], logo_style));
   frame.render_widget(Paragraph::new(logo), inner[1]);
 
-  // The nav sits on the logo's middle row. On a wide terminal it shows full
-  // labels plus a trailing Total + version. When the row is too tight to fit
-  // the logo and full nav, it falls back to abbreviated labels (Disc / Hist)
-  // and drops Total + version — keeping every tab and its count visible
-  // instead of clipping the tail (History / Total) off-screen.
-  let disc_count = format!("{}{}", app.discovery.items.len(), discovery_spin);
-  let history_count = app.workspace.history.len().to_string();
-  let nav_spans = |compact: bool| {
-    let mut spans = vec![
-      Span::styled("Inbox ", inbox_style),
-      Span::styled(inbox_count.to_string(), inbox_style),
-      Span::styled("  Browse ", browse_style),
-      Span::styled(browse_total.to_string(), browse_style),
-      Span::styled("  Library ", library_style),
-      Span::styled(library_count.to_string(), library_style),
-      Span::styled(
-        if compact { "  Disc " } else { "  Discoveries " },
-        discoveries_style,
-      ),
-      Span::styled(disc_count.clone(), discoveries_style),
-      Span::styled(
-        if compact { "  Hist " } else { "  History " },
-        history_style,
-      ),
-      Span::styled(history_count.clone(), history_style),
-    ];
-    if !compact {
-      spans.push(Span::styled("  Total ", inactive_style));
-      spans.push(Span::styled(total.to_string(), inactive_style));
-    }
-    spans
-  };
-  let span_width =
-    |spans: &[Span]| spans.iter().map(Span::width).sum::<usize>();
-
-  let full = nav_spans(false);
-  let full_w = span_width(&full);
-  // Fit test: logo + 3-col gap + nav + 1-col gap + version.
-  let fits = logo_width + 3 + full_w + 1 + VERSION.len() <= width;
-  let (mut segs, nav_width, show_version) = if fits {
-    (full, full_w, true)
-  } else {
-    let compact = nav_spans(true);
-    let w = span_width(&compact);
-    (compact, w, false)
-  };
-
-  let centered_nav_x = width.saturating_sub(nav_width) / 2;
-  let nav_x = centered_nav_x.max(logo_width.saturating_add(3));
-  let logo_gap = nav_x.saturating_sub(WORDMARK[1].chars().count());
-
-  let mut nav = vec![
-    Span::styled(WORDMARK[1], logo_style),
-    Span::raw(" ".repeat(logo_gap)),
-  ];
-  nav.append(&mut segs);
-  if show_version {
-    let version_gap =
-      width.saturating_sub(nav_x + nav_width + VERSION.len()).max(1);
-    nav.push(Span::raw(" ".repeat(version_gap)));
-    nav.push(Span::styled(VERSION, Style::default().fg(t.text_dim)));
+  // The nav occupies the logo's middle and bottom rows. It keeps full
+  // labels and greedily wraps onto a second line — aligned under the first
+  // tab, beside the logo's bottom row — when it can't fit on one. This keeps
+  // every tab and its count visible instead of clipping the tail off-screen.
+  // When the whole nav does fit on one line it is centered, with the version.
+  fn nav_item(
+    label: &'static str,
+    count: String,
+    style: Style,
+  ) -> (Vec<Span<'static>>, usize) {
+    let w = label.chars().count() + count.chars().count();
+    (vec![Span::styled(label, style), Span::styled(count, style)], w)
   }
-  frame.render_widget(Paragraph::new(Line::from(nav)), inner[2]);
+  let disc_count = format!("{}{}", app.discovery.items.len(), discovery_spin);
+  let items: Vec<(Vec<Span>, usize)> = vec![
+    nav_item("Inbox ", inbox_count.to_string(), inbox_style),
+    nav_item("Browse ", browse_total.to_string(), browse_style),
+    nav_item("Library ", library_count.to_string(), library_style),
+    nav_item("Discoveries ", disc_count, discoveries_style),
+    nav_item(
+      "History ",
+      app.workspace.history.len().to_string(),
+      history_style,
+    ),
+    nav_item("Total ", total.to_string(), inactive_style),
+  ];
 
-  frame.render_widget(
-    Paragraph::new(Line::from(Span::styled(WORDMARK[2], logo_style))),
-    inner[3],
-  );
+  // Greedy pack into lines that fit in the width past the logo. A 2-col gap
+  // separates tabs on the same line.
+  let nav_x = logo_width.saturating_add(3);
+  let avail = width.saturating_sub(nav_x);
+  let sep_w = 2;
+  let mut lines: Vec<(Vec<Span>, usize)> = vec![(Vec::new(), 0)];
+  for (spans, w) in items {
+    let last = lines.last().unwrap();
+    let needs_sep = !last.0.is_empty();
+    let overflow = needs_sep && last.1 + sep_w + w > avail;
+    if overflow {
+      lines.push((spans, w));
+    } else {
+      let last = lines.last_mut().unwrap();
+      if needs_sep {
+        last.0.push(Span::raw("  "));
+        last.1 += sep_w;
+      }
+      last.0.extend(spans);
+      last.1 += w;
+    }
+  }
+
+  // Render. WORDMARK[1] anchors the first nav row; WORDMARK[2] the second.
+  let logo_rows = [WORDMARK[1], WORDMARK[2]];
+  let row_rects = [inner[2], inner[3]];
+  if lines.len() == 1 {
+    // One line: center the nav past the logo and append the version.
+    let (content, nav_width) = lines.pop().unwrap();
+    let centered = width.saturating_sub(nav_width) / 2;
+    let nav_x = centered.max(logo_width.saturating_add(3));
+    let mut spans = vec![
+      Span::styled(WORDMARK[1], logo_style),
+      Span::raw(" ".repeat(nav_x.saturating_sub(WORDMARK[1].chars().count()))),
+    ];
+    spans.extend(content);
+    let version_gap = width.saturating_sub(nav_x + nav_width + VERSION.len());
+    if version_gap >= 1 {
+      spans.push(Span::raw(" ".repeat(version_gap)));
+      spans.push(Span::styled(VERSION, Style::default().fg(t.text_dim)));
+    }
+    frame.render_widget(Paragraph::new(Line::from(spans)), inner[2]);
+    frame.render_widget(
+      Paragraph::new(Line::from(Span::styled(WORDMARK[2], logo_style))),
+      inner[3],
+    );
+  } else {
+    // Wrapped: each nav line rides its logo row, aligned under the first tab.
+    for (i, (content, _)) in lines.into_iter().take(2).enumerate() {
+      let logo_row = logo_rows[i];
+      let mut spans = vec![
+        Span::styled(logo_row, logo_style),
+        Span::raw(" ".repeat(nav_x.saturating_sub(logo_row.chars().count()))),
+      ];
+      spans.extend(content);
+      frame.render_widget(Paragraph::new(Line::from(spans)), row_rects[i]);
+    }
+  }
 
   // Whitespace gap between header and search row (was a `─` rule).
   // Halloy-style hierarchy: separate sections with space, not horizontal rules.
