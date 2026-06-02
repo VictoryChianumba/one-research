@@ -255,6 +255,7 @@ pub(super) fn draw_horiz_split_box(
 pub(super) fn draw_vert_split_box(
   frame: &mut Frame,
   area: Rect,
+  top_pct: u16,
   top_title: &str,
   bottom_title: &str,
   t: &Theme,
@@ -276,8 +277,9 @@ pub(super) fn draw_vert_split_box(
     height: area.height.saturating_sub(2),
   };
 
-  // Split evenly; divider row is 1 row
-  let top_h = (inner.height / 2).max(3).min(inner.height.saturating_sub(2));
+  // Split by `top_pct` (top share of the height); divider row is 1 row.
+  let top_h =
+    (inner.height * top_pct / 100).max(3).min(inner.height.saturating_sub(2));
   let div_y = inner.y + top_h;
   let bot_h = inner.height.saturating_sub(top_h + 1);
 

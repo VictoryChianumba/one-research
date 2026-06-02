@@ -342,10 +342,11 @@ pub fn draw_main_row(
     };
   }
 
-  // Browse (ADR-011): regular feed on the left, right-side companion
-  // pane on the same width as Details. The companion pane shows the
-  // subject browser by default, and swaps to Filters while filter focus
-  // is active.
+  // Browse (ADR-011): feed plus a subject-rail companion pane. Wide
+  // terminals place the rail to the right of the feed (like Details);
+  // narrow ones stack feed-on-top / rail-on-bottom to match the vertical
+  // layout the other tabs use below 100 cols. The companion pane shows
+  // the subject browser by default, and swaps to Filters under filter focus.
   if app.feed.feed_tab == FeedTab::Browse {
     let area = Rect {
       y: area.y.saturating_add(1),
@@ -353,13 +354,17 @@ pub fn draw_main_row(
       ..area
     };
 
-    let inner_w = area.width.saturating_sub(2);
-    let right_w = right_col_width(area.width).min(inner_w.saturating_sub(2));
-    let (feed_rect, right_rect) =
-      draw_horiz_split_box(frame, area, right_w, "", "", &t);
+    let (feed_rect, companion_rect) = if area.width < 100 {
+      // Feed gets the top 65%, the rail the bottom 35%.
+      draw_vert_split_box(frame, area, 65, "", "", &t)
+    } else {
+      let inner_w = area.width.saturating_sub(2);
+      let right_w = right_col_width(area.width).min(inner_w.saturating_sub(2));
+      draw_horiz_split_box(frame, area, right_w, "", "", &t)
+    };
     dispatch_feed_pane(frame, app, feed_rect);
     if app.feed.filter_focus {
-      draw_filter_panel(frame, app, right_rect);
+      draw_filter_panel(frame, app, companion_rect);
     } else {
       super::browse::draw_browse_tab(
         frame,
@@ -368,7 +373,7 @@ pub fn draw_main_row(
         app.feed.subject_follow,
         app.feed.search_active,
         &t,
-        right_rect,
+        companion_rect,
       );
     }
     return MainRowRects {
@@ -395,7 +400,7 @@ pub fn draw_main_row(
       ..area
     };
     let (feed_rect, bottom_rect) =
-      draw_vert_split_box(frame, area, "", bottom_title, &t);
+      draw_vert_split_box(frame, area, 50, "", bottom_title, &t);
 
     let t = std::time::Instant::now();
     dispatch_feed_pane(frame, app, feed_rect);
