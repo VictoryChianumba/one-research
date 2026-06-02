@@ -8,7 +8,7 @@ use ratatui::{
 
 use std::collections::HashSet;
 
-use super::RIGHT_COL_WIDTH;
+use super::right_col_width;
 use crate::app::{App, FeedTab};
 use crate::models::{ContentType, SignalLevel, WorkflowState};
 
@@ -84,46 +84,75 @@ fn draw_compact_title_bar(frame: &mut Frame, app: &App, area: Rect) {
   // Browse shows the total taxonomy size (static, 155) — communicates
   // "you can browse this many subject categories." See ADR-010 §D2.
   let browse_total = crate::models::arxiv_taxonomy::all_categories().count();
-  let nav_text = format!(
-    "Inbox {inbox_count}  Browse {browse_total}  Library {library_count}  Discoveries {}{}  History {}  Total {total}",
-    app.discovery.items.len(),
-    discovery_spin,
-    app.workspace.history.len(),
-  );
   let logo_style = Style::default().fg(t.accent).add_modifier(Modifier::BOLD);
   let logo_width =
     WORDMARK.iter().map(|line| line.chars().count()).max().unwrap_or(0);
   let logo = Line::from(Span::styled(WORDMARK[0], logo_style));
   frame.render_widget(Paragraph::new(logo), inner[1]);
 
-  let nav_width = nav_text.chars().count();
+  // The nav sits on the logo's middle row. On a wide terminal it shows full
+  // labels plus a trailing Total + version. When the row is too tight to fit
+  // the logo and full nav, it falls back to abbreviated labels (Disc / Hist)
+  // and drops Total + version — keeping every tab and its count visible
+  // instead of clipping the tail (History / Total) off-screen.
+  let disc_count = format!("{}{}", app.discovery.items.len(), discovery_spin);
+  let history_count = app.workspace.history.len().to_string();
+  let nav_spans = |compact: bool| {
+    let mut spans = vec![
+      Span::styled("Inbox ", inbox_style),
+      Span::styled(inbox_count.to_string(), inbox_style),
+      Span::styled("  Browse ", browse_style),
+      Span::styled(browse_total.to_string(), browse_style),
+      Span::styled("  Library ", library_style),
+      Span::styled(library_count.to_string(), library_style),
+      Span::styled(
+        if compact { "  Disc " } else { "  Discoveries " },
+        discoveries_style,
+      ),
+      Span::styled(disc_count.clone(), discoveries_style),
+      Span::styled(
+        if compact { "  Hist " } else { "  History " },
+        history_style,
+      ),
+      Span::styled(history_count.clone(), history_style),
+    ];
+    if !compact {
+      spans.push(Span::styled("  Total ", inactive_style));
+      spans.push(Span::styled(total.to_string(), inactive_style));
+    }
+    spans
+  };
+  let span_width =
+    |spans: &[Span]| spans.iter().map(Span::width).sum::<usize>();
+
+  let full = nav_spans(false);
+  let full_w = span_width(&full);
+  // Fit test: logo + 3-col gap + nav + 1-col gap + version.
+  let fits = logo_width + 3 + full_w + 1 + VERSION.len() <= width;
+  let (mut segs, nav_width, show_version) = if fits {
+    (full, full_w, true)
+  } else {
+    let compact = nav_spans(true);
+    let w = span_width(&compact);
+    (compact, w, false)
+  };
+
   let centered_nav_x = width.saturating_sub(nav_width) / 2;
   let nav_x = centered_nav_x.max(logo_width.saturating_add(3));
   let logo_gap = nav_x.saturating_sub(WORDMARK[1].chars().count());
-  let version_gap =
-    width.saturating_sub(nav_x + nav_width + VERSION.len()).max(1);
-  let nav = Line::from(vec![
+
+  let mut nav = vec![
     Span::styled(WORDMARK[1], logo_style),
     Span::raw(" ".repeat(logo_gap)),
-    Span::styled("Inbox ", inbox_style),
-    Span::styled(inbox_count.to_string(), inbox_style),
-    Span::styled("  Browse ", browse_style),
-    Span::styled(browse_total.to_string(), browse_style),
-    Span::styled("  Library ", library_style),
-    Span::styled(library_count.to_string(), library_style),
-    Span::styled("  Discoveries ", discoveries_style),
-    Span::styled(
-      format!("{}{}", app.discovery.items.len(), discovery_spin),
-      discoveries_style,
-    ),
-    Span::styled("  History ", history_style),
-    Span::styled(app.workspace.history.len().to_string(), history_style),
-    Span::styled("  Total ", inactive_style),
-    Span::styled(total.to_string(), inactive_style),
-    Span::raw(" ".repeat(version_gap)),
-    Span::styled(VERSION, Style::default().fg(t.text_dim)),
-  ]);
-  frame.render_widget(Paragraph::new(nav), inner[2]);
+  ];
+  nav.append(&mut segs);
+  if show_version {
+    let version_gap =
+      width.saturating_sub(nav_x + nav_width + VERSION.len()).max(1);
+    nav.push(Span::raw(" ".repeat(version_gap)));
+    nav.push(Span::styled(VERSION, Style::default().fg(t.text_dim)));
+  }
+  frame.render_widget(Paragraph::new(Line::from(nav)), inner[2]);
 
   frame.render_widget(
     Paragraph::new(Line::from(Span::styled(WORDMARK[2], logo_style))),
@@ -145,7 +174,10 @@ pub fn draw_search_row(frame: &mut Frame, app: &App, area: Rect) {
 
   let cols = Layout::default()
     .direction(Direction::Horizontal)
-    .constraints([Constraint::Min(0), Constraint::Length(RIGHT_COL_WIDTH)])
+    .constraints([
+      Constraint::Min(0),
+      Constraint::Length(right_col_width(content_area.width)),
+    ])
     .split(content_area);
 
   let search_text = if !app.feed.search_query.is_empty() {

@@ -35,6 +35,17 @@ use widgets::h_margin;
 
 pub const RIGHT_COL_WIDTH: u16 = 50;
 
+/// Responsive width for the shared right column — the filter summary in
+/// the search row, the Browse subject rail, and the details pane. Caps at
+/// `RIGHT_COL_WIDTH` on wide terminals but shrinks to ~40% of the
+/// available width on narrow ones, so a half-screen split keeps usable
+/// room for the feed instead of handing half the window to the rail. All
+/// three callers pass the same margin-adjusted width, so the column stays
+/// vertically aligned across rows.
+pub fn right_col_width(available: u16) -> u16 {
+  RIGHT_COL_WIDTH.min(available * 2 / 5)
+}
+
 pub fn draw(frame: &mut Frame, app: &mut App) {
   let t_total = std::time::Instant::now();
   // Pre-draw update phase: any state mutation that conceptually belongs

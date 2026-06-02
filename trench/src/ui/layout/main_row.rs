@@ -5,7 +5,6 @@ use ratatui::{
   widgets::Paragraph,
 };
 
-use super::RIGHT_COL_WIDTH;
 use super::details::draw_details_panel;
 use super::feed::draw_feed_pane;
 use super::filter::draw_filter_panel;
@@ -14,6 +13,7 @@ use super::reader::{
   draw_narrow_feed_details_popup, draw_reader_tab_bar,
   draw_reader_workspace_header, reader_workspace_split,
 };
+use super::right_col_width;
 use super::widgets::{draw_horiz_split_box, draw_vert_split_box};
 use crate::app::{App, BrowseFocus, FeedTab, FocusedReader};
 
@@ -354,7 +354,7 @@ pub fn draw_main_row(
     };
 
     let inner_w = area.width.saturating_sub(2);
-    let right_w = RIGHT_COL_WIDTH.min(inner_w.saturating_sub(2));
+    let right_w = right_col_width(area.width).min(inner_w.saturating_sub(2));
     let (feed_rect, right_rect) =
       draw_horiz_split_box(frame, area, right_w, "", "", &t);
     dispatch_feed_pane(frame, app, feed_rect);
@@ -447,7 +447,7 @@ pub fn draw_main_row(
   let right_w = if app.notes.primary_visible {
     (inner_w * 40 / 100).max(1)
   } else {
-    RIGHT_COL_WIDTH.min(inner_w.saturating_sub(2))
+    right_col_width(area.width).min(inner_w.saturating_sub(2))
   };
   let right_title =
     if app.notes.primary_visible { app.notes.primary.mode.title() } else { "" };
