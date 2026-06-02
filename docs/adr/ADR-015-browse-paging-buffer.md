@@ -81,6 +81,8 @@ Landing the rail cursor on a Category (not just pressing `Enter`) schedules its 
 
 This supersedes ADR-011 §E1/§E2's "Enter on a Category fires the fetch" as the *only* path. The debounce is the rate-limit discipline that makes auto-fill safe; without it, navigation would hammer arXiv. (Background prefetch of page 2 while reading page 1 is a deliberate §F4 extension, deferred to PR 3 so the scroll-driven path is verified in isolation first.)
 
+**Gating decision (settled 2026-06-02):** auto-fill fires only while subject-follow is **on**, not on every category landing. With follow off the fetched items are not shown, so an unconditional fetch would spend arXiv's request budget on results the user never sees. The literal "any landing" phrasing above is the mechanism; the follow gate is the accepted policy. `Enter` is unaffected — it loads immediately regardless of follow state.
+
 #### F6. Honest seam states, rendered from the buffer + `inflight`
 
 The empty/edge states stop being silent. Read from `CategoryBuffer` + `inflight`:

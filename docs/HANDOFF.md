@@ -21,11 +21,11 @@ left" view. It does **not** re-explain the design — read the artifacts below._
 
 ## Left to do
 
-### Open decision (unresolved — do not silently pick)
-- **Auto-fill gating.** `App::poll_browse_autofill` (`trench/src/app/methods/history.rs`)
-  currently gates on **subject-follow ON**. Open question: keep gated, or fire on
-  any category landing (unconditional, per the ADR's literal §F5)? Rationale for
-  the current gate is in the method's doc comment and ADR §F5. The user has not ruled.
+### Resolved decisions
+- **Auto-fill gating — SETTLED 2026-06-02: keep gated on subject-follow ON.** Fire
+  only while follow is on (with follow off the fetched items aren't shown, so an
+  unconditional fetch wastes arXiv budget). Matches the shipped PR 3a code, so no
+  code change. Recorded in ADR-015 §F5.
 
 ### Remaining build
 - **PR 3b — background page-ahead.** Prefetch page 2 *while reading* page 1 so the
@@ -48,10 +48,11 @@ left" view. It does **not** re-explain the design — read the artifacts below._
   **PR 3a** (land cursor on a Category with follow ON, wait ~½s → it auto-loads).
   This is the gate before stacking 3b.
 
-### Public docs (standing rule: keep public docs current with code)
-- Update the **README / `features.md` Subject-Browser section** to describe the new
-  behavior: categories load deeper on scroll, and auto-load on arrival. This is the
-  doc debt from PRs 2–3a. (No new keybindings — both behaviors are automatic.)
+### Public docs — DONE 2026-06-02
+- README.md "Subject Browser" section and `docs/pages/reference.md` "Browse tab"
+  section now describe scroll-driven deepening + follow-gated auto-load on arrival.
+  (FEATURES.md had no stale Browse load description; left untouched. No new
+  keybindings — both behaviors are automatic.)
 
 ### Tuning knobs (all guesses until felt in the TUI)
 - `BROWSE_PAGE_SIZE` = 50 (`app/state/browse.rs`), settle window = 400ms +

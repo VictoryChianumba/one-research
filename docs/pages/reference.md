@@ -101,6 +101,11 @@ or the filter panel while filter focus is active.
 | `p` | Promote / un-promote the selected Category |
 | `x` / `F` | Toggle subject-follow scope |
 
+Categories page in from arXiv. With subject-follow on, resting the rail cursor
+on a Category auto-loads its first page after a brief settle (no `Enter`);
+scrolling toward the tail fetches further pages until the archive runs out.
+`Enter` loads immediately and is the way to load with follow off.
+
 ### History tab
 | Key | Action |
 |---|---|
