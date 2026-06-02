@@ -94,6 +94,8 @@ The empty/edge states stop being silent. Read from `CategoryBuffer` + `inflight`
 
 This is the only place the user ever sees that Browse talks to a network. It's render-only — no new fetch behaviour — which is why it ships first (PR 1) and de-risks the rest.
 
+**Shipped (2026-06-03).** PR 1 landed the *rail* half (per-category count cell) and the status-bar messages; the *in-feed* markers were deferred to avoid touching the shared `draw_item_table` early. They are now in: `BrowseSeamState` (`feed/mod.rs`) is derived once per draw by `browse_seam_state_for` and rendered on the feed pane's bottom padding row by `draw_feed_seam` (`ui/layout/feed.rs`). `loading…` shows whenever the followed category is `inflight`; `caught up — N papers` shows only when the tail is on screen (`end >= total_items`) so it reads as a true end-marker, not a permanent footer (an empty category shows `no recent papers`). Tripwire R7. Deliberate scope cut: the `press Enter to load` / not-buffered-pre-debounce hint was **not** built — with follow-on auto-fill that state lasts ~400ms before flipping to `loading…`, so a hint there would flicker more than it informs; the rail's blank count already reads as "unfetched".
+
 #### F7. Session scope retained — ADR-010 §D5 stays in force
 
 `CategoryBuffer` is in-memory only; the buffer (offsets and all) resets on relaunch. The user explicitly declined cross-launch persistence in the 2026-06-01 discussion. Persisting would re-raise ADR-010 §D4's "what does Inbox contain on launch?" question; Browse stays a *session* tool. Recorded here so a future contributor doesn't read pagination as a reason to persist.
@@ -104,7 +106,7 @@ This is the only place the user ever sees that Browse talks to a network. It's r
 - **PR 2 — deeper results via scroll-driven pagination.** `fetch_page` (§F2) + scroll-tail trigger + append/advance/exhaust (§F4) + `BrowseMessage` offset plumbing. *(the "deeper / paginate" ask)*
 - **PR 3 — first-page-on-arrival + background prefetch.** Split for independent TUI verification: **3a** rail-settle auto-fill (§F5) — fires page 1 once the cursor rests on a Category past the settle window, gated on subject-follow, polled every loop iteration so the timer advances while idle, attempted-guarded against retry storms (tripwire R6); **3b** page-ahead while reading (§F4 extension) — pending. *(the "auto-fill on navigate" ask)*
 
-### Invariants for tripwire (`scripts/check-subject-browser.sh`, letters R1-R5)
+### Invariants for tripwire (`scripts/check-subject-browser.sh`, letters R1-R7)
 
 Letter `R` continues the alphabet past `Q` (search). The checks extend the existing Browse script rather than forking a new one.
 
@@ -113,6 +115,8 @@ Letter `R` continues the alphabet past `Q` (search). The checks extend the exist
 - **R3.** `CategoryBuffer` carries `next_offset` and `exhausted`. A revert to a bare `Vec<String>` loses pagination state and silently caps Browse at one page again.
 - **R4.** The scroll-tail fetch is `inflight`-guarded and `exhausted`-guarded. A grep anchors both short-circuits so a future edit can't reintroduce duplicate-page storms or post-exhaustion looping.
 - **R5.** ADR-015's cadence table (Status line) lists every shipped PR with its `(...)` summary. Mirror of O5 / P5 / J5 status hygiene.
+- **R6.** Arrival auto-fill (`poll_browse_autofill`) is attempted-guarded — it both checks and records `autofill_attempted` — so a failing first-page fetch can't re-fire every settle window (§F5 retry storm).
+- **R7.** The §F6 in-feed seam markers stay wired: `browse_seam_state_for` exists, and the feed render references `BrowseSeamState::Loading` / `CaughtUp` plus the `loading…` / `caught up` marker text. Guards against a render refactor silently dropping back to the pre-§F6 silent-empty behaviour.
 
 ## Consequences
 

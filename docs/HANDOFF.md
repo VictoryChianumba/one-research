@@ -34,19 +34,23 @@ left" view. It does **not** re-explain the design — read the artifacts below._
   ~line 897), reusing the worker's `start` param. Highest arXiv-request pressure —
   that's why it was split out for its own TUI soak.
 
-### Honest partial in PR 1 (§F6 is only half-done)
-- The **rail** half of the honest empty-state shipped (per-category count cell) plus
-  status-bar messages. The **in-feed seam markers did NOT ship**: a "caught up — N
-  papers" marker at the tail when a category is `exhausted`, and a dedicated
-  "loading…" state *in the feed pane itself* (not just the status bar). The data
-  exists (`exhausted`, `inflight` on `CategoryBuffer` / `BrowseModel`); it's
-  render-only work, deliberately deferred to avoid touching the shared feed-render
-  path early. Natural companion to PR 3b.
+### §F6 in-feed markers — DONE 2026-06-03
+- The **in-feed seam markers shipped**: `loading…` while the followed category is
+  `inflight`, and `caught up — N papers` (or `no recent papers`) once `exhausted`
+  and the tail is on screen. `BrowseSeamState` + `browse_seam_state_for`
+  (`feed/mod.rs`), rendered by `draw_feed_seam` on the feed pane's bottom padding
+  row (`ui/layout/feed.rs`); set via `FeedContext.browse_seam` in `main_row.rs`.
+  Tripwire R7; unit test `browse_seam_state_reflects_buffer_edges`. The shared
+  `draw_item_table` stays Inbox/Library-safe (gated `match ctx.browse_seam`).
+  TUI-verified: loading shows/clears with the fetch; caught-up appears at the
+  cs.GL tail (239 papers) and hides when scrolled off-tail; Inbox shows nothing.
+  Deliberate cut: no `press Enter to load` empty hint (would flicker for ~400ms
+  under follow-on auto-fill).
 
 ### Verification owed (user, per the one-change-at-a-time rule)
-- TUI-verify **PR 2** (scrolling a followed Category deepens the list past 50) and
-  **PR 3a** (land cursor on a Category with follow ON, wait ~½s → it auto-loads).
-  This is the gate before stacking 3b.
+- ~~TUI-verify PR 2 + PR 3a~~ — DONE 2026-06-02 (PASS; loading/pagination/inflight
+  guard/follow-off gate all confirmed live). §F6 also TUI-verified 2026-06-03.
+  Remaining unverified work is **PR 3b** only.
 
 ### Public docs — DONE 2026-06-02
 - README.md "Subject Browser" section and `docs/pages/reference.md` "Browse tab"

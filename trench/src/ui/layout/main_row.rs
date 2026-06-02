@@ -46,6 +46,7 @@ fn dispatch_feed_pane(frame: &mut Frame, app: &mut App, area: Rect) {
     theme,
     browse_feed_focused: app.browse.focus == BrowseFocus::Feed,
     browse_subject_depth: app.browse.rail_path.len(),
+    browse_seam: crate::feed::browse_seam_state_for(&app.feed, &app.browse),
     visible_indices,
     filtered_history,
   };

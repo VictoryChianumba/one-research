@@ -481,6 +481,9 @@ pub struct FeedContext<'a> {
   pub theme: ui_theme::Theme,
   pub browse_feed_focused: bool,
   pub browse_subject_depth: usize,
+  /// ADR-015 §F6 — the in-feed seam marker for the followed category's
+  /// paging buffer. `None` for every non-Browse tab.
+  pub browse_seam: BrowseSeamState,
   /// Indices into [`items_for_tab`]`(workspace, feed, discovery)` after
   /// applying search + filter + tab-scoping. Empty for the History tab.
   pub visible_indices: Vec<usize>,
@@ -701,6 +704,52 @@ fn subject_follow_scope(browse: &crate::app::BrowseModel) -> SubjectScope {
   SubjectScope::Archive("")
 }
 
+/// ADR-015 §F6 — the quiet seam marker drawn at the foot of the Browse
+/// feed pane. Makes the paging buffer's edge states legible instead of
+/// silent: a fetch in progress, or an archive read to its end.
+///
+/// `None` is the common case — non-Browse tabs, and a buffered category
+/// with more pages to come (the rail's per-category count carries that
+/// state; an in-feed marker would be noise). Only the two transient /
+/// terminal edges get a line.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum BrowseSeamState {
+  /// No marker.
+  None,
+  /// The followed category is being fetched (first page or a deeper one).
+  Loading,
+  /// The followed category is exhausted; the `usize` is papers buffered.
+  CaughtUp(usize),
+}
+
+/// Derive the seam marker for the current Browse drill point. Gated like
+/// [`subject_follow_scope`]: only a Category-depth drill with
+/// subject-follow on produces a marker, so every other tab and depth is
+/// `None`. ADR-015 §F6.
+pub fn browse_seam_state_for(
+  feed: &FeedModel,
+  browse: &crate::app::BrowseModel,
+) -> BrowseSeamState {
+  if feed.feed_tab != FeedTab::Browse
+    || !feed.subject_follow
+    || browse.rail_path.len() != 2
+  {
+    return BrowseSeamState::None;
+  }
+  let Some(cat) = browse.rail_selected_category() else {
+    return BrowseSeamState::None;
+  };
+  // Inflight wins over a stale buffer: a deeper page fetched on top of an
+  // existing buffer should read as "loading", not "caught up".
+  if browse.inflight.contains(cat.code) {
+    return BrowseSeamState::Loading;
+  }
+  match browse.loaded_categories.get(cat.code) {
+    Some(buf) if buf.exhausted => BrowseSeamState::CaughtUp(buf.urls.len()),
+    _ => BrowseSeamState::None,
+  }
+}
+
 /// Apply the [`FeedSortMode`] to a filtered index list (ADR-011 §E3).
 /// `items` is the slice the indices point into; we read `upvote_count`
 /// + `published_at` from it for the non-Dated modes.
@@ -779,6 +828,74 @@ mod tests {
     assert!(model.search_query.is_empty());
     assert!(model.search_query_lower.is_empty());
     assert!(!model.search_active);
+  }
+
+  // ADR-015 §F6: the in-feed seam marker exists to make the paging
+  // buffer's edges legible. The states it must distinguish (and why each
+  // matters) are locked here so a render refactor can't silently collapse
+  // them — e.g. turning a deeper-page fetch into a "caught up" line.
+  #[test]
+  fn browse_seam_state_reflects_buffer_edges() {
+    use crate::app::{BrowseModel, CategoryBuffer, RailNode};
+
+    // A non-Browse feed never shows the marker, whatever the browse model
+    // holds — leaking Browse wayfinding onto Inbox/Library is a regression.
+    let mut feed = FeedModel::default();
+    let mut browse = BrowseModel::new();
+    assert_eq!(browse_seam_state_for(&feed, &browse), BrowseSeamState::None);
+
+    // Enter the followed-Category mode the marker is gated on.
+    feed.feed_tab = FeedTab::Browse;
+    feed.subject_follow = true;
+    browse.drill_into(RailNode::Group("cs"));
+    browse.drill_into(RailNode::Archive("cs", "cs"));
+    let code = browse
+      .rail_selected_category()
+      .expect("depth-2 drill selects a category")
+      .code;
+
+    // Drilled, nothing fetched: the ~400ms pre-auto-fill window stays
+    // quiet (the rail's blank count already reads as "unfetched").
+    assert_eq!(browse_seam_state_for(&feed, &browse), BrowseSeamState::None);
+
+    // Inflight wins even over a stale exhausted buffer — a deeper page
+    // fetched on top of existing results must read "loading", not "caught
+    // up". This is the regression the test most exists to catch.
+    browse.loaded_categories.insert(
+      code.to_string(),
+      CategoryBuffer {
+        urls: vec!["u".into()],
+        next_offset: 50,
+        exhausted: true,
+      },
+    );
+    browse.inflight.insert(code.to_string());
+    assert_eq!(browse_seam_state_for(&feed, &browse), BrowseSeamState::Loading);
+
+    // Fetch settles, archive exhausted → CaughtUp carries the final count
+    // so the end-marker can name the depth reached.
+    browse.inflight.remove(code);
+    assert_eq!(
+      browse_seam_state_for(&feed, &browse),
+      BrowseSeamState::CaughtUp(1)
+    );
+
+    // More pages available → None: the rail count covers the steady state;
+    // a line on every page would be noise, not signal.
+    browse.loaded_categories.insert(
+      code.to_string(),
+      CategoryBuffer {
+        urls: vec!["u".into()],
+        next_offset: 50,
+        exhausted: false,
+      },
+    );
+    assert_eq!(browse_seam_state_for(&feed, &browse), BrowseSeamState::None);
+
+    // Follow off → never a marker: the feed isn't scoped to the category,
+    // so its buffer state says nothing about what's on screen.
+    feed.subject_follow = false;
+    assert_eq!(browse_seam_state_for(&feed, &browse), BrowseSeamState::None);
   }
 
   #[test]

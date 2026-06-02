@@ -213,7 +213,30 @@ for g in 'autofill_attempted.contains(&code)' \
   fi
 done
 
+# R7.  The §F6 in-feed seam markers are honest about the paging buffer's
+#      edges: a `loading…` line while a fetch is inflight and a
+#      `caught up — N papers` end-marker once a category is exhausted.
+#      The state is derived by browse_seam_state_for and rendered in the
+#      feed pane. Guards against the markers silently regressing to the
+#      pre-§F6 "silent empty / no end signal" behaviour.
+if ! grep -q 'fn browse_seam_state_for' trench/src/feed/mod.rs; then
+  echo "FAIL: §F6 seam-state deriver browse_seam_state_for missing (ADR-015 §F6 R7)"
+  fail=1
+fi
+for variant in 'Loading' 'CaughtUp'; do
+  if ! grep -qF "BrowseSeamState::${variant}" trench/src/ui/layout/feed.rs; then
+    echo "FAIL: feed render missing BrowseSeamState::${variant} marker (ADR-015 §F6 R7)"
+    fail=1
+  fi
+done
+for marker in 'loading…' 'caught up'; do
+  if ! grep -qF "$marker" trench/src/ui/layout/feed.rs; then
+    echo "FAIL: feed render missing §F6 marker text '${marker}' (ADR-015 §F6 R7)"
+    fail=1
+  fi
+done
+
 if [[ "$fail" -eq 0 ]]; then
-  echo "OK: subject-browser invariants hold (taxonomy × 8 groups, dispatch coverage, Browse ∉ Source, KNOWN_ARXIV_CATS removed, rail reshape locked: 4 sort modes, Subject col Browse-only, no draw_browse_detail_panel)"
+  echo "OK: subject-browser invariants hold (taxonomy × 8 groups, dispatch coverage, Browse ∉ Source, KNOWN_ARXIV_CATS removed, rail reshape locked: 4 sort modes, Subject col Browse-only, no draw_browse_detail_panel; §F6 seam markers wired)"
 fi
 exit $fail

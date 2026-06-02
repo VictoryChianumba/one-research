@@ -267,8 +267,10 @@ on, landing the rail cursor on a Category auto-loads its first page
 after a brief pause — no `Enter` needed (`Enter` still loads
 immediately, and is the way to load with follow off). Scrolling toward
 the bottom of a category's results fetches the next page, so the list
-deepens as you read rather than stopping at the first ~50 papers; it
-ends quietly once you reach the archive's oldest entries.
+deepens as you read rather than stopping at the first ~50 papers. A
+quiet `loading…` line shows at the foot of the feed while a page is
+being fetched, and a `caught up — N papers` marker appears once you
+reach the archive's oldest entries.
 
 ### Sort modes
 

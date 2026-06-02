@@ -1,7 +1,7 @@
 use ratatui::{
   Frame,
-  layout::{Constraint, Layout, Rect},
-  style::{Modifier, Style},
+  layout::{Alignment, Constraint, Layout, Rect},
+  style::{Color, Modifier, Style},
   text::{Line, Span, Text},
   widgets::{
     Cell, Clear, Paragraph, Row, Scrollbar, ScrollbarOrientation,
@@ -954,6 +954,28 @@ pub fn draw_item_table(
       &mut scrollbar_state,
     );
   }
+
+  // ADR-015 §F6: a quiet seam marker on the pane's bottom padding row
+  // (left blank by `pane_inset`). `Loading` shows the moment a fetch is
+  // in flight; `CaughtUp` only once the tail is on screen (`end` reached
+  // `total_items`) so it reads as a true end-of-archive marker rather
+  // than a permanent footer. Non-Browse tabs pass `None` and skip this
+  // entirely — Inbox / Library are untouched.
+  match ctx.browse_seam {
+    crate::feed::BrowseSeamState::Loading => {
+      draw_feed_seam(frame, area, "loading…", t.text_dim);
+    }
+    crate::feed::BrowseSeamState::CaughtUp(n) if end >= total_items => {
+      let msg = if n == 0 {
+        "no recent papers".to_string()
+      } else {
+        format!("caught up — {n} papers")
+      };
+      draw_feed_seam(frame, area, &msg, t.border);
+    }
+    _ => {}
+  }
+
   log::debug!(
     "draw_item_table total: {}ms ({} total items, {} in window)",
     t_item_table.elapsed().as_millis(),
@@ -972,6 +994,26 @@ fn feed_header_cell(label: &'static str, style: Style) -> Cell<'static> {
     Line::from(Span::styled(label, style)),
     Line::from(""),
   ]))
+}
+
+/// ADR-015 §F6: render a centered seam marker on the feed pane's bottom
+/// padding row. That row sits below the table viewport and the scrollbar
+/// (both inset by `pane_inset`), so this never overlaps list content.
+fn draw_feed_seam(frame: &mut Frame, area: Rect, text: &str, color: Color) {
+  if area.height < 2 || area.width < 4 {
+    return;
+  }
+  let row = Rect {
+    x: area.x + 2,
+    y: area.y + area.height - 1,
+    width: area.width.saturating_sub(4),
+    height: 1,
+  };
+  frame.render_widget(
+    Paragraph::new(Span::styled(text.to_string(), Style::default().fg(color)))
+      .alignment(Alignment::Center),
+    row,
+  );
 }
 
 fn feed_cell(value: &str, style: Style) -> Cell<'static> {
