@@ -167,6 +167,24 @@ pub fn fetch_by_ids(ids: &[String]) -> Result<Vec<FeedItem>, String> {
 // ---------------------------------------------------------------------------
 
 fn parse_atom(xml: &str) -> Result<Vec<FeedItem>, String> {
+  // arXiv signals throttling with an HTTP **200** plain-text body
+  // ("Rate exceeded.") — not a status code — and serves HTML pages for
+  // 5xx. Either way the body is not an Atom feed. Without this guard the
+  // parser finds zero `<entry>` elements and returns `Ok(vec![])`, which
+  // the Browse pipeline then caches as a genuinely-empty, *exhausted*
+  // category ("0 papers loaded", stuck with no retry). Fail loud instead
+  // so the fetch routes to `BrowseMessage::Error` and stays retryable.
+  // A genuinely empty category still arrives as a valid `<feed>` with
+  // `totalResults = 0`, so this only rejects non-feed responses.
+  if !xml.contains("<feed") {
+    let reason = if xml.contains("Rate exceeded") {
+      "arXiv rate limit exceeded — try again in a few seconds"
+    } else {
+      "unexpected non-Atom response from arXiv"
+    };
+    return Err(reason.to_string());
+  }
+
   let mut reader = Reader::from_str(xml);
   reader.config_mut().trim_text(true);
 
@@ -441,5 +459,39 @@ mod tests {
       items[0].summary_short
     );
     assert!(items[0].summary_short.contains("This is the abstract."));
+  }
+
+  // arXiv throttles with an HTTP-200 plain-text "Rate exceeded." body.
+  // It must NOT parse as an empty feed — otherwise the Browse pipeline
+  // caches the category as a 0-paper exhausted buffer ("0 papers loaded"
+  // with no retry). WHY this matters: the throttle is transient; treating
+  // it as data poisons the session. Fail loud → routes to Error → retry.
+  #[test]
+  fn parse_atom_rejects_rate_limit_body_as_error() {
+    let err = parse_atom("Rate exceeded.").expect_err("throttle must error");
+    assert!(
+      err.contains("rate limit"),
+      "rate-limit body should yield a rate-limit error, got: {err}"
+    );
+  }
+
+  // Any non-Atom body (HTML 5xx page, proxy error) is an error too — the
+  // parser must never silently report zero papers for a failed fetch.
+  #[test]
+  fn parse_atom_rejects_non_feed_body_as_error() {
+    assert!(parse_atom("<html><body>502 Bad Gateway</body></html>").is_err());
+  }
+
+  // A *genuinely* empty category still returns a valid <feed> with zero
+  // entries — that is legitimately `Ok(empty)`, distinct from a throttle.
+  // This is the line the guard must not cross.
+  #[test]
+  fn parse_atom_accepts_empty_feed_as_zero_items() {
+    let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/">
+  <opensearch:totalResults>0</opensearch:totalResults>
+</feed>"#;
+    let items = parse_atom(xml).expect("an empty feed is a valid response");
+    assert!(items.is_empty());
   }
 }

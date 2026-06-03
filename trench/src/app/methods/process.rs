@@ -415,8 +415,16 @@ impl App {
         }
         BrowseMessage::Error { category, error } => {
           self.browse.inflight.remove(&category);
+          // Deliberately leave `autofill_attempted` set (ADR-015 §F5 R6):
+          // auto-fill tries a category once. Re-arming it here would let a
+          // persistently-throttled category re-fire every poll while the
+          // cursor rests on it — a retry storm that *guarantees* continued
+          // throttling. The fix for a transient failure is the manual
+          // `Enter` retry (which never consults the attempted guard) plus
+          // the honest error surfaced below; no partial items are cached,
+          // so the category is not poisoned the way `Ok(empty)` was.
           log::error!("browse[{category}]: {error}");
-          self.status_message = Some(format!("{category}: fetch failed"));
+          self.status_message = Some(format!("{category}: {error}"));
         }
         BrowseMessage::SearchResults { query, items } => {
           let n = items.len();
@@ -784,10 +792,12 @@ mod tests {
   }
 
   #[test]
-  fn process_incoming_browse_error_clears_inflight() {
+  fn process_incoming_browse_error_clears_inflight_but_keeps_autofill_guard() {
     let mut app = App::new();
     let category = "test-merge-cat-error".to_string();
     app.browse.inflight.insert(category.clone());
+    // Simulate the auto-fill path having already attempted this category.
+    app.browse.autofill_attempted.insert(category.clone());
     let _ = app.browse.tx.send(BrowseMessage::Error {
       category: category.clone(),
       error: "synthetic test failure".to_string(),
@@ -801,7 +811,16 @@ mod tests {
     );
     assert!(
       !app.browse.loaded_categories.contains_key(&category),
-      "errors do not populate loaded_categories"
+      "errors do not populate loaded_categories — no poisoned 0-paper buffer"
+    );
+    // WHY: the attempted guard must survive an error (ADR-015 §F5 R6).
+    // A throttle ("Rate exceeded.") returns fast; re-arming auto-fill on
+    // error would let it re-fire every poll while the cursor rests here,
+    // a storm that guarantees continued throttling. Manual `Enter`
+    // (which ignores this guard) is the retry path.
+    assert!(
+      app.browse.autofill_attempted.contains(&category),
+      "auto-fill stays one-shot on error to prevent a retry storm"
     );
   }
 
