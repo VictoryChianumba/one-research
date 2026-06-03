@@ -44,10 +44,13 @@ pub fn draw_browse_tab(
   }
 
   // Cap the rail to its natural column width so a wide-but-short pane — the
-  // narrow-mode bottom strip (ADR-011) — keeps label and count together on
-  // the left instead of stretching the count to the far edge. In wide mode
-  // the pane is already <= RIGHT_COL_WIDTH, so this is a no-op there.
-  let area = Rect { width: area.width.min(super::RIGHT_COL_WIDTH), ..area };
+  // narrow-mode bottom strip (ADR-011) — keeps label and count together
+  // instead of stretching the count to the far edge, and centre that column
+  // in the strip. In wide mode the pane is already <= RIGHT_COL_WIDTH, so the
+  // cap is a no-op and the offset is zero.
+  let capped_w = area.width.min(super::RIGHT_COL_WIDTH);
+  let x_off = area.width.saturating_sub(capped_w) / 2;
+  let area = Rect { x: area.x + x_off, width: capped_w, ..area };
 
   let inner = pane_inset(area);
   if inner.height < 3 {
