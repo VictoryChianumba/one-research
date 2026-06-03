@@ -43,6 +43,12 @@ pub fn draw_browse_tab(
     return;
   }
 
+  // Cap the rail to its natural column width so a wide-but-short pane — the
+  // narrow-mode bottom strip (ADR-011) — keeps label and count together on
+  // the left instead of stretching the count to the far edge. In wide mode
+  // the pane is already <= RIGHT_COL_WIDTH, so this is a no-op there.
+  let area = Rect { width: area.width.min(super::RIGHT_COL_WIDTH), ..area };
+
   let inner = pane_inset(area);
   if inner.height < 3 {
     return;
