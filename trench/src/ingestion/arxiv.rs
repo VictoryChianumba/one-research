@@ -1,3 +1,6 @@
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
 use quick_xml::Reader;
 use quick_xml::events::Event;
 
@@ -7,6 +10,51 @@ use crate::models::{
 };
 
 use super::pipeline::{FetchContext, Source};
+
+/// arXiv's terms of use ask API clients to make no more than one request
+/// every three seconds (https://info.arxiv.org/help/api/tou.html). Every
+/// *live* request to `export.arxiv.org` in this app funnels through
+/// [`throttle`] first — bulk refresh, Browse paging + arrival auto-fill,
+/// the search bar, and HuggingFace abstract enrichment (which also hits
+/// the arXiv API). Host-group serialization (ADR-004) only spaces
+/// requests *within* one bulk-refresh thread; this gate spaces them
+/// across the independent worker threads too, which is where bursts
+/// (auto-fill firing while the bulk refresh runs) used to trip the
+/// "Rate exceeded." throttle.
+const ARXIV_MIN_REQUEST_INTERVAL: Duration = Duration::from_millis(3000);
+
+/// Wall-clock of the last arXiv request start, shared across every worker
+/// thread. `None` until the first request.
+static ARXIV_LAST_REQUEST: Mutex<Option<Instant>> = Mutex::new(None);
+
+/// How long a caller must wait given the time elapsed since the previous
+/// arXiv request (`None` = no prior request). Pure so the spacing policy
+/// is unit-testable without sleeping.
+fn arxiv_wait_for(elapsed_since_last: Option<Duration>) -> Duration {
+  match elapsed_since_last {
+    Some(elapsed) => {
+      ARXIV_MIN_REQUEST_INTERVAL.checked_sub(elapsed).unwrap_or(Duration::ZERO)
+    }
+    None => Duration::ZERO,
+  }
+}
+
+/// Block the calling thread until at least [`ARXIV_MIN_REQUEST_INTERVAL`]
+/// has elapsed since the previous arXiv request, then record this one.
+///
+/// Holding the lock across the sleep is deliberate: it serialises every
+/// caller into a single 3s-spaced queue (a leaky bucket of one). Call
+/// only from worker threads — never the UI/render thread — so the
+/// queueing provides backpressure without stalling the event loop.
+pub(crate) fn throttle() {
+  let mut last =
+    ARXIV_LAST_REQUEST.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+  let wait = arxiv_wait_for(last.map(|prev| prev.elapsed()));
+  if !wait.is_zero() {
+    std::thread::sleep(wait);
+  }
+  *last = Some(Instant::now());
+}
 
 /// Bulk-refresh source for the arXiv export Atom API. Delegates to the
 /// pre-C10 [`fetch`] free function so the discovery agent (which still
@@ -60,6 +108,7 @@ pub fn fetch_page(
      &sortBy=submittedDate&sortOrder=descending\
      &start={start}&max_results={max_results}"
   );
+  throttle();
   let resp = crate::http::client()
     .get(&url)
     .send()
@@ -97,6 +146,7 @@ pub fn fetch_search(query: &str) -> Result<Vec<FeedItem>, String> {
   let cleaned = query.replace('"', " ");
   let cleaned = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
   let search_query = format!("all:\"{cleaned}\"");
+  throttle();
   let resp = crate::http::client()
     .get("https://export.arxiv.org/api/query")
     .query(&[
@@ -129,6 +179,7 @@ pub fn search_query(
      &sortBy=relevance&sortOrder=descending&max_results={}",
     max_results.min(100)
   );
+  throttle();
   let resp = crate::http::client()
     .get(&url)
     .send()
@@ -152,6 +203,7 @@ pub fn fetch_by_ids(ids: &[String]) -> Result<Vec<FeedItem>, String> {
     "https://export.arxiv.org/api/query?id_list={id_list}&max_results={}",
     normalized.len().min(100)
   );
+  throttle();
   let resp = crate::http::client()
     .get(&url)
     .send()
@@ -480,6 +532,34 @@ mod tests {
   #[test]
   fn parse_atom_rejects_non_feed_body_as_error() {
     assert!(parse_atom("<html><body>502 Bad Gateway</body></html>").is_err());
+  }
+
+  // The app-wide arXiv gate's spacing policy (the sleep itself is not
+  // exercised — only the decision of how long to wait). WHY it matters:
+  // arXiv throttles at ~1 req/3s, so the first request must be immediate,
+  // a request inside the window waits the remainder, and one past it does
+  // not wait. A regression here re-opens the burst that trips "Rate
+  // exceeded.".
+  #[test]
+  fn arxiv_wait_for_enforces_three_second_spacing() {
+    // No prior request → go immediately.
+    assert_eq!(arxiv_wait_for(None), Duration::ZERO);
+    // Back-to-back → wait the full interval.
+    assert_eq!(
+      arxiv_wait_for(Some(Duration::ZERO)),
+      ARXIV_MIN_REQUEST_INTERVAL
+    );
+    // Part-way through the window → wait only the remainder.
+    assert_eq!(
+      arxiv_wait_for(Some(Duration::from_millis(1000))),
+      ARXIV_MIN_REQUEST_INTERVAL - Duration::from_millis(1000)
+    );
+    // At/past the interval → no wait (saturating, never underflows).
+    assert_eq!(
+      arxiv_wait_for(Some(ARXIV_MIN_REQUEST_INTERVAL)),
+      Duration::ZERO
+    );
+    assert_eq!(arxiv_wait_for(Some(Duration::from_secs(10))), Duration::ZERO);
   }
 
   // A *genuinely* empty category still returns a valid <feed> with zero

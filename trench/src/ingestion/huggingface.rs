@@ -106,6 +106,9 @@ fn fetch_abstracts(items: &mut [FeedItem], ctx: &FetchContext) {
     ids.len()
   );
 
+  // Shares export.arxiv.org's 1-req/3s envelope with every other arXiv
+  // caller — gate before sending so HF enrichment can't burst past it.
+  crate::ingestion::arxiv::throttle();
   let resp = match ctx.with_retry(&RetryPolicy::arxiv(), |c| c.get(&url)) {
     Ok(r) => r,
     Err(e) => {
