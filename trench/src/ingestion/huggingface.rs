@@ -112,6 +112,9 @@ fn fetch_abstracts(items: &mut [FeedItem], ctx: &FetchContext) {
   let resp = match ctx.with_retry(&RetryPolicy::arxiv(), |c| c.get(&url)) {
     Ok(r) => r,
     Err(e) => {
+      // Same arXiv envelope as everything else — a failed enrichment fetch
+      // is pushback too, so back every arXiv caller off (ADR-015 R1).
+      crate::ingestion::arxiv::enter_cooldown();
       log::warn!("huggingface: abstract batch fetch failed — {e}");
       return;
     }

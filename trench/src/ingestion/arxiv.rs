@@ -23,13 +23,27 @@ use super::pipeline::{FetchContext, Source};
 /// "Rate exceeded." throttle.
 const ARXIV_MIN_REQUEST_INTERVAL: Duration = Duration::from_millis(3000);
 
-/// Wall-clock of the last arXiv request start, shared across every worker
-/// thread. `None` until the first request.
-static ARXIV_LAST_REQUEST: Mutex<Option<Instant>> = Mutex::new(None);
+/// How long to stay silent after arXiv pushes back (a `Rate exceeded.`
+/// body, a 4xx/5xx non-feed page, or a connection timeout). Once an IP is
+/// throttled the penalty is *sticky* — observed to persist for minutes to
+/// hours — and continuing to poke it every 3s sustains it. So on the first
+/// sign of pushback every arXiv caller goes quiet for this long, giving
+/// the IP a chance to recover instead of digging the hole deeper.
+const ARXIV_COOLDOWN: Duration = Duration::from_secs(60);
 
-/// How long a caller must wait given the time elapsed since the previous
-/// arXiv request (`None` = no prior request). Pure so the spacing policy
-/// is unit-testable without sleeping.
+/// Shared gate state across every worker thread.
+struct ArxivGate {
+  /// Start of the last arXiv request. `None` until the first request.
+  last_request: Option<Instant>,
+  /// If set, no arXiv request fires until this instant (active backoff).
+  cooldown_until: Option<Instant>,
+}
+
+static ARXIV_GATE: Mutex<ArxivGate> =
+  Mutex::new(ArxivGate { last_request: None, cooldown_until: None });
+
+/// Per-request spacing given the time since the previous arXiv request
+/// (`None` = no prior request). Pure so the policy is unit-testable.
 fn arxiv_wait_for(elapsed_since_last: Option<Duration>) -> Duration {
   match elapsed_since_last {
     Some(elapsed) => {
@@ -39,21 +53,81 @@ fn arxiv_wait_for(elapsed_since_last: Option<Duration>) -> Duration {
   }
 }
 
-/// Block the calling thread until at least [`ARXIV_MIN_REQUEST_INTERVAL`]
-/// has elapsed since the previous arXiv request, then record this one.
+/// The actual wait: the longer of the normal 3s spacing and any remaining
+/// cooldown. A cooldown dominates while active (so the caller waits out
+/// the backoff); once it expires, normal spacing resumes. Pure so both
+/// limbs are unit-testable without sleeping.
+fn arxiv_gate_wait(
+  elapsed_since_last: Option<Duration>,
+  cooldown_remaining: Duration,
+) -> Duration {
+  arxiv_wait_for(elapsed_since_last).max(cooldown_remaining)
+}
+
+/// Block the calling thread until it's allowed to make an arXiv request —
+/// at least [`ARXIV_MIN_REQUEST_INTERVAL`] since the previous one, and
+/// past any active [`ARXIV_COOLDOWN`] — then record this request's start.
 ///
 /// Holding the lock across the sleep is deliberate: it serialises every
-/// caller into a single 3s-spaced queue (a leaky bucket of one). Call
-/// only from worker threads — never the UI/render thread — so the
-/// queueing provides backpressure without stalling the event loop.
+/// caller into a single paced queue (a leaky bucket of one). Call only
+/// from worker threads — never the UI/render thread — so the queueing
+/// provides backpressure without stalling the event loop.
 pub(crate) fn throttle() {
-  let mut last =
-    ARXIV_LAST_REQUEST.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-  let wait = arxiv_wait_for(last.map(|prev| prev.elapsed()));
+  let mut gate =
+    ARXIV_GATE.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+  let now = Instant::now();
+  let cooldown_remaining = gate
+    .cooldown_until
+    .map(|until| until.saturating_duration_since(now))
+    .unwrap_or(Duration::ZERO);
+  let wait = arxiv_gate_wait(
+    gate.last_request.map(|prev| now.saturating_duration_since(prev)),
+    cooldown_remaining,
+  );
   if !wait.is_zero() {
     std::thread::sleep(wait);
   }
-  *last = Some(Instant::now());
+  gate.last_request = Some(Instant::now());
+}
+
+/// Record that arXiv pushed back, starting (or extending) an
+/// [`ARXIV_COOLDOWN`] window during which [`throttle`] holds every caller
+/// off. Called from [`fetch_atom`] on a rate-limit body / non-feed page /
+/// connection failure, and from the HF enrichment path on the same.
+pub(crate) fn enter_cooldown() {
+  let mut gate =
+    ARXIV_GATE.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+  gate.cooldown_until = Some(Instant::now() + ARXIV_COOLDOWN);
+}
+
+/// Single chokepoint for arXiv Atom requests: gate (spacing + cooldown),
+/// send, read, parse — and arm the cooldown on any sign of pushback. All
+/// four arXiv free functions below delegate here so the throttle and the
+/// backoff can never be forgotten at a call site.
+fn fetch_atom(
+  req: reqwest::blocking::RequestBuilder,
+) -> Result<Vec<FeedItem>, String> {
+  throttle();
+  let resp = match req.send() {
+    Ok(r) => r,
+    Err(e) => {
+      // A timeout / dropped connection under load is arXiv pushing back
+      // (it stops responding *before* it returns a 429), so back off.
+      enter_cooldown();
+      return Err(format!("HTTP request failed: {e}"));
+    }
+  };
+  let body = crate::http::read_body(resp)
+    .map_err(|e| format!("Failed to read response body: {e}"))?;
+  match parse_atom(&body) {
+    Ok(items) => Ok(items),
+    Err(e) => {
+      // parse_atom only errs on a non-feed body — a "Rate exceeded."
+      // throttle or an HTML error page. Either way arXiv refused us.
+      enter_cooldown();
+      Err(e)
+    }
+  }
 }
 
 /// Bulk-refresh source for the arXiv export Atom API. Delegates to the
@@ -108,15 +182,7 @@ pub fn fetch_page(
      &sortBy=submittedDate&sortOrder=descending\
      &start={start}&max_results={max_results}"
   );
-  throttle();
-  let resp = crate::http::client()
-    .get(&url)
-    .send()
-    .map_err(|e| format!("HTTP request failed: {e}"))?;
-  let body = crate::http::read_body(resp)
-    .map_err(|e| format!("Failed to read response body: {e}"))?;
-
-  parse_atom(&body)
+  fetch_atom(crate::http::client().get(&url))
 }
 
 /// Free-text search across arXiv (title / abstract / authors), ranked by
@@ -146,20 +212,13 @@ pub fn fetch_search(query: &str) -> Result<Vec<FeedItem>, String> {
   let cleaned = query.replace('"', " ");
   let cleaned = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
   let search_query = format!("all:\"{cleaned}\"");
-  throttle();
-  let resp = crate::http::client()
-    .get("https://export.arxiv.org/api/query")
-    .query(&[
+  fetch_atom(
+    crate::http::client().get("https://export.arxiv.org/api/query").query(&[
       ("search_query", search_query.as_str()),
       ("sortBy", "relevance"),
       ("max_results", "50"),
-    ])
-    .send()
-    .map_err(|e| format!("HTTP request failed: {e}"))?;
-  let body = crate::http::read_body(resp)
-    .map_err(|e| format!("Failed to read response body: {e}"))?;
-
-  parse_atom(&body)
+    ]),
+  )
 }
 
 /// Free-text arXiv search using `search_query=all:{query}`.
@@ -179,15 +238,7 @@ pub fn search_query(
      &sortBy=relevance&sortOrder=descending&max_results={}",
     max_results.min(100)
   );
-  throttle();
-  let resp = crate::http::client()
-    .get(&url)
-    .send()
-    .map_err(|e| format!("HTTP request failed: {e}"))?;
-  let body = crate::http::read_body(resp)
-    .map_err(|e| format!("Failed to read response body: {e}"))?;
-
-  parse_atom(&body)
+  fetch_atom(crate::http::client().get(&url))
 }
 
 /// Fetch specific papers by arXiv ID list.
@@ -203,15 +254,7 @@ pub fn fetch_by_ids(ids: &[String]) -> Result<Vec<FeedItem>, String> {
     "https://export.arxiv.org/api/query?id_list={id_list}&max_results={}",
     normalized.len().min(100)
   );
-  throttle();
-  let resp = crate::http::client()
-    .get(&url)
-    .send()
-    .map_err(|e| format!("HTTP request failed: {e}"))?;
-  let body = crate::http::read_body(resp)
-    .map_err(|e| format!("Failed to read response body: {e}"))?;
-
-  parse_atom(&body)
+  fetch_atom(crate::http::client().get(&url))
 }
 
 // ---------------------------------------------------------------------------
@@ -560,6 +603,40 @@ mod tests {
       Duration::ZERO
     );
     assert_eq!(arxiv_wait_for(Some(Duration::from_secs(10))), Duration::ZERO);
+  }
+
+  // The cooldown/backoff policy: when arXiv pushes back, the gate waits out
+  // the whole cooldown (it dominates normal spacing); once it expires, only
+  // the 3s spacing applies. WHY it matters: a sticky IP penalty means
+  // poking every 3s sustains the throttle — the cooldown is what lets the
+  // IP recover. A regression that let spacing win during a cooldown would
+  // re-open exactly that.
+  #[test]
+  fn arxiv_gate_wait_lets_cooldown_dominate_then_resumes_spacing() {
+    let cooldown = Duration::from_secs(45);
+    // Active cooldown dwarfs spacing → wait the cooldown, even right after
+    // a request (spacing alone would say ~3s).
+    assert_eq!(arxiv_gate_wait(Some(Duration::ZERO), cooldown), cooldown);
+    // Active cooldown even when idle a long time (spacing = 0).
+    assert_eq!(
+      arxiv_gate_wait(Some(Duration::from_secs(10)), cooldown),
+      cooldown
+    );
+    // No cooldown → pure spacing (the gate's normal behaviour).
+    assert_eq!(
+      arxiv_gate_wait(Some(Duration::ZERO), Duration::ZERO),
+      ARXIV_MIN_REQUEST_INTERVAL
+    );
+    // Expired cooldown + recent request → spacing wins (the larger limb).
+    assert_eq!(
+      arxiv_gate_wait(Some(Duration::from_millis(500)), Duration::ZERO),
+      ARXIV_MIN_REQUEST_INTERVAL - Duration::from_millis(500)
+    );
+    // Idle past everything → no wait at all.
+    assert_eq!(
+      arxiv_gate_wait(Some(Duration::from_secs(10)), Duration::ZERO),
+      Duration::ZERO
+    );
   }
 
   // A *genuinely* empty category still returns a valid <feed> with zero
