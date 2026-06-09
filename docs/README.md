@@ -1,4 +1,4 @@
-# one-research docs
+# One-Research docs
 
 - [Getting Started](pages/getting-started.md)
 - [Development](pages/development.md)

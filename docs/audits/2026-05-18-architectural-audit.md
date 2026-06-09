@@ -35,7 +35,7 @@ The audit was requested for educational purposes with high standards and no flat
 
 The three rising grades (8, 14, 15) are real wins. The two falling grades (9, 11) are anti-patterns introduced *by the same recent work* — feature velocity faster than test/seam velocity is now visible in the audit numbers. Net effect: the floor came up modestly, the ceiling came down modestly, the average is unchanged.
 
-**Educational takeaway:** A codebase that grades the same across two audits despite intervening work is doing one of two things — running in place, or accumulating debt at the rate features arrive. The one-research codebase is the latter. This is not unusual; it's the median real-world software pattern. Recognizing it explicitly is the first step.
+**Educational takeaway:** A codebase that grades the same across two audits despite intervening work is doing one of two things — running in place, or accumulating debt at the rate features arrive. The One-Research codebase is the latter. This is not unusual; it's the median real-world software pattern. Recognizing it explicitly is the first step.
 
 ---
 

@@ -2,7 +2,7 @@
 
 [Back to docs](../README.md)
 
-Build and run one-research from the workspace root:
+Build and run One-Research from the workspace root:
 
 ```sh
 cargo run -p one-research --release

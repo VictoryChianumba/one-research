@@ -1,8 +1,8 @@
-# one-research
+# One-Research
 
 A terminal UI for following AI research — aggregates arXiv, HuggingFace daily papers, and blog feeds into a single keyboard-driven interface.
 
-![one-research screenshot](docs/screenshot.png)
+![One-Research screenshot](docs/screenshot.png)
 
 ## Features
 
@@ -15,7 +15,7 @@ A terminal UI for following AI research — aggregates arXiv, HuggingFace daily 
 - GitHub repository browser: browse and read linked repos from the details panel
 - Notes panel: per-session markdown notes alongside any pane
 - Chat panel: ask questions about the selected item using Claude or OpenAI
-- AI source discovery: describe a topic and one-research finds relevant arXiv categories and RSS feeds to add
+- AI source discovery: describe a topic and One-Research finds relevant arXiv categories and RSS feeds to add
 - Semantic Scholar enrichment: citation counts and fields of study (7-day cache)
 - Runtime themes: Dark, Light, and AMOLED — switchable from the Settings screen
 - Fast startup: cached feed loaded immediately; network fetches run in the background
@@ -172,9 +172,9 @@ Runtime data files:
 
 **arXiv categories** — switch to the Browse tab (`Tab` cycles to it), use the right-side subject rail with `h`/`l`/`j`/`k`, and press `p` on any category to add it to your daily feed. `Enter` on a category loads recent papers into the Browse feed without promoting it. Promoted categories show a `★` marker; press `p` again to un-promote.
 
-**AI source discovery** — switch to the Discoveries tab (`Ldr+d`), press `/`, and describe a research topic. one-research will query the model and return a list of relevant arXiv categories and RSS feeds you can add with a single keystroke.
+**AI source discovery** — switch to the Discoveries tab (`Ldr+d`), press `/`, and describe a research topic. One-Research will query the model and return a list of relevant arXiv categories and RSS feeds you can add with a single keystroke.
 
-**Custom RSS/Atom feeds** — go to Settings (`Ldr+S`) → Sources → Add feed. Paste the URL; one-research will auto-detect whether it is an arXiv category, a Substack blog, or a generic RSS/Atom feed. Custom feeds are stored in `config.json` under `sources.custom_feeds`.
+**Custom RSS/Atom feeds** — go to Settings (`Ldr+S`) → Sources → Add feed. Paste the URL; One-Research will auto-detect whether it is an arXiv category, a Substack blog, or a generic RSS/Atom feed. Custom feeds are stored in `config.json` under `sources.custom_feeds`.
 
 To add a feed manually, append an entry to `custom_feeds`:
 
@@ -285,7 +285,7 @@ modes that apply across every tab:
 | `Trending` | Items from the last 14 days only, sorted by `upvote_count`. Older items are filtered out. |
 
 Sort modes are session-only — they reset to `Dated` on next launch so
-re-opening one-research never surprises you with a stale random shuffle.
+re-opening One-Research never surprises you with a stale random shuffle.
 
 ### Leader bindings (`Ctrl+T` then key)
 
@@ -347,4 +347,4 @@ cargo fmt --check                  # format check
 
 ## License
 
-one-research is released under the [GNU Affero General Public License v3.0](LICENSE).
+One-Research is released under the [GNU Affero General Public License v3.0](LICENSE).

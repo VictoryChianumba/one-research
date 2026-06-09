@@ -543,12 +543,12 @@ fn migrate_legacy_config_dir() {
 
   let new_root = home.join(".config/one-research");
 
-  // The project was renamed twice: `tentative` → `one-research` → `one-research`.
+  // The project was renamed twice: `tentative` → `trench` → `one-research`.
   // Migrate from either legacy root into the current one so existing users
   // keep their cache, workflow state, notes, and chats across the rename.
-  // Ordered oldest-first; if both somehow exist, `one-research` wins on conflict
+  // Ordered oldest-first; if both somehow exist, `trench` wins on conflict
   // because per-file moves skip a name already present in `new_root`.
-  for legacy in ["tentative", "one-research"] {
+  for legacy in ["tentative", "trench"] {
     let old_root = home.join(".config").join(legacy);
     if !old_root.exists() {
       continue;
@@ -562,6 +562,8 @@ fn migrate_legacy_config_dir() {
     for name in [
       "config.json",
       "state.json",
+      "history.json",
+      "ui.json",
       "cache.json",
       "enrichment_cache.json",
       "discovery_cache.json",

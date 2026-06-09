@@ -160,7 +160,7 @@ multi-toggle).
 
 ---
 
-## Reader (tread inside one-research)
+## Reader (tread inside One-Research)
 
 | Key | Action |
 |---|---|

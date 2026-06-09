@@ -1,4 +1,4 @@
-# CONTEXT — one-research domain and architecture vocabulary
+# CONTEXT — One-Research domain and architecture vocabulary
 
 Last reviewed: 2026-05-21
 
@@ -18,7 +18,7 @@ When you change behaviour described here, update this file in the same commit.
 | **SourcePlatform** | Where a `FeedItem` came from: `ArXiv`, `HuggingFace`, `Blog`, `Newsletter`, `Rss`, `OpenReview`, `Core`, or legacy `Twitter`. Drives source labels and signal derivation. |
 | **SignalLevel** | The relevance heuristic on a `FeedItem`: `Primary` / `Secondary` / `Tertiary`. Derived from platform + upvote count in `FeedItem::compute_signal`. |
 | **Pane** | A logical TUI region with its own state and renderer. Current panes: feed, reader, chat, notes, repo viewer, settings, title bar, search row. |
-| **Theme** | Explicit one-research palette selected in Settings (`Dark`, `Light`, `AMOLED`, or custom). Do not assume the app can identify the terminal emulator's named theme; terminals expose no portable theme API. A future `Auto` mode should be best-effort light/dark background detection only, with a stable fallback. |
+| **Theme** | Explicit One-Research palette selected in Settings (`Dark`, `Light`, `AMOLED`, or custom). Do not assume the app can identify the terminal emulator's named theme; terminals expose no portable theme API. A future `Auto` mode should be best-effort light/dark background detection only, with a stable fallback. |
 | **Model** | The composition-root state owner for a pane. Models live as fields on `App` and never reference each other. Renders take `&Model`, never `&mut Model`. Introduced by slice 1 (feed). |
 | **Viewport** | The `{ rows, cols }` POD passed to `Model::pre_draw` before each render. Carries no ratatui types — models stay layout-toolkit-agnostic. |
 | **Action** | The input vocabulary. Keystrokes are translated into `Action` variants by `keys/`, then routed to the relevant model (or to the orchestrator for cross-pane verbs). Grows as panes migrate. |

@@ -236,6 +236,7 @@ fn activate_theme_picker_row(app: &mut App, commit: bool) {
     if commit {
       app.theme_picker.original = None;
       app.theme_picker.active = false;
+      app.config.save();
     }
   } else if row < preset_count + custom_count {
     let custom = &app.config.custom_themes[row - preset_count];
@@ -246,6 +247,7 @@ fn activate_theme_picker_row(app: &mut App, commit: bool) {
     if commit {
       app.theme_picker.original = None;
       app.theme_picker.active = false;
+      app.config.save();
     }
   } else if commit {
     open_new_custom_theme_editor(app);

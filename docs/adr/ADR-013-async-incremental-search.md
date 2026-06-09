@@ -20,7 +20,7 @@ a few-thousand-item corpus this makes the event loop's drain-then-draw cycle
 (`main.rs`) back up: keystrokes queue behind slow frames, so typed text lands in
 chunks and post-search navigation stutters.
 
-Investigation (2026-05-22) confirmed the cost is one-research's own — `tread`'s
+Investigation (2026-05-22) confirmed the cost is One-Research's own — `tread`'s
 per-frame `tick()` only forces redraws during voice playback, and the feed pane
 draws without calling `tread` at all. The fix is architectural, matching what
 every serious finder does: run matching on a background thread pool, match
@@ -28,7 +28,7 @@ every serious finder does: run matching on a background thread pool, match
 **poll** for the latest snapshot.
 
 `nucleo` (the matcher Helix uses) provides exactly this with a poll-based
-`tick()`/`snapshot()` API — no `async` runtime, so it fits one-research's
+`tick()`/`snapshot()` API — no `async` runtime, so it fits One-Research's
 `std::sync::mpsc` + blocking-I/O model (CLAUDE.md) the same way the ingestion
 drain does.
 

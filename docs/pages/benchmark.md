@@ -3,7 +3,7 @@
 [Back to docs](../README.md)
 
 The active bench harnesses live in [`../../scripts/bench/`](../../scripts/bench/).
-They wrap one-research's startup, ingestion, and render bench modes.
+They wrap One-Research's startup, ingestion, and render bench modes.
 
 Build the release binary before running them:
 

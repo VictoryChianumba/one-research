@@ -13,13 +13,13 @@
 
 ## Goal
 
-Let the user browse arXiv's full ~155-category taxonomy inside one-research — three-level hierarchy `Group → Archive → Category` mirroring [arxiv.org's home page](https://arxiv.org/) — without forcing every category into the general feed. The existing curated feed (`config.sources.arxiv_categories`) stays small; the browser is where new subjects are discovered, with a gesture to promote a category into the feed permanently.
+Let the user browse arXiv's full ~155-category taxonomy inside One-Research — three-level hierarchy `Group → Archive → Category` mirroring [arxiv.org's home page](https://arxiv.org/) — without forcing every category into the general feed. The existing curated feed (`config.sources.arxiv_categories`) stays small; the browser is where new subjects are discovered, with a gesture to promote a category into the feed permanently.
 
 After the slice, **the 7-entry `KNOWN_ARXIV_CATS` shortlist disappears** and arXiv-category management lives exclusively in the browser. The general feed remains a *subset* of the taxonomy — the user's promoted choices — rather than the only window onto arXiv.
 
 ## Context
 
-Today one-research fetches arXiv papers from a tactical shortlist of three category codes (`cs.LG + cs.AI + stat.ML`, defined in `one-research/src/config.rs:309-313`), toggleable from a sources popup driven by `KNOWN_ARXIV_CATS` (7 entries at `one-research/src/config.rs:7-15`). Browsing anything outside the shortlist requires editing the config or routing through the discovery agent's free-text path.
+Today One-Research fetches arXiv papers from a tactical shortlist of three category codes (`cs.LG + cs.AI + stat.ML`, defined in `one-research/src/config.rs:309-313`), toggleable from a sources popup driven by `KNOWN_ARXIV_CATS` (7 entries at `one-research/src/config.rs:7-15`). Browsing anything outside the shortlist requires editing the config or routing through the discovery agent's free-text path.
 
 The audit's framing of the shortlist — *"the seam-shaped wrong answer"* — applies. arXiv's taxonomy is a stable three-level structure: arXiv hasn't added a new top-level group in over a decade (the 8 groups in `models/arxiv_taxonomy.rs::TAXONOMY` are canonical), and the ~155 categories drift on a multi-year cadence. The shortlist exists because the codebase didn't have a typed taxonomy table; once you have one, the picker UI is just a tree-walk and the shortlist becomes redundant.
 
@@ -69,7 +69,7 @@ This is the answer to "does browsing pollute my feed?": no, unless you promote.
 
 #### D5. `BrowseModel.loaded_categories` resets on restart (session-scoped only)
 
-`BrowseModel.loaded_categories: HashMap<String, Vec<String>>` is in-memory only — not persisted to `~/.config/one-research/`. Re-launching one-research shows an empty column 4 until the user re-fetches.
+`BrowseModel.loaded_categories: HashMap<String, Vec<String>>` is in-memory only — not persisted to `~/.config/one-research/`. Re-launching One-Research shows an empty column 4 until the user re-fetches.
 
 Persisting it would re-raise the question D4 already answered ("what does Inbox contain on launch?"). Browse stays a *session* tool; the general feed is the *persistent* surface. The two are distinct by design.
 

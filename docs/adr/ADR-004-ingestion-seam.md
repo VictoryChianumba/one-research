@@ -8,7 +8,7 @@
 
 ## Goal
 
-Introduce a uniform contract for one-research's bulk-refresh ingestion path. Today six modules (`arxiv`, `huggingface`, `rss`, `openreview`, `core`, plus the enrichment-not-source `semantic_scholar`) share a channel type (`FetchMessage`) but no behavior contract. After this ADR:
+Introduce a uniform contract for One-Research's bulk-refresh ingestion path. Today six modules (`arxiv`, `huggingface`, `rss`, `openreview`, `core`, plus the enrichment-not-source `semantic_scholar`) share a channel type (`FetchMessage`) but no behavior contract. After this ADR:
 
 - A `Source` trait expresses *what every bulk-ingestion source does* (one `fetch(&FetchContext) -> Result<Vec<FeedItem>>` call plus `name()` + `host_group()` for the orchestrator's scheduling).
 - A sibling `EnrichmentSource` trait expresses the structurally different enrichment phase (`enrich(&mut [FeedItem], &FetchContext)` — best-effort, no `Result`, post-fetch).

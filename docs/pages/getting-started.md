@@ -2,7 +2,7 @@
 
 [Back to docs](../README.md)
 
-one-research is a Rust terminal UI. Install Rust 1.88 or newer, then build from the
+One-Research is a Rust terminal UI. Install Rust 1.88 or newer, then build from the
 workspace root:
 
 ```sh

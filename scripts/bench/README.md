@@ -1,7 +1,7 @@
 # Bench harnesses
 
 Python wrappers around `one-research`'s built-in bench flags. Each script
-runs the one-research binary with the right flag, captures stdout, and
+runs the One-Research binary with the right flag, captures stdout, and
 aggregates a distribution across runs.
 
 | Script | Wraps | Purpose |

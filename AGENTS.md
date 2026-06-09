@@ -122,9 +122,9 @@ The reader logic now lives in the sibling `tread` repo at
 
 The reader boundary in this repo is the tread integration: `tread::Reader`,
 `tread::PaperData`, `tread::ImageState`, and `tread::BurstTracker` are used
-from one-research, but reader rendering and input internals are documented in tread.
+from One-Research, but reader rendering and input internals are documented in tread.
 
-## one-research Architecture
+## One-Research Architecture
 
 A separate TUI binary (`one-research/src/main.rs`) that aggregates AI research feeds. No async — uses `std::sync::mpsc` and `reqwest::blocking` throughout.
 

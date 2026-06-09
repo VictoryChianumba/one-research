@@ -1,6 +1,6 @@
 # Performance Checklist
 
-A working checklist for performance investigation across the one-research workspace
+A working checklist for performance investigation across the One-Research workspace
 and its reader integration. Walk top-to-bottom when chasing a regression; jump
 to a single axis when scoping a planned improvement.
 
@@ -20,7 +20,7 @@ where time/memory actually goes.
 - [ ] **Name the axis.** Which of the eight are you actually trying to improve?
       "Slow" is not a goal. ("Cold start under 200ms" is.)
 - [ ] **Reproduce.** Have a single command + dataset that exhibits the problem
-      on demand. For one-research: a specific cached feed; for hygg: a specific
+      on demand. For One-Research: a specific cached feed; for hygg: a specific
       PDF/EPUB; for block-reader: a specific arXiv ID.
 - [ ] **Baseline.** Measure before changing anything. Write the number down.
       `hyperfine` for end-to-end, `cargo bench` (criterion) for hot paths.
@@ -41,7 +41,7 @@ where time/memory actually goes.
       `clone`, `Vec::new` inside loops. Each is cheap once, lethal millions of
       times. Probe: `dhat-rs` or grep `.clone()` in the hot module.
 - [ ] **Sync I/O on hot path.** Disk reads, network calls, file syncs inside a
-      render/event loop. In one-research: cache writes after every
+      render/event loop. In One-Research: cache writes after every
       `process_incoming` batch — is that fsync'd every time?
 - [ ] **Format machinery on a hot path.** `format!`, `write!`, `println!` are
       surprisingly expensive. ratatui's `Spans` building per-frame can
@@ -162,7 +162,7 @@ where time/memory actually goes.
 
 ## 8. Energy / wakeups (background and idle)
 
-- [ ] **Idle CPU usage.** With one-research open but no input, `top` should show
+- [ ] **Idle CPU usage.** With One-Research open but no input, `top` should show
       <1%. If higher, you have a busy loop somewhere.
 - [ ] **Polling cadence.** What's the longest acceptable `poll` timeout when
       idle? Sleeping `100ms` instead of `16ms` while idle is free battery
@@ -305,7 +305,7 @@ audit task list; this log is the durable record.
   mode broken in hygg rewrite." Estimated 500KB-1MB of unreachable audio
   code in the binary for currently-unused functionality.
 - **Experiment attempted, reverted**: disabled reqwest's `http2` default
-  feature in one-research's 3 Cargo.tomls (`one-research/Cargo.toml`, `crates/http`,
+  feature in One-Research's 3 Cargo.tomls (`one-research/Cargo.toml`, `crates/http`,
   `crates/chat`) to drop `h2` (132KB). Result: **no savings; binary grew
   ~200KB**. Reason: cargo's feature unification with tread's
   `crates/arxiv-render/Cargo.toml` (which still pulls reqwest with
@@ -324,19 +324,19 @@ audit task list; this log is the durable record.
 - **Open threads** (sized estimates, not measured):
   - **Cross-workspace tread voice feature flag** — gate
     `build_voice_controller` behind a `voice` feature in tread, disable
-    in one-research. Estimated 500KB-1MB binary savings. Two-PR effort
+    in One-Research. Estimated 500KB-1MB binary savings. Two-PR effort
     (tread + one-research).
   - **Cross-workspace reqwest http2 drop** — apply the same Cargo.toml
     change attempted here to ALL reqwest call sites including tread's
     `arxiv-render`. Estimated 132–200KB. One-line PR in tread + the
-    three already-prepared edits in one-research (which were reverted).
+    three already-prepared edits in One-Research (which were reverted).
   - **HTML parser replacement** — `html5ever` (368KB) is pulled by
     `readability` and `html2text` for ingestion. Switching to a simpler
     HTML→text pipeline (e.g., `scraper` or hand-rolled regex strip) for
-    the limited use cases one-research actually has might save most of it.
+    the limited use cases One-Research actually has might save most of it.
     Higher-risk, larger refactor.
   - **Memory profiling with dhat-rs** — set up `#[global_allocator]`
-    behind a feature flag, run one-research under dhat, identify the largest
+    behind a feature flag, run One-Research under dhat, identify the largest
     `FeedItem`-related allocations, then drive the per-item refactor
     with real before/after numbers.
 - **Tooling kept**: `cargo bloat` is now installed (`~/.cargo/bin/`)
@@ -431,7 +431,7 @@ audit task list; this log is the durable record.
   see whether the renderer is meeting budget. Same rationale as the
   per-source elapsed-time logging in axis 2.
 - **No baseline number yet** because the histogram requires sustained
-  interactive use to populate meaningfully. Once you've used one-research
+  interactive use to populate meaningfully. Once you've used One-Research
   for >30s during a future session, the log will start showing
   distributions.
 - **What we expect to see** based on axes 4 + 7 data: feed view
@@ -506,12 +506,12 @@ audit task list; this log is the durable record.
   call. Idle frames cost ~0 work since per-frame allocations live
   inside `ui::draw` and `ui::draw` only runs when dirty.
 - **No fix landed.** Closing positive: like axis 6, the audit
-  confirmed the design rather than uncovered work. Idle one-research should
+  confirmed the design rather than uncovered work. Idle One-Research should
   show near-zero CPU and very low wakeups/sec.
 - **Open threads** (low priority, low expected payoff at idle):
   - **Empirical verification on macOS** via `powermetrics --samplers
-    cpu_power,tasks -i 5000` while one-research is idle in another window.
-    Expected: one-research in the bottom-N processes by CPU%; wakeups <10/s.
+    cpu_power,tasks -i 5000` while One-Research is idle in another window.
+    Expected: One-Research in the bottom-N processes by CPU%; wakeups <10/s.
   - **Verify the 250ms idle timeout actually kicks in** — the gate
     `needs_redraw || has_active_animation()` could stay perpetually
     `true` if any tick function unconditionally calls `mark_dirty()`.
@@ -547,9 +547,9 @@ Tooling banked: `--bench-startup` flag, `cargo bloat`, `scripts/bench/bench_firs
 
 ## Feature audits (2026-05-17)
 
-Round 2 — per-feature deep coverage of one-research (tread treated as black box).
+Round 2 — per-feature deep coverage of One-Research (tread treated as black box).
 
-### Feature — Reader-wrapper in one-research (src/reader/) — closed 2026-05-17
+### Feature — Reader-wrapper in One-Research (src/reader/) — closed 2026-05-17
 
 - **Finding**: `ReaderPopupModel::pre_draw` was calling
   `tread::Reader::resize` on every frame, paying the full reflow +
@@ -712,11 +712,11 @@ Round 2 — per-feature deep coverage of one-research (tread treated as black bo
   - Cloned into the popup Reader at `main.rs:1030`
 - **All actual voice logic lives in tread** (out of scope by user
   directive). One Research is just passing a shared Arc handle.
-- **No per-frame work in one-research around voice.** No lock churn in
-  one-research code. No sync I/O in one-research code. The `VoicePlayingInfo
+- **No per-frame work in One-Research around voice.** No lock churn in
+  One-Research code. No sync I/O in One-Research code. The `VoicePlayingInfo
   Arc<Mutex>` contention path noted in axis 1 is between tread's
-  threads, not one-research's.
-- **No fix landed.** Closing positive: one-research's voice wiring is
+  threads, not One-Research's.
+- **No fix landed.** Closing positive: One-Research's voice wiring is
   clean — minimal Arc-handle plumbing with all the work delegated
   to tread.
 
@@ -829,7 +829,7 @@ Round 2 — per-feature deep coverage of one-research (tread treated as black bo
 
 ## Feature audit summary (2026-05-17)
 
-12 one-research features audited (tread out of scope per user directive).
+12 One-Research features audited (tread out of scope per user directive).
 
 | # | Feature | Outcome |
 |---|---|---|
@@ -1108,7 +1108,7 @@ The second of the cross-cutting "correctness open threads" from the
   systems), leaking paper titles + URLs from history. Audit-cited
   reason for the 0o600 default applies here too.
 - **Memory cost**: ~3MB buffered for a 1781-item library export.
-  Fine for on-demand operations. If one-research ever exports >100k
+  Fine for on-demand operations. If One-Research ever exports >100k
   records, the streaming-with-tmp-file pattern would replace
   this buffer-everything approach.
 - **Verified**: clean build, binary boots and renders via
