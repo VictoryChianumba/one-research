@@ -2,7 +2,7 @@
 resolver = "2"
 
 members = [
-  "trench",
+  "one-research",
   "crates/http",
   "crates/notes",
   "crates/chat",
@@ -19,7 +19,7 @@ edition = "2024"
 authors = ["kruseio"]
 license = "AGPL-3.0"
 readme = "README.md"
-repository = "https://github.com/kruseio/hygg"
+repository = "https://github.com/VictoryChianumba/one-research"
 keywords = ["pdf", "cli", "parser", "terminal", "utility"]
 categories = [
   "command-line-utilities",

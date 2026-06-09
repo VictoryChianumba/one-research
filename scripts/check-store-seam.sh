@@ -22,12 +22,12 @@ fail=0
 # exemptions are documented inline via `// SEAM-EXEMPT:` comments
 # (e.g. session::clear which writes literal `{}` to erase, not save).
 seam_modules=(
-  "trench/src/store/cache.rs"
-  "trench/src/store/discovery_cache.rs"
-  "trench/src/store/enrichment_cache.rs"
-  "trench/src/store/history.rs"
-  "trench/src/store/session.rs"
-  "trench/src/store/tags.rs"
+  "one-research/src/store/cache.rs"
+  "one-research/src/store/discovery_cache.rs"
+  "one-research/src/store/enrichment_cache.rs"
+  "one-research/src/store/history.rs"
+  "one-research/src/store/session.rs"
+  "one-research/src/store/tags.rs"
 )
 
 # L1.  Every store submodule references `super::load_json` and
@@ -47,10 +47,10 @@ for f in "${seam_modules[@]}"; do
 done
 
 # L2.  No `serde_json::from_slice` or `serde_json::to_vec` inside
-#      trench/src/store/ outside store/mod.rs (which owns the seam
+#      one-research/src/store/ outside store/mod.rs (which owns the seam
 #      itself).  Test-fixture uses inside `#[cfg(test)]` blocks are
 #      exempt — the L2 grep filters them by line context.
-hits=$(grep -rnE 'serde_json::(from_slice|to_vec)' trench/src/store \
+hits=$(grep -rnE 'serde_json::(from_slice|to_vec)' one-research/src/store \
   | grep -v 'mod\.rs:' \
   | grep -v 'SEAM-EXEMPT' \
   || true)
@@ -84,7 +84,7 @@ if [[ -n "${filtered// }" ]]; then
   fail=1
 fi
 
-# L3.  No direct `super::atomic_write` inside trench/src/store/
+# L3.  No direct `super::atomic_write` inside one-research/src/store/
 #      submodules — the seam is the choke point.  session::clear() is
 #      the documented exception, annotated SEAM-EXEMPT.
 for f in "${seam_modules[@]}"; do

@@ -1,7 +1,7 @@
 //! Terminal-safe text sanitization for streamed chat content.
 //!
-//! Mirrors `trench/src/sanitize.rs` exactly. We keep a local copy here rather
-//! than introducing a cross-crate dependency on trench internals — the helper
+//! Mirrors `one-research/src/sanitize.rs` exactly. We keep a local copy here rather
+//! than introducing a cross-crate dependency on one-research internals — the helper
 //! is a few dozen lines and changes rarely.
 //!
 //! Streamed assistant responses (Claude / OpenAI / Perplexity) bypass the
@@ -30,9 +30,9 @@ pub(crate) fn is_safe_id(s: &str) -> bool {
 }
 
 /// Truncate `s` to at most `max` *characters* (not bytes), borrowing when
-/// no truncation is needed. Mirrors `trench::sanitize::truncate_chars` —
+/// no truncation is needed. Mirrors `one_research::sanitize::truncate_chars` —
 /// see that doc for the threat model. Local copy here to avoid a chat →
-/// trench dependency edge.
+/// one-research dependency edge.
 pub(crate) fn truncate_chars(s: &str, max: usize) -> std::borrow::Cow<'_, str> {
   if s.chars().count() <= max {
     std::borrow::Cow::Borrowed(s)
@@ -42,7 +42,7 @@ pub(crate) fn truncate_chars(s: &str, max: usize) -> std::borrow::Cow<'_, str> {
 }
 
 /// Strip every ANSI escape sequence, control byte, and DEL from `s`.
-/// See `trench::sanitize::sanitize_terminal_text` for the full specification.
+/// See `one_research::sanitize::sanitize_terminal_text` for the full specification.
 pub(crate) fn sanitize_terminal_text(s: &str) -> String {
   let mut out = String::with_capacity(s.len());
   let mut chars = s.chars().peekable();

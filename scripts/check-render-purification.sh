@@ -21,7 +21,7 @@ fail=0
 
 # I1.  feed.rs takes no `&App` / `&mut App` and imports no `App` type.
 #      Renders cross the model + context seam only (ADR-001 D1, D4).
-feed_rs="trench/src/ui/layout/feed.rs"
+feed_rs="one-research/src/ui/layout/feed.rs"
 violations=$(grep -nE '&\s*mut\s+App\b|&\s*App\b|\bapp:\s*&' "$feed_rs" || true)
 if [[ -n "$violations" ]]; then
   echo "FAIL: ${feed_rs} references App at the render seam (ADR-001 D1/D4):"
@@ -42,7 +42,7 @@ done
 
 # I3.  Slice-1 commit titles all reference `slice 1/`.  Catches the
 #      class of "lost track of which PR belongs to the slice" mistakes.
-slice_commits=$(git log --oneline --grep='refactor(feed): slice 1/' -- "$feed_rs" "trench/src/feed/" 2>/dev/null | wc -l | tr -d ' ')
+slice_commits=$(git log --oneline --grep='refactor(feed): slice 1/' -- "$feed_rs" "one-research/src/feed/" 2>/dev/null | wc -l | tr -d ' ')
 if [[ "$slice_commits" -lt 6 ]]; then
   echo "WARN: only ${slice_commits} slice-1 commits visible (expected ≥6: PR 1, 2, 3, 4a, 4b, 4c)"
   # WARN, not FAIL — the count is informational; squash/rebase can change it.
@@ -56,7 +56,7 @@ fi
 #      narrow-feed-details state out of scope, so those reader_* fields
 #      are still allowed at App top level — only the explicitly migrated
 #      ones are flagged.
-app_mod="trench/src/app/mod.rs"
+app_mod="one-research/src/app/mod.rs"
 for field in \
   "pub reader_tabs:" \
   "pub reader_active_tab:" \
@@ -99,7 +99,7 @@ done
 # I7.  Layout-derived resize must live in pre_draw, not inline in render.
 #      Catches regressions like `tab.last_resize != Some(new_size)` blocks
 #      reappearing in the reader render paths.
-for f in trench/src/ui/layout/main_row.rs trench/src/ui/layout/reader.rs; do
+for f in one-research/src/ui/layout/main_row.rs one-research/src/ui/layout/reader.rs; do
   if grep -qE 'last_resize\s*!=\s*Some' "$f"; then
     echo "FAIL: ${f} contains an inline last_resize check — pre_draw should own it (ADR-002 §D3)"
     fail=1
@@ -148,7 +148,7 @@ fi
 #      primary_visible / secondary_visible) per ADR-003 §S3.  If an
 #      instance grows a `visible: bool`, that decision must be revisited
 #      in a new ADR, not slipped in.
-notes_state="trench/src/app/state/notes.rs"
+notes_state="one-research/src/app/state/notes.rs"
 inst_body=$(awk '/^pub struct NotesInstanceModel/,/^\}/' "$notes_state")
 if echo "$inst_body" | grep -qE '\bvisible\b'; then
   echo "FAIL: ${notes_state} — NotesInstanceModel grew a visibility field (ADR-003 §S3)"
@@ -163,7 +163,7 @@ fi
 for fld in notes_app notes_active notes_tabs notes_active_tab notes_mode notes_context \
            secondary_notes_active secondary_notes_tabs secondary_notes_active_tab \
            secondary_notes_mode secondary_notes_context; do
-  hits=$(grep -rnE "\\bapp\\.${fld}\\b" trench/src/ 2>/dev/null | grep -v ':[[:space:]]*//' || true)
+  hits=$(grep -rnE "\\bapp\\.${fld}\\b" one-research/src/ 2>/dev/null | grep -v ':[[:space:]]*//' || true)
   if [[ -n "$hits" ]]; then
     echo "FAIL: render path reaches around App.notes via 'app.${fld}' (ADR-003 §I11):"
     echo "$hits" | sed 's/^/  /'
@@ -177,7 +177,7 @@ done
 #      `DiscoveryModel` inside `FeedModel.discovery`; PR 2 promoted the
 #      field to `App.discovery` (ADR-005 §S2).  A re-nesting would
 #      collapse discovery back into feed.
-feed_mod="trench/src/feed/mod.rs"
+feed_mod="one-research/src/feed/mod.rs"
 feed_struct_body=$(awk '/^pub struct FeedModel \{/,/^\}/' "$feed_mod")
 if echo "$feed_struct_body" | grep -qE '\bpub\s+discovery\s*:'; then
   echo "FAIL: ${feed_mod} FeedModel still declares 'pub discovery:' — Slice 5 PR 2 promoted discovery to App.discovery (ADR-005 §S2)"
@@ -191,11 +191,11 @@ if ! grep -qE 'pub discovery: DiscoveryModel' "$app_mod"; then
   fail=1
 fi
 
-# K3.  No `app.feed.discovery` field-access path anywhere in trench/src.
+# K3.  No `app.feed.discovery` field-access path anywhere in one-research/src.
 #      Every render path goes through `app.discovery.*`.  Doc comments
 #      referencing the old path (history notes in CONTEXT.md or ADR-005)
-#      stay legal because they're outside trench/src.
-hits=$(grep -rnE '\bapp\.feed\.discovery\b|\bself\.feed\.discovery\b' trench/src/ 2>/dev/null | grep -v ':[[:space:]]*//' || true)
+#      stay legal because they're outside one-research/src.
+hits=$(grep -rnE '\bapp\.feed\.discovery\b|\bself\.feed\.discovery\b' one-research/src/ 2>/dev/null | grep -v ':[[:space:]]*//' || true)
 if [[ -n "$hits" ]]; then
   echo "FAIL: render path reaches discovery via the old nested 'feed.discovery' route (ADR-005 §S2):"
   echo "$hits" | sed 's/^/  /'
@@ -214,7 +214,7 @@ done
 
 # ── Workspace-wide render purity (ADR-001 D4) ──────────────────────────
 
-# I12. No new render fn in trench/src/ui/ may take `&mut App`.  ADR-001 D4
+# I12. No new render fn in one-research/src/ui/ may take `&mut App`.  ADR-001 D4
 #      says renders are pure functions of `&Model + &Context`.  Today's
 #      nine offenders (the baseline below) are tolerated as a shrinking
 #      ratchet — each subsequent cleanup PR removes one name from the
@@ -237,13 +237,13 @@ i12_baseline=(
   draw_reader_popup
   draw_repo_viewer
 )
-i12_current=$(grep -rhE 'fn [a-z_]+\([^)]*&\s*mut\s+App\b' trench/src/ui/ 2>/dev/null \
+i12_current=$(grep -rhE 'fn [a-z_]+\([^)]*&\s*mut\s+App\b' one-research/src/ui/ 2>/dev/null \
   | sed -E 's/.*fn ([a-z_]+).*/\1/' | sort -u)
 i12_baseline_sorted=$(printf '%s\n' "${i12_baseline[@]}" | sort -u)
 
 i12_new=$(comm -23 <(echo "$i12_current") <(echo "$i12_baseline_sorted") || true)
 if [[ -n "$i12_new" ]]; then
-  echo "FAIL: render fn(s) in trench/src/ui/ newly take &mut App (ADR-001 D4):"
+  echo "FAIL: render fn(s) in one-research/src/ui/ newly take &mut App (ADR-001 D4):"
   echo "$i12_new" | sed 's/^/  /'
   echo "  Render-time mutation must move into Model::pre_draw or"
   echo "  App::apply_frame_layout.  If this is intentional, add the name to"

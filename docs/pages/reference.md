@@ -2,11 +2,11 @@
 
 [Back to docs](../README.md)
 
-The exhaustive list of every binding shipped in trench. The in-app help overlay
+The exhaustive list of every binding shipped in one-research. The in-app help overlay
 (`?`) is the terse view; this is the complete one.
 
 > Contributors: when adding or changing a binding, update this file alongside
-> `HELP_SECTIONS` in `trench/src/ui/layout/popups/help.rs` so the two stay in
+> `HELP_SECTIONS` in `one-research/src/ui/layout/popups/help.rs` so the two stay in
 > sync.
 
 ---
@@ -160,7 +160,7 @@ multi-toggle).
 
 ---
 
-## Reader (tread inside trench)
+## Reader (tread inside one-research)
 
 | Key | Action |
 |---|---|
@@ -205,7 +205,7 @@ multi-toggle).
 |---|---|
 | `Ldr+n` | Open notes from current context, or hide the currently focused notes pane |
 | `[` / `]` | Cycle notes mode backward / forward (`Paper Notes` / `Library` / `Capture`) |
-| `j` / `k` or `↓`/`↑` | Move note selection in the Trench notes browser |
+| `j` / `k` or `↓`/`↑` | Move note selection in the One Research notes browser |
 | `g` / `G` | Jump to first / last note |
 | `PageUp` / `PageDown` | Move note selection by page |
 | `n` / `Enter` | In `Capture`, open the prefilled linked-note composer |
@@ -216,7 +216,7 @@ multi-toggle).
 | `Ldr+w` | Close active note tab |
 | `Esc` | Back out of preview/editor/popups, then close the notes pane |
 
-Notes browser rendering is Trench-owned in v1; `crates/notes` still owns the
+Notes browser rendering is One Research-owned in v1; `crates/notes` still owns the
 editor and note popups.
 
 ---
@@ -301,7 +301,7 @@ editor and note popups.
 - `/clear history` — wipe activity history
 - `/add CATEGORY` — add an arXiv category permanently
 - `/add-feed URL` — add an RSS/Atom feed permanently
-- `/export-history [md|jsonl]` — export current history view to `~/.config/trench/exports/`
+- `/export-history [md|jsonl]` — export current history view to `~/.config/one-research/exports/`
 - `/export-library [md|jsonl]` — export current library view (respects active filters)
 
 ---

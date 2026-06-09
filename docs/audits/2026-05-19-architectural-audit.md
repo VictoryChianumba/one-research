@@ -1,7 +1,7 @@
 # Architectural Audit — 2026-05-19
 
 **Auditor:** Claude Opus 4.7 (via `/improve-codebase-architecture` skill), informed by one parallel `Explore` agent for measurements + friction hunt.
-**Scope:** `trench/` binary crate. Sibling crates out of scope (`crates/http`, `crates/notes`, `crates/chat`, `crates/ui-theme`).
+**Scope:** `one-research/` binary crate. Sibling crates out of scope (`crates/http`, `crates/notes`, `crates/chat`, `crates/ui-theme`).
 **Vocabulary:** Skill's `LANGUAGE.md` — *module*, *interface*, *depth*, *shallow*, *seam*, *adapter*, *leverage*, *locality*.
 **Prior reference:** `docs/audits/2026-05-18-architectural-audit.md` (2 days ago, graded C+). The morning conversational audit (in session memory, not on disk) graded the same baseline harshly and named candidates N1–N8.
 
@@ -58,26 +58,26 @@ Per the skill: candidates, not interfaces. Four new candidates surfaced by the E
 ### New
 
 **C16. Extract protocol methods onto `AsyncJobs`.**
-*Files:* `trench/src/app/state/async_jobs.rs`, `trench/src/main.rs` (6 spawn sites), `trench/src/app/methods/process.rs` (4 polling patterns).
+*Files:* `one-research/src/app/state/async_jobs.rs`, `one-research/src/main.rs` (6 spawn sites), `one-research/src/app/methods/process.rs` (4 polling patterns).
 *Problem:* The start→poll→resolve lifecycle for bulk/fulltext/tread/repo fetches is open-coded across dispatch sites. Setup repeats twice in `main.rs:343,357`; polling repeats four times (one per job class) at `main.rs:~560`; resolution routes through match arms in `process_incoming` without a keeper. The cluster is grouped (ADR-009 ✓), but the protocol is scattered — same shape as the `DebounceState` PR 1 pattern at 3× the scope.
 *Solution:* `AsyncJobs::start_fetch(&mut self, rx, sources)`, `poll_fetch(&mut self) -> Option<...>`, `finish_fetch(&mut self, result)`. Three methods, six call sites collapsed, the protocol becomes inspectable.
 *Benefits:* Locality (the protocol lives in one place). Leverage (methods are reusable from any `&mut app.async_jobs`). Test surface (a new `async_jobs::tests::lifecycle` module can drive the protocol without `main.rs`).
 
 **C17. Flip the 9 I12 baseline render fns from `&mut App` to `&App`.**
-*Files:* `trench/src/ui/layout/popups/help.rs:draw_help_overlay`, `trench/src/ui/layout/details.rs:draw_details_panel`, `trench/src/ui/layout/main_row.rs:draw_main` (sampled — all 3 read-only). Plus 6 more in the baseline.
+*Files:* `one-research/src/ui/layout/popups/help.rs:draw_help_overlay`, `one-research/src/ui/layout/details.rs:draw_details_panel`, `one-research/src/ui/layout/main_row.rs:draw_main` (sampled — all 3 read-only). Plus 6 more in the baseline.
 *Problem:* The Explore agent sampled all 9 baseline fns and confirmed each performs zero mutations — they take `&mut App` by accident, not by necessity. The I12 tripwire correctly guards future regressions but the floor is artificially high. Type-enforced purity is one signature flip away.
 *Solution:* Change signature to `&App` for each; sed-friendly; reduce the I12 baseline array as each name clears. Tighten the ratchet from 9 → 0 over 2–3 PRs.
 *Benefits:* Compiler-enforced render purity (not just grep). Render panes can no longer accidentally mutate state. The pre_draw/render boundary becomes legible from the type signature alone.
 
 **C18. Behavioural tests for the field-only clusters.**
-*Files:* `trench/src/app/state/{reader_bottom,view_flags,leader}.rs` (smoke tests only) vs. `state/{render_caches,debounce}.rs` (behavioural).
+*Files:* `one-research/src/app/state/{reader_bottom,view_flags,leader}.rs` (smoke tests only) vs. `state/{render_caches,debounce}.rs` (behavioural).
 *Problem:* RenderCaches (11 tests) and DebounceState (5) ship with behavioural witnesses. LeaderState (3), ReaderBottomState (2), ViewFlags (2) ship with smoke tests only. Future regressions in the smoke-test clusters land silently.
 *Solution:* Add per-cluster behavioural suites: leader-timeout-expiry edge cases, reader-bottom drawer mode transitions, popup interaction scenarios.
 *Benefits:* Regression surface for clusters whose protocol is currently hand-eyeballed. Executable specification. ~1 hour per cluster.
 *Caveat:* Low-ROI until protocol extraction (C16) creates more protocol surface to test. Worth doing once C16 lands.
 
 **C19. Consolidate inline `FeedItem` factories across test files.**
-*Files:* `trench/src/models/fixtures.rs` (1 factory from C15), inline `FeedItem { … }` blocks across ~8 test files.
+*Files:* `one-research/src/models/fixtures.rs` (1 factory from C15), inline `FeedItem { … }` blocks across ~8 test files.
 *Problem:* C15 promoted one factory from `bench.rs`. ~8 other test files still inline `FeedItem { url: …, title: …, … }` blocks. When `FeedItem` gains a field, all 8 drift simultaneously.
 *Solution:* Grow `fixtures::variant`-style helpers (`from_arxiv`, `from_hf`, `with_abstract`) and replace the inline construction sites.
 *Benefits:* Single mutation point for FeedItem schema changes. Discoverability for new test contributors.

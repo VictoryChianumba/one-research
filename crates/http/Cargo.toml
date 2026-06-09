@@ -1,5 +1,5 @@
 [package]
-name = "trench-http"
+name = "one-research-http"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

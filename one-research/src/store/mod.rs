@@ -1,0 +1,376 @@
+pub mod cache;
+pub mod discovery_cache;
+pub mod enrichment_cache;
+pub mod history;
+pub mod session;
+pub mod tags;
+
+use std::collections::HashMap;
+use std::ffi::OsString;
+use std::fs;
+use std::io::Write;
+use std::path::{Path, PathBuf};
+
+use crate::app::NotesTab;
+use crate::models::WorkflowState;
+
+/// Restrict a file to owner-read/write only (0o600). Best-effort on Unix.
+pub(crate) fn set_private(path: &PathBuf) {
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::PermissionsExt;
+    let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o600));
+  }
+  let _ = path; // suppress unused warning on non-Unix
+}
+
+/// Crash-safe write: writes `bytes` to `<path>.tmp`, fsyncs, then renames
+/// onto `path`. A panic, SIGINT, or power loss between the two steps either
+/// leaves the original file unchanged or replaces it atomically — never
+/// truncated. Replaces every prior `fs::write(path, bytes)` callsite in the
+/// store layer.
+pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+  let mut tmp_name: OsString = path.as_os_str().to_owned();
+  tmp_name.push(".tmp");
+  let tmp_path = PathBuf::from(tmp_name);
+
+  // Best-effort cleanup of any stale tmp file from a previous crash.
+  let _ = fs::remove_file(&tmp_path);
+
+  // Defense-in-depth against pre-planted symlinks at the tmp path: if
+  // the cleanup above failed (perm denied, etc.) and a symlink remains,
+  // refuse to follow it. Bounded TOCTOU between this check and the
+  // create — closes the easy attack while leaving the corner case open.
+  if let Ok(meta) = fs::symlink_metadata(&tmp_path) {
+    if meta.file_type().is_symlink() {
+      return Err(std::io::Error::new(
+        std::io::ErrorKind::PermissionDenied,
+        "atomic_write: refusing to write through pre-planted symlink",
+      ));
+    }
+  }
+
+  {
+    let mut f = fs::File::create(&tmp_path)?;
+    f.write_all(bytes)?;
+    f.sync_all()?;
+  }
+
+  // Inherit 0o600 mode immediately so the brief 0644 window between rename
+  // and the caller's `set_private` no longer exists.
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::PermissionsExt;
+    let _ = fs::set_permissions(&tmp_path, fs::Permissions::from_mode(0o600));
+  }
+
+  fs::rename(&tmp_path, path)
+}
+
+/// On parse failure, rename `<path>` to a unique `<path>.broken-<...>`
+/// sidecar so the next save doesn't clobber the user's only recovery
+/// copy. Suffix combines unix nanoseconds + pid + a per-process atomic
+/// counter so two failures within one nanosecond on the same process
+/// cannot collide. On rename failure the corrupted file remains at
+/// `path` and a loud log line is emitted so the user knows the next
+/// save will overwrite the recovery copy. Pairs with `atomic_write` to
+/// close the data-loss class.
+pub(crate) fn quarantine_corrupted(
+  path: &Path,
+  label: &str,
+  err: &dyn std::fmt::Display,
+) {
+  use std::sync::atomic::{AtomicU64, Ordering};
+  static COUNTER: AtomicU64 = AtomicU64::new(0);
+  let ts_nanos = std::time::SystemTime::now()
+    .duration_since(std::time::UNIX_EPOCH)
+    .map(|d| d.as_nanos())
+    .unwrap_or(0);
+  let pid = std::process::id();
+  let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+  let mut new_name: OsString = path.as_os_str().to_owned();
+  new_name.push(format!(".broken-{ts_nanos}-{pid}-{n}"));
+  let new_path = PathBuf::from(&new_name);
+  log::error!(
+    "{label}: parse failed at {} — quarantining to {}: {err}",
+    path.display(),
+    new_path.display()
+  );
+  // Defense-in-depth: refuse to quarantine the source if it's a symlink.
+  // POSIX `rename` operates on the directory entry, not the target, so
+  // the rename itself doesn't follow links — but quarantining an
+  // attacker-planted symlink would silently move the link out of the
+  // way and let the next save create a fresh real file at the original
+  // path, masking the tampering. Stop and surface it instead.
+  match fs::symlink_metadata(path) {
+    Ok(meta) if meta.file_type().is_symlink() => {
+      log::error!(
+        "{label}: refusing to quarantine symlink at {} — possible tampering",
+        path.display()
+      );
+      return;
+    }
+    Ok(_) => {}
+    Err(stat_err) => {
+      log::error!(
+        "{label}: stat failed for {} — skipping quarantine: {stat_err}",
+        path.display()
+      );
+      return;
+    }
+  }
+  if let Err(rename_err) = fs::rename(path, &new_path) {
+    log::error!(
+      "{label}: rename to quarantine path failed — corrupted file \
+       remains at {} and will be overwritten on the next save: \
+       {rename_err}",
+      path.display()
+    );
+  }
+}
+
+// ── Store seam (ADR-006) ───────────────────────────────────────────────
+//
+// One typed envelope for the read-or-default / serialize-or-log pattern
+// duplicated across 8 sites pre-PR 2. Per-module wrappers stay in their
+// own files for the post-load transforms (sort, sanitize, `title_lower`
+// backfill, etc.) — the bytes-and-JSON layer collapses here.
+
+/// Load JSON from `path`, returning `T::default()` on read or parse error.
+/// Parse errors quarantine the corrupted file via `quarantine_corrupted`
+/// so the next save doesn't clobber the only recovery copy.
+pub fn load_json<T>(path: &Path, label: &str) -> T
+where
+  T: serde::de::DeserializeOwned + Default,
+{
+  let bytes = match fs::read(path) {
+    Ok(b) => b,
+    Err(_) => return T::default(),
+  };
+  match serde_json::from_slice(&bytes) {
+    Ok(v) => v,
+    Err(e) => {
+      quarantine_corrupted(path, label, &e);
+      T::default()
+    }
+  }
+}
+
+/// Atomically serialize `value` to `path`. Creates parent dirs first;
+/// logs on serialize or write failure. The 0o600 mode is inherited from
+/// `atomic_write`'s pre-rename `set_permissions`, so callers that want
+/// the redundant `set_private` post-step still call it themselves.
+pub fn save_json<T>(value: &T, path: &Path, label: &str)
+where
+  T: serde::Serialize,
+{
+  if let Some(parent) = path.parent() {
+    let _ = fs::create_dir_all(parent);
+  }
+  match serde_json::to_vec(value) {
+    Ok(json) => {
+      if let Err(e) = atomic_write(path, &json) {
+        log::error!("{label}: atomic_write failed at {}: {e}", path.display());
+      }
+    }
+    Err(e) => {
+      log::error!("{label}: serialize failed: {e}");
+    }
+  }
+}
+
+fn state_path() -> Option<PathBuf> {
+  let mut p = dirs_home()?;
+  p.push(".config");
+  p.push("one-research");
+  p.push("state.json");
+  Some(p)
+}
+
+/// Best-effort home directory — uses $HOME, falls back to nothing.
+fn dirs_home() -> Option<PathBuf> {
+  std::env::var_os("HOME").map(PathBuf::from)
+}
+
+pub fn load() -> HashMap<String, WorkflowState> {
+  let Some(path) = state_path() else { return HashMap::new() };
+  // Tolerant load: read as a raw value map first via the seam so legacy
+  // variants (e.g. "skimmed") fall back per-key to Inbox instead of
+  // wiping the entire map.
+  let raw: HashMap<String, serde_json::Value> =
+    load_json(&path, "one-research/state");
+  raw
+    .into_iter()
+    .map(|(k, v)| {
+      let state = serde_json::from_value::<WorkflowState>(v)
+        .unwrap_or(WorkflowState::Inbox);
+      (k, state)
+    })
+    .collect()
+}
+
+pub fn save(state: &HashMap<String, WorkflowState>) {
+  let Some(path) = state_path() else { return };
+  save_json(state, &path, "one-research/state");
+  set_private(&path);
+}
+
+// ── UI state (last_read, etc.) ─────────────────────────────────────────────
+
+#[derive(serde::Serialize, serde::Deserialize, Default)]
+pub struct UiState {
+  pub last_read: Option<String>,
+  pub last_read_source: Option<String>,
+  #[serde(default)]
+  pub notes_tabs: Vec<NotesTab>,
+  #[serde(default)]
+  pub notes_active_tab: usize,
+  #[serde(default)]
+  pub secondary_notes_tabs: Vec<NotesTab>,
+  #[serde(default)]
+  pub secondary_notes_active_tab: usize,
+}
+
+fn ui_path() -> Option<PathBuf> {
+  let mut p = dirs_home()?;
+  p.push(".config");
+  p.push("one-research");
+  p.push("ui.json");
+  Some(p)
+}
+
+pub fn load_ui() -> UiState {
+  let Some(path) = ui_path() else { return UiState::default() };
+  load_json(&path, "one-research/ui")
+}
+
+pub fn save_ui(state: &UiState) {
+  let Some(path) = ui_path() else { return };
+  save_json(state, &path, "one-research/ui");
+  set_private(&path);
+}
+
+#[cfg(test)]
+mod atomic_write_tests {
+  use super::atomic_write;
+  use std::fs;
+
+  #[test]
+  fn writes_bytes_and_cleans_tmp() {
+    let dir = std::env::temp_dir()
+      .join(format!("one_research_atomic_write_test_{}", std::process::id()));
+    let _ = fs::create_dir_all(&dir);
+    let path = dir.join("payload.json");
+    let tmp = dir.join("payload.json.tmp");
+
+    atomic_write(&path, b"hello world").expect("write ok");
+    assert_eq!(fs::read(&path).unwrap(), b"hello world");
+    assert!(!tmp.exists(), "tmp sidecar should be renamed away");
+    let _ = fs::remove_dir_all(&dir);
+  }
+
+  #[test]
+  fn overwrite_replaces_existing_content() {
+    let dir = std::env::temp_dir()
+      .join(format!("one_research_atomic_overwrite_test_{}", std::process::id()));
+    let _ = fs::create_dir_all(&dir);
+    let path = dir.join("payload.json");
+    fs::write(&path, b"original").unwrap();
+
+    atomic_write(&path, b"replaced").expect("write ok");
+    assert_eq!(fs::read(&path).unwrap(), b"replaced");
+    let _ = fs::remove_dir_all(&dir);
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn produces_owner_only_permissions() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = std::env::temp_dir()
+      .join(format!("one_research_atomic_perms_test_{}", std::process::id()));
+    let _ = fs::create_dir_all(&dir);
+    let path = dir.join("payload.json");
+
+    atomic_write(&path, b"sensitive").expect("write ok");
+    let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o600, "atomic_write should produce 0600");
+    let _ = fs::remove_dir_all(&dir);
+  }
+}
+
+#[cfg(test)]
+mod store_seam_tests {
+  //! ADR-006 seam round-trip + degraded-path coverage. Every per-module
+  //! wrapper inherits these guarantees implicitly after PR 2, so a
+  //! regression in `load_json` / `save_json` fails one well-known place.
+  use super::{load_json, save_json};
+  use std::collections::HashMap;
+  use std::fs;
+  use std::sync::atomic::{AtomicU32, Ordering};
+
+  static N: AtomicU32 = AtomicU32::new(0);
+  fn fresh_path(name: &str) -> std::path::PathBuf {
+    // Two-axis unique key (pid + counter) so parallel test runs and
+    // re-runs in the same process don't share a path. Counter increments
+    // per call, not per test, so any test calling fresh_path twice still
+    // gets two distinct paths.
+    let n = N.fetch_add(1, Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!(
+      "one_research_store_seam_{}_{}_{}",
+      std::process::id(),
+      n,
+      name,
+    ));
+    let _ = fs::create_dir_all(&dir);
+    dir.join(format!("{name}.json"))
+  }
+
+  #[test]
+  fn round_trip_preserves_value() {
+    // The contract is: save → load returns equal data. If this fails,
+    // every store wrapper post-PR-2 is broken.
+    let path = fresh_path("rt");
+    let original: HashMap<String, u32> =
+      [("alpha".to_string(), 1), ("beta".to_string(), 2)].into_iter().collect();
+    save_json(&original, &path, "test/round_trip");
+    let loaded: HashMap<String, u32> = load_json(&path, "test/round_trip");
+    assert_eq!(loaded, original);
+    let _ = fs::remove_file(&path);
+  }
+
+  #[test]
+  fn missing_path_returns_default() {
+    // First-run / never-saved file: load must return T::default() and
+    // not panic, log an error, or attempt to quarantine a nonexistent
+    // file. This is the "fresh install" path every store hits at
+    // startup before any save.
+    let path = fresh_path("missing");
+    assert!(!path.exists());
+    let loaded: Vec<u32> = load_json(&path, "test/missing");
+    assert!(loaded.is_empty());
+  }
+
+  #[test]
+  fn corrupt_file_quarantines_and_returns_default() {
+    // Quarantine seam: a partially-written or hand-edited file with
+    // invalid JSON must (1) NOT be returned, (2) be renamed out of the
+    // way so the next save doesn't clobber the recovery copy. The
+    // returned value falls back to T::default().
+    let path = fresh_path("corrupt");
+    fs::write(&path, b"{not valid json").unwrap();
+    let loaded: HashMap<String, u32> = load_json(&path, "test/corrupt");
+    assert!(loaded.is_empty(), "corrupt file must not propagate as data");
+    // Original path is moved out of the way; a `.broken-<...>` sidecar
+    // appears in the same directory.
+    assert!(!path.exists(), "corrupt file should have been quarantined");
+    if let Some(dir) = path.parent() {
+      let broken_count = fs::read_dir(dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_name().to_string_lossy().contains(".json.broken-"))
+        .count();
+      assert_eq!(broken_count, 1, "exactly one quarantine sidecar expected");
+    }
+    let _ = fs::remove_dir_all(path.parent().unwrap());
+  }
+}

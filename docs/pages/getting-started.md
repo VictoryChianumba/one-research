@@ -2,24 +2,24 @@
 
 [Back to docs](../README.md)
 
-trench is a Rust terminal UI. Install Rust 1.88 or newer, then build from the
+one-research is a Rust terminal UI. Install Rust 1.88 or newer, then build from the
 workspace root:
 
 ```sh
-git clone https://github.com/VictoryChianumba/trench
-cd trench
-cargo build -p trench --release
-./target/release/trench
+git clone https://github.com/VictoryChianumba/one-research
+cd one-research
+cargo build -p one-research --release
+./target/release/one-research
 ```
 
 Install it into `~/.cargo/bin` from a local checkout with:
 
 ```sh
-cargo install --path trench
-trench
+cargo install --path one-research
+one-research
 ```
 
-The first run creates `~/.config/trench/config.json`. API keys are optional:
+The first run creates `~/.config/one-research/config.json`. API keys are optional:
 
 - `claude_api_key` for Claude chat and AI source discovery.
 - `openai_api_key` for OpenAI chat.

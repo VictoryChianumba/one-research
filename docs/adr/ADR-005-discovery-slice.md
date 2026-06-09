@@ -91,7 +91,7 @@ The agent thread channel `rx` is *per-session* state (each `spawn_ai_discovery` 
 
 - **K1** No `pub discovery:` field on `FeedModel` (i.e., no `discovery: DiscoveryState` or `DiscoveryModel` inside `FeedModel`).
 - **K2** `App` declares `pub discovery: DiscoveryModel`.
-- **K3** No `app.feed.discovery` reads anywhere in `trench/src/` (every render path goes through `app.discovery.*`). Scoped to render paths in `trench/src/ui/`; gesture orchestration in `trench/src/keys/` may also be checked depending on how the gesture migration in PR 3 settles.
+- **K3** No `app.feed.discovery` reads anywhere in `one-research/src/` (every render path goes through `app.discovery.*`). Scoped to render paths in `one-research/src/ui/`; gesture orchestration in `one-research/src/keys/` may also be checked depending on how the gesture migration in PR 3 settles.
 
 ## Consequences
 

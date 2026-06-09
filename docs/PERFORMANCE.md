@@ -1,6 +1,6 @@
 # Performance Checklist
 
-A working checklist for performance investigation across the trench workspace
+A working checklist for performance investigation across the one-research workspace
 and its reader integration. Walk top-to-bottom when chasing a regression; jump
 to a single axis when scoping a planned improvement.
 
@@ -20,7 +20,7 @@ where time/memory actually goes.
 - [ ] **Name the axis.** Which of the eight are you actually trying to improve?
       "Slow" is not a goal. ("Cold start under 200ms" is.)
 - [ ] **Reproduce.** Have a single command + dataset that exhibits the problem
-      on demand. For trench: a specific cached feed; for hygg: a specific
+      on demand. For one-research: a specific cached feed; for hygg: a specific
       PDF/EPUB; for block-reader: a specific arXiv ID.
 - [ ] **Baseline.** Measure before changing anything. Write the number down.
       `hyperfine` for end-to-end, `cargo bench` (criterion) for hot paths.
@@ -41,7 +41,7 @@ where time/memory actually goes.
       `clone`, `Vec::new` inside loops. Each is cheap once, lethal millions of
       times. Probe: `dhat-rs` or grep `.clone()` in the hot module.
 - [ ] **Sync I/O on hot path.** Disk reads, network calls, file syncs inside a
-      render/event loop. In trench: cache writes after every
+      render/event loop. In one-research: cache writes after every
       `process_incoming` batch — is that fsync'd every time?
 - [ ] **Format machinery on a hot path.** `format!`, `write!`, `println!` are
       surprisingly expensive. ratatui's `Spans` building per-frame can
@@ -78,7 +78,7 @@ where time/memory actually goes.
       above ~50MB for a TUI is worth investigating.
 - [ ] **Heap growth over time.** `dhat-rs` or run for an hour and watch RSS.
       Caches that only grow are leaks in slow motion.
-- [ ] **Disk footprint of caches.** `~/.config/trench/cache.json` size after a
+- [ ] **Disk footprint of caches.** `~/.config/one-research/cache.json` size after a
       week. JSON is verbose — is bincode/postcard worth it? Probably no until
       it's >10MB.
 - [ ] **Per-item retained memory.** `FeedItem` size — strings galore. Consider
@@ -89,7 +89,7 @@ where time/memory actually goes.
 
 ## 4. Startup (cold-start time)
 
-- [ ] **End-to-end cold start.** `hyperfine './target/release/trench'` from
+- [ ] **End-to-end cold start.** `hyperfine './target/release/one-research'` from
       invocation to first frame visible. Target: <100ms for the cached feed
       to appear.
 - [ ] **Cache deserialization cost.** `cache.json` parse time — does it grow
@@ -162,7 +162,7 @@ where time/memory actually goes.
 
 ## 8. Energy / wakeups (background and idle)
 
-- [ ] **Idle CPU usage.** With trench open but no input, `top` should show
+- [ ] **Idle CPU usage.** With one-research open but no input, `top` should show
       <1%. If higher, you have a busy loop somewhere.
 - [ ] **Polling cadence.** What's the longest acceptable `poll` timeout when
       idle? Sleeping `100ms` instead of `16ms` while idle is free battery
@@ -291,7 +291,7 @@ audit task list; this log is the durable record.
   - Other on-disk caches: ~220KB combined (negligible)
 - **Top binary contributors** (via `cargo bloat --crates`):
   - `std` 1.6MiB / 23.7% — fmt/io machinery; not attackable
-  - `trench` 700KB / 9.9% — our own code
+  - `one-research` 700KB / 9.9% — our own code
   - `html5ever` 368KB / 5.2% — HTML parser pulled by `readability`/`html2text`
   - `rustls` 310KB + `ring` 132KB + `h2` 132KB + `hyper` 87KB = 661KB
     HTTP/TLS stack via reqwest
@@ -305,7 +305,7 @@ audit task list; this log is the durable record.
   mode broken in hygg rewrite." Estimated 500KB-1MB of unreachable audio
   code in the binary for currently-unused functionality.
 - **Experiment attempted, reverted**: disabled reqwest's `http2` default
-  feature in trench's 3 Cargo.tomls (`trench/Cargo.toml`, `crates/http`,
+  feature in one-research's 3 Cargo.tomls (`one-research/Cargo.toml`, `crates/http`,
   `crates/chat`) to drop `h2` (132KB). Result: **no savings; binary grew
   ~200KB**. Reason: cargo's feature unification with tread's
   `crates/arxiv-render/Cargo.toml` (which still pulls reqwest with
@@ -324,19 +324,19 @@ audit task list; this log is the durable record.
 - **Open threads** (sized estimates, not measured):
   - **Cross-workspace tread voice feature flag** — gate
     `build_voice_controller` behind a `voice` feature in tread, disable
-    in trench. Estimated 500KB-1MB binary savings. Two-PR effort
-    (tread + trench).
+    in one-research. Estimated 500KB-1MB binary savings. Two-PR effort
+    (tread + one-research).
   - **Cross-workspace reqwest http2 drop** — apply the same Cargo.toml
     change attempted here to ALL reqwest call sites including tread's
     `arxiv-render`. Estimated 132–200KB. One-line PR in tread + the
-    three already-prepared edits in trench (which were reverted).
+    three already-prepared edits in one-research (which were reverted).
   - **HTML parser replacement** — `html5ever` (368KB) is pulled by
     `readability` and `html2text` for ingestion. Switching to a simpler
     HTML→text pipeline (e.g., `scraper` or hand-rolled regex strip) for
-    the limited use cases trench actually has might save most of it.
+    the limited use cases one-research actually has might save most of it.
     Higher-risk, larger refactor.
   - **Memory profiling with dhat-rs** — set up `#[global_allocator]`
-    behind a feature flag, run trench under dhat, identify the largest
+    behind a feature flag, run one-research under dhat, identify the largest
     `FeedItem`-related allocations, then drive the per-item refactor
     with real before/after numbers.
 - **Tooling kept**: `cargo bloat` is now installed (`~/.cargo/bin/`)
@@ -345,7 +345,7 @@ audit task list; this log is the durable record.
 ### Axis 7 — Responsiveness / frame budget (closed 2026-05-17 — infrastructure validated, heavy-path data deferred)
 
 - **Infrastructure status**: per-pane draw timing already comprehensive.
-  21 `log::debug!("draw_X: Nms", ...)` sites across `trench/src/ui/`
+  21 `log::debug!("draw_X: Nms", ...)` sites across `one-research/src/ui/`
   cover all 6 main feed panes (title_bar, search_row, item_table,
   filter_panel, details_panel, footer) in both narrow and wide layouts.
   Plus `terminal.draw()` total timing + binary "(slow frame)" warning
@@ -366,13 +366,13 @@ audit task list; this log is the durable record.
   do have.
 - **Open threads**:
   - **Interactive test protocol** for capturing heavy-path data:
-    1. `TRENCH_DEBUG_LOG=1 trench` and use it normally
+    1. `ONE_RESEARCH_DEBUG_LOG=1 one-research` and use it normally
     2. Open a few large papers (especially arXiv ones with figures /
        heavy LaTeX)
     3. Scroll through, search across all items, resize the terminal
     4. Quit cleanly with `q` (so env_logger drop handlers flush — see
        axis 4 lesson about SIGTERM losing buffered writes)
-    5. Inspect `~/.config/trench/trench.log` for any "(slow frame)"
+    5. Inspect `~/.config/one-research/one-research.log` for any "(slow frame)"
        warnings or per-pane draws over a few ms
   - **TestBackend benches** for the heavy scenarios — construct
     synthetic App states (reader open with N blocks, repo viewer with
@@ -427,11 +427,11 @@ audit task list; this log is the durable record.
   use: `frame summary (N drawn over Ks): p50=Xms p95=Ymsp99=Zms max=Wms`.
   Stays silent on idle sessions. ~25 lines.
 - **Why INFO level**: lasting operational value. A future user
-  noticing UI hitches can grep `trench.log` for `frame summary` and
+  noticing UI hitches can grep `one-research.log` for `frame summary` and
   see whether the renderer is meeting budget. Same rationale as the
   per-source elapsed-time logging in axis 2.
 - **No baseline number yet** because the histogram requires sustained
-  interactive use to populate meaningfully. Once you've used trench
+  interactive use to populate meaningfully. Once you've used one-research
   for >30s during a future session, the log will start showing
   distributions.
 - **What we expect to see** based on axes 4 + 7 data: feed view
@@ -506,17 +506,17 @@ audit task list; this log is the durable record.
   call. Idle frames cost ~0 work since per-frame allocations live
   inside `ui::draw` and `ui::draw` only runs when dirty.
 - **No fix landed.** Closing positive: like axis 6, the audit
-  confirmed the design rather than uncovered work. Idle trench should
+  confirmed the design rather than uncovered work. Idle one-research should
   show near-zero CPU and very low wakeups/sec.
 - **Open threads** (low priority, low expected payoff at idle):
   - **Empirical verification on macOS** via `powermetrics --samplers
-    cpu_power,tasks -i 5000` while trench is idle in another window.
-    Expected: trench in the bottom-N processes by CPU%; wakeups <10/s.
+    cpu_power,tasks -i 5000` while one-research is idle in another window.
+    Expected: one-research in the bottom-N processes by CPU%; wakeups <10/s.
   - **Verify the 250ms idle timeout actually kicks in** — the gate
     `needs_redraw || has_active_animation()` could stay perpetually
     `true` if any tick function unconditionally calls `mark_dirty()`.
     Quick way to check: after a sustained idle period (no input, no
-    fetch), grep `trench.log` for `frame summary` lines (axis 5
+    fetch), grep `one-research.log` for `frame summary` lines (axis 5
     histogram) — should show 0 frames drawn over the summary window if
     the idle path is actually idle.
 
@@ -547,9 +547,9 @@ Tooling banked: `--bench-startup` flag, `cargo bloat`, `scripts/bench/bench_firs
 
 ## Feature audits (2026-05-17)
 
-Round 2 — per-feature deep coverage of trench (tread treated as black box).
+Round 2 — per-feature deep coverage of one-research (tread treated as black box).
 
-### Feature — Reader-wrapper in trench (src/reader/) — closed 2026-05-17
+### Feature — Reader-wrapper in one-research (src/reader/) — closed 2026-05-17
 
 - **Finding**: `ReaderPopupModel::pre_draw` was calling
   `tread::Reader::resize` on every frame, paying the full reflow +
@@ -703,7 +703,7 @@ Round 2 — per-feature deep coverage of trench (tread treated as black box).
   (per the prior CLAUDE.md TODO). The user confirmed voice has been
   fixed and the TODO entries were removed from CLAUDE.md during this
   session. Audit ran as a normal feature audit.
-- **Trench-side voice surface is minimal** — only 4 references total:
+- **One Research-side voice surface is minimal** — only 4 references total:
   - `voice_controller: Arc<tread::PlaybackController>` field on App
   - Constructed via `tread::build_voice_controller()` at App::new
     (already measured 0ms in axis 4 sub-phase audit)
@@ -711,12 +711,12 @@ Round 2 — per-feature deep coverage of trench (tread treated as black box).
     path)
   - Cloned into the popup Reader at `main.rs:1030`
 - **All actual voice logic lives in tread** (out of scope by user
-  directive). Trench is just passing a shared Arc handle.
-- **No per-frame work in trench around voice.** No lock churn in
-  trench code. No sync I/O in trench code. The `VoicePlayingInfo
+  directive). One Research is just passing a shared Arc handle.
+- **No per-frame work in one-research around voice.** No lock churn in
+  one-research code. No sync I/O in one-research code. The `VoicePlayingInfo
   Arc<Mutex>` contention path noted in axis 1 is between tread's
-  threads, not trench's.
-- **No fix landed.** Closing positive: trench's voice wiring is
+  threads, not one-research's.
+- **No fix landed.** Closing positive: one-research's voice wiring is
   clean — minimal Arc-handle plumbing with all the work delegated
   to tread.
 
@@ -829,7 +829,7 @@ Round 2 — per-feature deep coverage of trench (tread treated as black box).
 
 ## Feature audit summary (2026-05-17)
 
-12 trench features audited (tread out of scope per user directive).
+12 one-research features audited (tread out of scope per user directive).
 
 | # | Feature | Outcome |
 |---|---|---|
@@ -838,7 +838,7 @@ Round 2 — per-feature deep coverage of trench (tread treated as black box).
 | 17 | Notes | Positive (user-triggered save, atomic_write) |
 | 18 | Repo viewer | **FIX**: syntect off UI thread + double-highlight kill |
 | 19 | Discovery agent | Positive (async dispatch + rate-limit-aware sequential) |
-| 20 | Voice integration | Positive (trench-side is 4 lines of plumbing) |
+| 20 | Voice integration | Positive (one-research-side is 4 lines of plumbing) |
 | 21 | Workflow state | Positive (user-triggered, batched, atomic) |
 | 22 | Settings/themes | Positive (gated popups) |
 | 23 | Tag picker | Positive (gated popup with one mild O() observation) |
@@ -974,7 +974,7 @@ choice to ship one scenario instead of all five is CLAUDE.md Rule 2
 (simplicity first) — prove the pattern, then extend on demand.
 
 **Tooling added**:
-- `trench/src/bench.rs` — module with `parse_bench_args`, `run`, and
+- `one-research/src/bench.rs` — module with `parse_bench_args`, `run`, and
   `synthetic_item` factory. Index-keyed (deterministic, reproducible).
 - `--bench-render <scenario> [--n N] [--frames F] [--width W] [--height H]`
   on main binary. Defaults: scenario=feed, N=1000, frames=200, 160x48.
@@ -1108,7 +1108,7 @@ The second of the cross-cutting "correctness open threads" from the
   systems), leaking paper titles + URLs from history. Audit-cited
   reason for the 0o600 default applies here too.
 - **Memory cost**: ~3MB buffered for a 1781-item library export.
-  Fine for on-demand operations. If trench ever exports >100k
+  Fine for on-demand operations. If one-research ever exports >100k
   records, the streaming-with-tmp-file pattern would replace
   this buffer-everything approach.
 - **Verified**: clean build, binary boots and renders via

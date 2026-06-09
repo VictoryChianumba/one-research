@@ -3,12 +3,12 @@
 [Back to docs](../README.md)
 
 The active bench harnesses live in [`../../scripts/bench/`](../../scripts/bench/).
-They wrap trench's startup, ingestion, and render bench modes.
+They wrap one-research's startup, ingestion, and render bench modes.
 
 Build the release binary before running them:
 
 ```sh
-cargo build -p trench --release
+cargo build -p one-research --release
 python3 scripts/bench/bench_first_frame.py
 python3 scripts/bench/bench_pipeline.py
 python3 scripts/bench/bench_render.py

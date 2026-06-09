@@ -83,7 +83,7 @@ where
 /// Process-wide shared `reqwest::blocking::Client`. Memoized so DNS, pool,
 /// and TLS state are reused across all callers. Hardened defaults: 15s
 /// timeout, redirect cap of 2 (caps SSRF pivot range), and a uniform
-/// `trench/<version>` user-agent. Returns `&'static` so callers don't pay
+/// `one-research/<version>` user-agent. Returns `&'static` so callers don't pay
 /// the refcount bump on every request.
 pub fn client() -> &'static reqwest::blocking::Client {
   static CLIENT: OnceLock<reqwest::blocking::Client> = OnceLock::new();
@@ -91,7 +91,7 @@ pub fn client() -> &'static reqwest::blocking::Client {
     reqwest::blocking::Client::builder()
       .timeout(REQUEST_TIMEOUT)
       .redirect(reqwest::redirect::Policy::limited(2))
-      .user_agent(concat!("trench/", env!("CARGO_PKG_VERSION")))
+      .user_agent(concat!("one-research/", env!("CARGO_PKG_VERSION")))
       .build()
       .expect("failed to build HTTP client")
   })

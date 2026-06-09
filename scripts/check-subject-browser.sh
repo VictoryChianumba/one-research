@@ -26,9 +26,9 @@ fail=0
 #      change. The inline test taxonomy_has_eight_groups also anchors
 #      this; the grep catches accidental const edits before the test
 #      runs.
-group_count=$(grep -cE '^  Group \{$' trench/src/models/arxiv_taxonomy.rs || true)
+group_count=$(grep -cE '^  Group \{$' one-research/src/models/arxiv_taxonomy.rs || true)
 if [[ "$group_count" -ne 8 ]]; then
-  echo "FAIL: expected exactly 8 'Group {' entries in trench/src/models/arxiv_taxonomy.rs, found ${group_count}"
+  echo "FAIL: expected exactly 8 'Group {' entries in one-research/src/models/arxiv_taxonomy.rs, found ${group_count}"
   echo "      (Physics, Mathematics, Computer Science, Quantitative Biology, Quantitative Finance, Statistics, EESS, Economics)"
   fail=1
 fi
@@ -39,8 +39,8 @@ fi
 #      WorkflowState → FeedTab mapping in app/methods/history.rs) or
 #      as a test fixture (render_caches.rs) is not a dispatch site and
 #      doesn't need a Browse arm.
-inbox_dispatch=$(grep -lrE 'FeedTab::Inbox[[:space:]]*=>' trench/src/ 2>/dev/null | sort -u)
-browse_dispatch=$(grep -lrE 'FeedTab::Browse[[:space:]]*=>' trench/src/ 2>/dev/null | sort -u)
+inbox_dispatch=$(grep -lrE 'FeedTab::Inbox[[:space:]]*=>' one-research/src/ 2>/dev/null | sort -u)
+browse_dispatch=$(grep -lrE 'FeedTab::Browse[[:space:]]*=>' one-research/src/ 2>/dev/null | sort -u)
 missing=$(comm -23 <(echo "$inbox_dispatch") <(echo "$browse_dispatch") || true)
 if [[ -n "$missing" ]]; then
   echo "FAIL: file(s) have 'FeedTab::Inbox =>' arms but no 'FeedTab::Browse =>' arm:"
@@ -53,7 +53,7 @@ fi
 #      thread (browse/pipeline.rs::spawn_browse_fetch). Registering
 #      Browse as a Source would silently double-fetch every browsed
 #      category on each refresh.
-if grep -rnE '^impl Source for (Browse|Subject)' trench/src/ 2>/dev/null; then
+if grep -rnE '^impl Source for (Browse|Subject)' one-research/src/ 2>/dev/null; then
   echo "FAIL: 'impl Source for Browse*' found — Browse must use the worker pattern, not the Source trait (ADR-010 §D3, ADR-004 §D1)"
   fail=1
 fi
@@ -62,7 +62,7 @@ fi
 #      replaced by the full taxonomy + Browse `p` promotion gesture
 #      (ADR-010 §D5). Reviving the const would re-create the dual-
 #      management ambiguity D5 explicitly removed.
-if grep -rnE '\bKNOWN_ARXIV_CATS\b' trench/src/ crates/ 2>/dev/null; then
+if grep -rnE '\bKNOWN_ARXIV_CATS\b' one-research/src/ crates/ 2>/dev/null; then
   echo "FAIL: KNOWN_ARXIV_CATS resurfaced — PR 3 deleted this const (ADR-010 §D5 O4)"
   echo "      arXiv categories are now managed exclusively in Browse."
   fail=1
@@ -86,7 +86,7 @@ done
 #      single rail_path + rail_cursor. Reviving any of the three would
 #      mean the rail reshape was silently regressed.
 if grep -nE '^\s*pub (focused_column|archives|categories):' \
-  trench/src/app/state/browse.rs 2>/dev/null
+  one-research/src/app/state/browse.rs 2>/dev/null
 then
   echo "FAIL: BrowseModel resurfaced a deleted ADR-010 field (ADR-011 §E2 P1)"
   echo "      Expected fields: rail_path, rail_cursor, recent, loaded_categories, inflight, tx, rx."
@@ -98,7 +98,7 @@ fi
 #      the items. A revival would mean the rail reshape's central
 #      simplification was undone.
 if grep -nE 'fn draw_browse_detail_panel' \
-  trench/src/ui/layout/browse.rs 2>/dev/null
+  one-research/src/ui/layout/browse.rs 2>/dev/null
 then
   echo "FAIL: draw_browse_detail_panel resurfaced (ADR-011 P2)"
   echo "      The details side pane is gone in the rail design."
@@ -109,7 +109,7 @@ fi
 #      Trending. A fifth variant is an unplanned mode addition that
 #      needs ADR-level review.
 sort_variants=$(grep -cE '^\s*(Dated|Random|Popular|Trending),' \
-  trench/src/feed/mod.rs || true)
+  one-research/src/feed/mod.rs || true)
 if [[ "$sort_variants" -ne 4 ]]; then
   echo "FAIL: FeedSortMode expected 4 variants (Dated, Random, Popular, Trending), found ${sort_variants} (ADR-011 P3)"
   fail=1
@@ -121,7 +121,7 @@ fi
 #      Library. The guard is structural: `show_subject_col` must be
 #      derived from `feed_tab == FeedTab::Browse`.
 if ! grep -qE 'show_subject_col.*=.*feed_tab.*Browse' \
-  trench/src/ui/layout/feed.rs
+  one-research/src/ui/layout/feed.rs
 then
   echo "FAIL: Subject column not gated on feed_tab == Browse (ADR-011 §E5 P4)"
   echo "      Expected: 'let show_subject_col = model.feed_tab == FeedTab::Browse;'"
@@ -142,7 +142,7 @@ done
 # R1.  arxiv::fetch delegates to fetch_page(categories, 0, 50) — the bulk
 #      / first-page depth contract. A change here silently alters how many
 #      papers every bulk refresh pulls.
-if ! grep -qE 'fetch_page\(categories, 0, 50\)' trench/src/ingestion/arxiv.rs
+if ! grep -qE 'fetch_page\(categories, 0, 50\)' one-research/src/ingestion/arxiv.rs
 then
   echo "FAIL: arxiv::fetch must delegate to fetch_page(categories, 0, 50) (ADR-015 §F2 R1)"
   fail=1
@@ -150,7 +150,7 @@ fi
 
 # R2.  Exactly one fetch_page definition, so the bulk and paged queries
 #      share a single URL builder and cannot drift.
-fp_defs=$(grep -cE '^pub fn fetch_page' trench/src/ingestion/arxiv.rs || true)
+fp_defs=$(grep -cE '^pub fn fetch_page' one-research/src/ingestion/arxiv.rs || true)
 if [[ "$fp_defs" -ne 1 ]]; then
   echo "FAIL: expected exactly 1 fetch_page definition, found ${fp_defs} (ADR-015 §F2 R2)"
   fail=1
@@ -160,13 +160,13 @@ fi
 #      both, a fast scroll fires duplicate page fetches or keeps paging
 #      past the archive's end.
 if ! grep -q 'fn maybe_page_browse_subject' \
-  trench/src/app/methods/history.rs
+  one-research/src/app/methods/history.rs
 then
   echo "FAIL: scroll-tail pager maybe_page_browse_subject missing (ADR-015 §F4 R4)"
   fail=1
 fi
 for guard in 'inflight.contains(&code)' 'b.exhausted'; do
-  if ! grep -qF "$guard" trench/src/app/methods/history.rs; then
+  if ! grep -qF "$guard" one-research/src/app/methods/history.rs; then
     echo "FAIL: Browse pager missing guard '${guard}' (ADR-015 §F4 R4)"
     fail=1
   fi
@@ -176,13 +176,13 @@ done
 #      exhausted, not a bare Vec<String>. A revert to the flat list loses
 #      the pagination state and silently re-caps Browse at one page.
 if ! grep -qE 'loaded_categories: HashMap<String, CategoryBuffer>' \
-  trench/src/app/state/browse.rs
+  one-research/src/app/state/browse.rs
 then
   echo "FAIL: loaded_categories must be HashMap<String, CategoryBuffer> (ADR-015 §F1 R3)"
   fail=1
 fi
 for field in 'pub next_offset: usize' 'pub exhausted: bool'; do
-  if ! grep -qF "$field" trench/src/app/state/browse.rs; then
+  if ! grep -qF "$field" one-research/src/app/state/browse.rs; then
     echo "FAIL: CategoryBuffer missing '${field}' (ADR-015 §F1 R3)"
     fail=1
   fi
@@ -200,14 +200,14 @@ done
 # R6.  Arrival auto-fill is attempted-guarded so a failing fetch cannot
 #      re-fire every settle window (retry storm). The poll must both
 #      check and record the attempted set.
-if ! grep -q 'fn poll_browse_autofill' trench/src/app/methods/history.rs
+if ! grep -q 'fn poll_browse_autofill' one-research/src/app/methods/history.rs
 then
   echo "FAIL: arrival auto-fill poll_browse_autofill missing (ADR-015 §F5 R6)"
   fail=1
 fi
 for g in 'autofill_attempted.contains(&code)' \
          'autofill_attempted.insert(code.clone())'; do
-  if ! grep -qF "$g" trench/src/app/methods/history.rs; then
+  if ! grep -qF "$g" one-research/src/app/methods/history.rs; then
     echo "FAIL: auto-fill missing retry-storm guard '${g}' (ADR-015 §F5 R6)"
     fail=1
   fi
@@ -219,18 +219,18 @@ done
 #      The state is derived by browse_seam_state_for and rendered in the
 #      feed pane. Guards against the markers silently regressing to the
 #      pre-§F6 "silent empty / no end signal" behaviour.
-if ! grep -q 'fn browse_seam_state_for' trench/src/feed/mod.rs; then
+if ! grep -q 'fn browse_seam_state_for' one-research/src/feed/mod.rs; then
   echo "FAIL: §F6 seam-state deriver browse_seam_state_for missing (ADR-015 §F6 R7)"
   fail=1
 fi
 for variant in 'Loading' 'CaughtUp'; do
-  if ! grep -qF "BrowseSeamState::${variant}" trench/src/ui/layout/feed.rs; then
+  if ! grep -qF "BrowseSeamState::${variant}" one-research/src/ui/layout/feed.rs; then
     echo "FAIL: feed render missing BrowseSeamState::${variant} marker (ADR-015 §F6 R7)"
     fail=1
   fi
 done
 for marker in 'loading…' 'caught up'; do
-  if ! grep -qF "$marker" trench/src/ui/layout/feed.rs; then
+  if ! grep -qF "$marker" one-research/src/ui/layout/feed.rs; then
     echo "FAIL: feed render missing §F6 marker text '${marker}' (ADR-015 §F6 R7)"
     fail=1
   fi

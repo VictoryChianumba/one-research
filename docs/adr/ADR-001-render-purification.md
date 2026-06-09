@@ -95,7 +95,7 @@ Feature freeze for the ~2 weeks of evening work the slice takes. Bug fixes and t
 
 ### D7. Tests at the Model boundary
 
-- Tests live in inline `#[cfg(test)] mod tests { … }` modules in `trench/src/feed/mod.rs` (and per-pane equivalents for later slices). This matches the existing codebase convention — `trench` is a binary crate with no `lib.rs`, so `tests/` integration files cannot reach internal modules. Tests construct a `FeedModel`, fire `Action`s, assert state + emitted `Effect`s. No fake terminal, no ratatui mocking.
+- Tests live in inline `#[cfg(test)] mod tests { … }` modules in `one-research/src/feed/mod.rs` (and per-pane equivalents for later slices). This matches the existing codebase convention — `one-research` is a binary crate with no `lib.rs`, so `tests/` integration files cannot reach internal modules. Tests construct a `FeedModel`, fire `Action`s, assert state + emitted `Effect`s. No fake terminal, no ratatui mocking.
 - 8–12 tests by end of slice (default state, tab cycle, scroll, filter toggle, search filter, pre_draw scroll, Enter emits action, viewport resize, discovery isolation).
 - No goldenfile snapshot tests (brittle, low value in a themed TUI).
 - No characterization tests on legacy code (too expensive to harness; manual smoke instead).

@@ -74,7 +74,7 @@ Command: git add -A && git commit -m "$1"
 
 ```sh
 # Build and run (primary development workflow)
-cargo run -p trench --release
+cargo run -p one-research --release
 
 # Build all crates
 cargo build --release
@@ -83,10 +83,10 @@ cargo build --release
 cargo test
 
 # Run tests for a specific crate
-cargo test -p trench
+cargo test -p one-research
 
 # Run a single test
-cargo test -p trench test_name
+cargo test -p one-research test_name
 
 # Check formatting
 cargo fmt --check
@@ -94,8 +94,8 @@ cargo fmt --check
 # Lint
 cargo clippy --workspace --all-targets
 
-# Build trench release binary
-cargo build -p trench --release
+# Build one-research release binary
+cargo build -p one-research --release
 ```
 
 Rust edition: 2024, MSRV: 1.88. The `ci.sh` script uses the nightly toolchain for `cargo fix`, `cargo udeps`, and `cargo audit`.
@@ -103,7 +103,7 @@ Rust edition: 2024, MSRV: 1.88. The `ci.sh` script uses the nightly toolchain fo
 ## Workspace Structure
 
 ```
-trench/            → main binary: AI research feed aggregator TUI
+one-research/            → main binary: AI research feed aggregator TUI
 crates/http        → shared HTTP client + RetryPolicy + with_retry
 crates/notes       → notes-pane backend
 crates/chat        → chat-pane backend
@@ -112,7 +112,7 @@ crates/ui-theme    → theme system
 
 The reader logic now lives in the sibling `tread` repo at
 `../../tread/crates/tread`, consumed through the path dependency in
-`trench/Cargo.toml`. Reader internals belong to tread's docs.
+`one-research/Cargo.toml`. Reader internals belong to tread's docs.
 
 ## Workspace-wide Clippy Allowances
 
@@ -122,11 +122,11 @@ The reader logic now lives in the sibling `tread` repo at
 
 The reader boundary in this repo is the tread integration: `tread::Reader`,
 `tread::PaperData`, `tread::ImageState`, and `tread::BurstTracker` are used
-from trench, but reader rendering and input internals are documented in tread.
+from one-research, but reader rendering and input internals are documented in tread.
 
-## trench Architecture
+## one-research Architecture
 
-A separate TUI binary (`trench/src/main.rs`) that aggregates AI research feeds. No async — uses `std::sync::mpsc` and `reqwest::blocking` throughout.
+A separate TUI binary (`one-research/src/main.rs`) that aggregates AI research feeds. No async — uses `std::sync::mpsc` and `reqwest::blocking` throughout.
 
 ### Data model (`src/models/`)
 
@@ -150,11 +150,11 @@ Each source sends `FetchMessage::Items(Vec<FeedItem>)` plus completion/error mes
 - **URL dedup**: overwrites cached item with fresh data; workflow state comes from `persisted_states` (keyed by URL).
 - **ArXiv ID dedup**: collapses HF and arXiv entries for the same paper — arXiv entry wins. The HF entry's `workflow_state` is preserved onto the arXiv entry when replacing.
 
-Items are sorted by `published_at` descending after each batch. Cache is written to `~/.config/trench/cache.json` immediately.
+Items are sorted by `published_at` descending after each batch. Cache is written to `~/.config/one-research/cache.json` immediately.
 
 ### Store (`src/store/`)
 
-- `store::load()` / `store::save()` — workflow states, keyed by URL, at `~/.config/trench/state.json`.
+- `store::load()` / `store::save()` — workflow states, keyed by URL, at `~/.config/one-research/state.json`.
 - `store::cache` — full `Vec<FeedItem>` cache, loaded at startup so the TUI is populated before network fetches complete.
 - `store::enrichment_cache` — Semantic Scholar results, 7-day TTL via Julian Day Number arithmetic (no chrono).
 

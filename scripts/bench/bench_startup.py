@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Spawn trench under a pty with TRENCH_DEBUG_LOG=1, kill after T seconds,
-then dump the new trench.log. Used to baseline startup timing without a
+"""Spawn one-research under a pty with ONE_RESEARCH_DEBUG_LOG=1, kill after T seconds,
+then dump the new one-research.log. Used to baseline startup timing without a
 human at the keyboard."""
 import os, pty, time, signal, sys, select, errno
 
-BIN = "/Users/temp/Desktop/projects/pproject-forks/trench/target/release/trench"
+BIN = "/Users/temp/Desktop/projects/pproject-forks/one-research/target/release/one-research"
 WAIT_SECS = float(sys.argv[1]) if len(sys.argv) > 1 else 1.5
 
 env = os.environ.copy()
-env["TRENCH_DEBUG_LOG"] = "1"
+env["ONE_RESEARCH_DEBUG_LOG"] = "1"
 # Force a known terminal size so the first draw isn't doing tty-size
 # negotiation against whatever shape my pty defaulted to.
 env["COLUMNS"] = "120"
@@ -18,7 +18,7 @@ pid, fd = pty.fork()
 if pid == 0:
     os.execvpe(BIN, [BIN], env)
 else:
-    # Drain pty output so trench doesn't block on a full pty buffer.
+    # Drain pty output so one-research doesn't block on a full pty buffer.
     deadline = time.monotonic() + WAIT_SECS
     while time.monotonic() < deadline:
         r, _, _ = select.select([fd], [], [], 0.05)

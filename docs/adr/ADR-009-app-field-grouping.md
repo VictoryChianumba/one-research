@@ -8,7 +8,7 @@
 
 ## Goal
 
-Shrink `App`'s flat field surface (today: ~108 fields, ~1556 LOC in `trench/src/app/mod.rs`) by clustering tightly-related fields into named state structs living under `trench/src/app/state/`. Per cluster: one struct, focused methods that encapsulate the cluster's protocol, smoke tests for the protocol.
+Shrink `App`'s flat field surface (today: ~108 fields, ~1556 LOC in `one-research/src/app/mod.rs`) by clustering tightly-related fields into named state structs living under `one-research/src/app/state/`. Per cluster: one struct, focused methods that encapsulate the cluster's protocol, smoke tests for the protocol.
 
 After the slice, `App` continues to be the composition root — the goal is **not** to lift state out of `App`, but to give the state inside it shape. A reader of the `App` struct should be able to infer field groupings without reading 100+ field names.
 
@@ -20,7 +20,7 @@ The 2026-05-18 audit graded `App` composition root **D+**:
 
 Eight ADRs landed across 2026-05-16 → 2026-05-18 (ADR-001…ADR-008). Each ADR extracted a *sub*-model (`FeedModel`, `ReaderPaneModel`, `NotesPaneModel`, `DiscoveryModel`, `ReaderPopupModel`). After all eight slices, the field *count* on `App` did not shrink — the audit explicitly noted "shrinkage post-slicing = 0." The structural debt is real but is a different shape than what the prior ADRs addressed.
 
-The 108 fields break into ~10 logical categories (debounce, leader-key, view-state booleans, async receivers, RefCell caches, UI overlays, …). Today they sit flat, with category boundaries only documentable via inline comments — see the `// Scroll debounce …`, `// Leader key`, `// Help overlay` comment lines in `trench/src/app/mod.rs`.
+The 108 fields break into ~10 logical categories (debounce, leader-key, view-state booleans, async receivers, RefCell caches, UI overlays, …). Today they sit flat, with category boundaries only documentable via inline comments — see the `// Scroll debounce …`, `// Leader key`, `// Help overlay` comment lines in `one-research/src/app/mod.rs`.
 
 Two specific symptoms of the flat shape:
 
@@ -32,12 +32,12 @@ This ADR's pattern — `pub debounce: DebounceState` + `DebounceState::default()
 
 ## Decision
 
-Cluster `App` fields by *protocol cohesion*: when N fields share a read-update protocol or a single lifecycle, group them. Each cluster becomes a struct in `trench/src/app/state/<cluster>.rs`, owns its fields (private), and exposes methods that encode the protocol.
+Cluster `App` fields by *protocol cohesion*: when N fields share a read-update protocol or a single lifecycle, group them. Each cluster becomes a struct in `one-research/src/app/state/<cluster>.rs`, owns its fields (private), and exposes methods that encode the protocol.
 
 ### The pilot — `DebounceState` (this PR)
 
 ```rust
-// trench/src/app/state/debounce.rs
+// one-research/src/app/state/debounce.rs
 pub struct DebounceState {
   last_kbd: Option<Instant>,
   kbd_cooldown_ms: u64,

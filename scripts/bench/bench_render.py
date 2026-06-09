@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sweep `trench --bench-render` across feed sizes (N) and report the
+"""Sweep `one-research --bench-render` across feed sizes (N) and report the
 distribution of per-frame draw times at each N.
 
 Unlike bench_first_frame.py this harness does NOT need a pty — the bench
@@ -15,7 +15,7 @@ import os
 import subprocess
 import sys
 
-BIN = "/Users/temp/Desktop/projects/pproject-forks/trench/target/release/trench"
+BIN = "/Users/temp/Desktop/projects/pproject-forks/one-research/target/release/one-research"
 DEFAULT_NS = [100, 500, 1000, 2500, 5000, 10000]
 FRAMES = 200
 WIDTH = 160

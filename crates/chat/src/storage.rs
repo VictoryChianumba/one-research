@@ -32,7 +32,7 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 
 /// On parse failure, rename `<path>` to `<path>.broken-<unix_ts>` so the next
 /// save doesn't clobber the user's only recovery copy. Best-effort.
-/// Mirrors `trench::store::quarantine_corrupted`. Unique nanos+pid+counter
+/// Mirrors `one_research::store::quarantine_corrupted`. Unique nanos+pid+counter
 /// suffix prevents same-second collisions; rename failure is logged
 /// loudly so the user knows the recovery copy will be overwritten on the
 /// next save.
@@ -70,14 +70,14 @@ fn chats_dir() -> PathBuf {
   static CACHE: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
   CACHE
     .get_or_init(|| match dirs::config_dir() {
-      Some(p) => p.join("trench").join("chats"),
+      Some(p) => p.join("one-research").join("chats"),
       None => {
         log::error!(
           "chat::chats_dir: dirs::config_dir() returned None — falling \
-           back to ./trench/chats. Set HOME or XDG_CONFIG_HOME to avoid \
+           back to ./one-research/chats. Set HOME or XDG_CONFIG_HOME to avoid \
            writing chat sessions into the launching directory."
         );
-        PathBuf::from(".").join("trench").join("chats")
+        PathBuf::from(".").join("one-research").join("chats")
       }
     })
     .clone()
@@ -112,7 +112,7 @@ fn ensure_dir() -> Result<()> {
 }
 
 /// Cap on per-file load size for chat sessions and the index. Defends
-/// against a 4-GB attacker-planted JSON OOMing trench at startup.
+/// against a 4-GB attacker-planted JSON OOMing one-research at startup.
 const MAX_LOAD_BYTES: u64 = 8 * 1024 * 1024;
 
 fn read_capped(path: &Path) -> std::io::Result<String> {
@@ -141,7 +141,7 @@ pub fn load_index() -> ChatIndex {
   match serde_json::from_str(&data) {
     Ok(v) => v,
     Err(e) => {
-      quarantine_corrupted(&path, "trench/chat/index", &e);
+      quarantine_corrupted(&path, "one-research/chat/index", &e);
       ChatIndex { sessions: Vec::new(), default_provider: "claude".to_string() }
     }
   }
@@ -167,7 +167,7 @@ pub fn load_session(id: &str) -> Option<ChatSession> {
   match serde_json::from_str(&data) {
     Ok(v) => Some(v),
     Err(e) => {
-      quarantine_corrupted(&path, "trench/chat/session", &e);
+      quarantine_corrupted(&path, "one-research/chat/session", &e);
       None
     }
   }

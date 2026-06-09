@@ -1,8 +1,8 @@
-# trench
+# one-research
 
 A terminal UI for following AI research — aggregates arXiv, HuggingFace daily papers, and blog feeds into a single keyboard-driven interface.
 
-![trench screenshot](docs/screenshot.png)
+![one-research screenshot](docs/screenshot.png)
 
 ## Features
 
@@ -15,7 +15,7 @@ A terminal UI for following AI research — aggregates arXiv, HuggingFace daily 
 - GitHub repository browser: browse and read linked repos from the details panel
 - Notes panel: per-session markdown notes alongside any pane
 - Chat panel: ask questions about the selected item using Claude or OpenAI
-- AI source discovery: describe a topic and trench finds relevant arXiv categories and RSS feeds to add
+- AI source discovery: describe a topic and one-research finds relevant arXiv categories and RSS feeds to add
 - Semantic Scholar enrichment: citation counts and fields of study (7-day cache)
 - Runtime themes: Dark, Light, and AMOLED — switchable from the Settings screen
 - Fast startup: cached feed loaded immediately; network fetches run in the background
@@ -73,16 +73,16 @@ load-bearing references are:
 Requires Rust 1.88 or later.
 
 ```sh
-git clone https://github.com/VictoryChianumba/trench
-cd trench
-cargo build -p trench --release
-# Binary is at target/release/trench
+git clone https://github.com/VictoryChianumba/one-research
+cd one-research
+cargo build -p one-research --release
+# Binary is at target/release/one-research
 ```
 
 To install into `~/.cargo/bin`:
 
 ```sh
-cargo install --path trench
+cargo install --path one-research
 ```
 
 ### Requirements
@@ -97,7 +97,7 @@ cargo install --path trench
 
 ## Configuration
 
-Config file: `~/.config/trench/config.json`
+Config file: `~/.config/one-research/config.json`
 
 The file is created automatically on first run. All fields are optional.
 
@@ -146,11 +146,11 @@ Runtime data files:
 
 | Path | Contents |
 |---|---|
-| `~/.config/trench/config.json` | Configuration |
-| `~/.config/trench/state.json` | Persisted workflow states (keyed by URL) |
-| `~/.config/trench/cache.json` | Last fetched feed items |
-| `~/.config/trench/enrichment_cache.json` | Semantic Scholar data (7-day TTL) |
-| `~/.config/trench/trench.log` | Log file (set `TRENCH_DEBUG_LOG=1` for verbose output) |
+| `~/.config/one-research/config.json` | Configuration |
+| `~/.config/one-research/state.json` | Persisted workflow states (keyed by URL) |
+| `~/.config/one-research/cache.json` | Last fetched feed items |
+| `~/.config/one-research/enrichment_cache.json` | Semantic Scholar data (7-day TTL) |
+| `~/.config/one-research/one-research.log` | Log file (set `ONE_RESEARCH_DEBUG_LOG=1` for verbose output) |
 
 ## Sources
 
@@ -172,9 +172,9 @@ Runtime data files:
 
 **arXiv categories** — switch to the Browse tab (`Tab` cycles to it), use the right-side subject rail with `h`/`l`/`j`/`k`, and press `p` on any category to add it to your daily feed. `Enter` on a category loads recent papers into the Browse feed without promoting it. Promoted categories show a `★` marker; press `p` again to un-promote.
 
-**AI source discovery** — switch to the Discoveries tab (`Ldr+d`), press `/`, and describe a research topic. trench will query the model and return a list of relevant arXiv categories and RSS feeds you can add with a single keystroke.
+**AI source discovery** — switch to the Discoveries tab (`Ldr+d`), press `/`, and describe a research topic. one-research will query the model and return a list of relevant arXiv categories and RSS feeds you can add with a single keystroke.
 
-**Custom RSS/Atom feeds** — go to Settings (`Ldr+S`) → Sources → Add feed. Paste the URL; trench will auto-detect whether it is an arXiv category, a Substack blog, or a generic RSS/Atom feed. Custom feeds are stored in `config.json` under `sources.custom_feeds`.
+**Custom RSS/Atom feeds** — go to Settings (`Ldr+S`) → Sources → Add feed. Paste the URL; one-research will auto-detect whether it is an arXiv category, a Substack blog, or a generic RSS/Atom feed. Custom feeds are stored in `config.json` under `sources.custom_feeds`.
 
 To add a feed manually, append an entry to `custom_feeds`:
 
@@ -285,7 +285,7 @@ modes that apply across every tab:
 | `Trending` | Items from the last 14 days only, sorted by `upvote_count`. Older items are filtered out. |
 
 Sort modes are session-only — they reset to `Dated` on next launch so
-re-opening trench never surprises you with a stale random shuffle.
+re-opening one-research never surprises you with a stale random shuffle.
 
 ### Leader bindings (`Ctrl+T` then key)
 
@@ -339,12 +339,12 @@ re-opening trench never surprises you with a stale random shuffle.
 Issues and pull requests are welcome. The codebase is intentionally minimal — no async, no macros beyond what Rust requires, no framework beyond ratatui. Read [`docs/CONTEXT.md`](docs/CONTEXT.md) and the [ADRs](docs/adr/) for architecture notes before contributing.
 
 ```sh
-cargo build -p trench --release   # build
-cargo test -p trench               # test
-cargo clippy -p trench             # lint
+cargo build -p one-research --release   # build
+cargo test -p one-research               # test
+cargo clippy -p one-research             # lint
 cargo fmt --check                  # format check
 ```
 
 ## License
 
-trench is released under the [GNU Affero General Public License v3.0](LICENSE).
+one-research is released under the [GNU Affero General Public License v3.0](LICENSE).

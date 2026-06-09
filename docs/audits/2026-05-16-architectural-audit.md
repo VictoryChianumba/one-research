@@ -1,7 +1,7 @@
 # Architectural Audit — 2026-05-16
 
 **Auditor:** Claude Opus 4.7 (via /improve-codebase-architecture skill), informed by four parallel `Explore` agents across control flow, render layer, data layer, and tests/docs.
-**Scope:** `trench/` binary crate. Sibling crates (`tread`, `hygg-reader`, `cli-text-reader`, `cli-justify`, etc.) out of scope.
+**Scope:** `one-research/` binary crate. Sibling crates (`tread`, `hygg-reader`, `cli-text-reader`, `cli-justify`, etc.) out of scope.
 **Vocabulary:** `docs/adr/improve-codebase-architecture-language.md` is not vendored; this audit uses the skill's LANGUAGE.md terms — *module*, *interface*, *depth*, *shallow*, *seam*, *adapter*, *leverage*, *locality*. "Component", "service", "API", "boundary" are not used here.
 
 The audit was requested for educational purposes with high standards and no flattery. Findings are honest and unsparing where the friction is real.
@@ -61,63 +61,63 @@ Twelve candidates surfaced across the four agent slices. Listed in roughly desce
 ### Slice A — control flow & state ownership
 
 **C1. Collapse `App`'s tab-dispatch accessors back into callers.**
-*Files:* `trench/src/app/mod.rs:681–736` (the `active_selected_index` / `active_list_offset` / `set_*` family).
+*Files:* `one-research/src/app/mod.rs:681–736` (the `active_selected_index` / `active_list_offset` / `set_*` family).
 *Today:* Four 4-arm `match self.feed.feed_tab` getter/setter pairs. Callers already know the tab context they're acting in.
 *Deletion test:* Complexity vanishes into context-specific mutation at ~8 call sites. The match-on-tab moves to where the tab is already a known invariant. **Verdict: shallow — earns no leverage.**
 
 **C2. Promote `keys/feed.rs`'s flat match into semantically named sub-gestures.**
-*Files:* `trench/src/keys/feed.rs`, `trench/src/keys/reader.rs`, `trench/src/keys/popups.rs` (each is one giant `match key.code`).
+*Files:* `one-research/src/keys/feed.rs`, `one-research/src/keys/reader.rs`, `one-research/src/keys/popups.rs` (each is one giant `match key.code`).
 *Today:* `handle_feed_view` is ~170 lines, one match, no internal seams. Library visual-mode logic, search-bar logic, workflow gestures all inline.
 *Deletion test:* Extracting `handle_search_bar_input`, `toggle_library_visual_mode`, `handle_workflow_gesture` etc. **concentrates complexity into named gestures**. Locality wins; leverage gains too because gesture names become a vocabulary the rest of the codebase can match on. **Verdict: real depth available.**
 
 **C3. Finish W3 hybrid rule for the feed pane (`FeedModel` gestures take `&mut Workspace`).**
-*Files:* `trench/src/feed/mod.rs`, `trench/src/app/methods/*.rs` (workspace mutators).
+*Files:* `one-research/src/feed/mod.rs`, `one-research/src/app/methods/*.rs` (workspace mutators).
 *Today:* `FeedModel::mark_read(&mut self, w: &mut Workspace)` etc. don't exist; key handlers call `app.set_workflow_state_for_url(...)` directly. ADR-001 D5 said this is how state-local gestures should flow.
 *Deletion test:* If `FeedModel::mark_read` existed, the App-level wrapper would be a thin pass-through (delete it, complexity goes into callers using `(feed, ws)` split borrow). If wrapper goes, `FeedModel` *owns* the gesture. **Verdict: the missing half of PR 3.**
 
 ### Slice B — render & UI layer
 
 **C4. Extract `ReaderPopupModel` from `App`.**
-*Files:* `trench/src/app/mod.rs:116–124` (7 scattered popup fields), `trench/src/ui/layout/main_row.rs`, `trench/src/ui/layout/reader.rs`.
+*Files:* `one-research/src/app/mod.rs:116–124` (7 scattered popup fields), `one-research/src/ui/layout/main_row.rs`, `one-research/src/ui/layout/reader.rs`.
 *Today:* Reader popup state (rx, editor, image_state, burst, active flag) is 7 free fields on `App`. Three call sites must keep them in sync; no invariant enforced.
 *Deletion test:* Inlining is small (~80 lines spread); the cost is **invariant scatter** — code reviewers can't tell which fields must move together. **Verdict: a Slice 2 prerequisite, smaller than the full reader-pane lift.**
 
 **C5. Consolidate primary + secondary notes into `NotesInstanceModel`.**
-*Files:* `trench/src/app/mod.rs:94–105` (a 12-field bifurcation), `trench/src/ui/layout/notes.rs`, `trench/src/app/state/notes.rs`.
+*Files:* `one-research/src/app/mod.rs:94–105` (a 12-field bifurcation), `one-research/src/ui/layout/notes.rs`, `one-research/src/app/state/notes.rs`.
 *Today:* Primary and secondary notes are field-for-field duplicates. Render branches on `FocusedReader::{Primary, Secondary}` to pick the right 6-tuple.
 *Deletion test:* Collapsing into `notes_primary: NotesInstanceModel, notes_secondary: Option<NotesInstanceModel>` localizes the invariant. Render code's branching simplifies. **Verdict: this should land alongside Slice 2's reader lift, not on its own — they share the focused-reader concept.**
 
 **C6. Lift layout-derived metrics into a per-frame `LayoutMetrics` struct.**
-*Files:* `trench/src/ui/layout/main_row.rs`, `trench/src/ui/layout/details.rs`, `trench/src/ui/layout/reader.rs`.
+*Files:* `one-research/src/ui/layout/main_row.rs`, `one-research/src/ui/layout/details.rs`, `one-research/src/ui/layout/reader.rs`.
 *Today:* Geometry (list visible rows, details panel height, scroll maxima) is computed at multiple points per frame, sometimes redundantly, sometimes with stale scroll state.
 *Deletion test:* One `LayoutMetrics` per frame, computed in `pre_draw` or layout-orchestrator, threaded to renders. Eliminates redundant arithmetic and ends a class of "stale scroll max" bugs. **Verdict: pairs with the render-signature flip; consider bundling.**
 
 ### Slice C — data, workspace, ingestion, store
 
 **C7. Lift `DiscoveryState` out of `FeedModel` into its own `DiscoveryModel`.**
-*Files:* `trench/src/feed/mod.rs` (the nested `DiscoveryState`), `trench/src/discovery/*`, `trench/src/services/discovery.rs`.
+*Files:* `one-research/src/feed/mod.rs` (the nested `DiscoveryState`), `one-research/src/discovery/*`, `one-research/src/services/discovery.rs`.
 *Today:* 15 fields nested inside `FeedModel.discovery` driving 1,016 LOC of agent + intent + palette + session. ADR-001 D2 said "lift when grown enough" — it has grown.
 *Deletion test:* Promoting to `App.discovery: DiscoveryModel` lets the agent thread survive feed-tab switches (a latent bug today), and decouples discovery's render seam from the feed pane's. **Verdict: deserves its own slice, parallel to Slice 2; small enough to be a 2-PR slice.**
 
 **C8. Extract a `Store<T: StorageEntry>` seam over the six persistence modules.**
-*Files:* `trench/src/store/{cache,enrichment_cache,discovery_cache,session,history,tags}.rs`.
+*Files:* `one-research/src/store/{cache,enrichment_cache,discovery_cache,session,history,tags}.rs`.
 *Today:* Each store reimplements path construction, atomic-write, corruption quarantine, serde error handling — ~30 lines of boilerplate × 6 modules.
 *Deletion test:* If the seam existed, each store collapses to `struct X; impl StorageEntry for X { const KEY: &str = "x"; }`. Today, adding a new store (e.g., highlights) repeats the boilerplate. **Verdict: pure depth — small interface, big locality win, ~180 lines saved.**
 
 **C9. Give `Workspace` an interface (`ItemStore` for items + indices).**
-*Files:* `trench/src/data/workspace_store.rs` (search the repo to confirm path), `trench/src/app/mod.rs` (call sites).
+*Files:* `one-research/src/data/workspace_store.rs` (search the repo to confirm path), `one-research/src/app/mod.rs` (call sites).
 *Today:* `Workspace` exposes six public collections and one constructor. 128 direct field accesses across the codebase. Index drift between `items` / `url_index` / `arxiv_id_index` is possible if a caller forgets to call `rebuild_indices`.
 *Deletion test:* An `ItemStore { items, url_index, arxiv_id_index }` enforces the invariant via `add_item` / `remove_by_url` / `find_by_url`. Field access in callers shrinks to method calls. Tests can verify the invariant once instead of "we hope callers remembered to rebuild." **Verdict: high leverage, also unblocks future Phase 4 splitting.**
 
 **C10. Extract a `FetchContext` and `Source` trait for ingestion.**
-*Files:* `trench/src/ingestion/{arxiv,huggingface,rss,semantic_scholar}.rs`.
+*Files:* `one-research/src/ingestion/{arxiv,huggingface,rss,semantic_scholar}.rs`.
 *Today:* Four sources share a message type but not a behavior contract. Semantic Scholar is structurally an enrichment, lives in `ingestion/`. No shared HTTP client, no shared cache handle, no shared arxiv-id dedup.
 *Deletion test:* `trait Source { fn fetch(&self, ctx: &FetchContext) -> Result<Vec<FeedItem>>; }` unifies the contract. Adding a new source (e.g., OpenReview, which is half-wired today) becomes a one-struct impl. **Verdict: real depth, also untangles the enrichment-in-ingestion confusion.**
 
 ### Slice D — tests, dead code, tooling
 
 **C11. Delete forward-design stubs that Slice 2 hasn't claimed yet.**
-*Files:* `trench/src/primitives/list_state.rs` (`page_down`, `page_up`, `count`, `go_to_top`, `go_to_bottom`, `viewport_size`), `trench/src/primitives/scroll_state.rs`, `trench/src/primitives/text_input.rs`, `trench/src/surfaces/overlays/modal_stack.rs::pop`, `AsyncLoad` associated items.
+*Files:* `one-research/src/primitives/list_state.rs` (`page_down`, `page_up`, `count`, `go_to_top`, `go_to_bottom`, `viewport_size`), `one-research/src/primitives/scroll_state.rs`, `one-research/src/primitives/text_input.rs`, `one-research/src/surfaces/overlays/modal_stack.rs::pop`, `AsyncLoad` associated items.
 *Today:* ~15 methods compile-flagged dead. Most labelled "for Slice 2." Two-week-old dead code is forward design; six-month-old dead code is fiction.
 *Deletion test:* Delete now; if Slice 2 needs them, the design-pressure that re-introduces them will be informed by the actual usage, not the speculative API. **Verdict: small but high-signal — keeps the warning surface trustworthy.**
 

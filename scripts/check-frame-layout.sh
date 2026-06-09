@@ -23,20 +23,20 @@ fail=0
 #      module-level doc) live behind `//!` or `///` and explicitly
 #      mention the marker by name; the strict regex catches the
 #      double-slash form only.
-hits=$(grep -rnE '^\s*// Intentional render-time mutation' trench/src/ 2>/dev/null || true)
+hits=$(grep -rnE '^\s*// Intentional render-time mutation' one-research/src/ 2>/dev/null || true)
 if [[ -n "$hits" ]]; then
   echo "FAIL: '// Intentional render-time mutation' comment block reappeared (ADR-008 / ADR-001 §D3):"
   echo "$hits" | sed 's/^/  /'
   fail=1
 fi
 
-# N2.  No `set_max(` or `set_offset(` call inside trench/src/ui/layout/
+# N2.  No `set_max(` or `set_offset(` call inside one-research/src/ui/layout/
 #      outside explicit SEAM-EXEMPT sites.  The post-layout state
 #      mutation lives in `App::apply_frame_layout`; renders should
 #      only read.  Two known exemptions today: help popup's in-pane
 #      scroll bound + feed-pane `pre_draw_*` math (ListState's set_*
 #      family on the model side, not the render side).
-hits=$(grep -rnE '\.set_max\(|\.set_offset\(' trench/src/ui/layout/ \
+hits=$(grep -rnE '\.set_max\(|\.set_offset\(' one-research/src/ui/layout/ \
   2>/dev/null | grep -v 'SEAM-EXEMPT' || true)
 filtered=""
 while IFS= read -r line; do

@@ -1,7 +1,7 @@
 # Architectural Audit — 2026-05-18
 
 **Auditor:** Claude Opus 4.7 (via `/improve-codebase-architecture` skill), informed by four parallel `Explore` agents across control flow, render layer, data layer, and tests/tooling/docs.
-**Scope:** `trench/` binary crate. Sibling crates out of scope.
+**Scope:** `one-research/` binary crate. Sibling crates out of scope.
 **Vocabulary:** Skill's `LANGUAGE.md` — *module*, *interface*, *depth*, *shallow*, *seam*, *adapter*, *leverage*, *locality*. "Component", "service", "API", "boundary" do not appear.
 **Prior reference:** `docs/audits/2026-05-16-architectural-audit.md` (2 days ago, graded C+).
 
@@ -35,7 +35,7 @@ The audit was requested for educational purposes with high standards and no flat
 
 The three rising grades (8, 14, 15) are real wins. The two falling grades (9, 11) are anti-patterns introduced *by the same recent work* — feature velocity faster than test/seam velocity is now visible in the audit numbers. Net effect: the floor came up modestly, the ceiling came down modestly, the average is unchanged.
 
-**Educational takeaway:** A codebase that grades the same across two audits despite intervening work is doing one of two things — running in place, or accumulating debt at the rate features arrive. The trench codebase is the latter. This is not unusual; it's the median real-world software pattern. Recognizing it explicitly is the first step.
+**Educational takeaway:** A codebase that grades the same across two audits despite intervening work is doing one of two things — running in place, or accumulating debt at the rate features arrive. The one-research codebase is the latter. This is not unusual; it's the median real-world software pattern. Recognizing it explicitly is the first step.
 
 ---
 
@@ -59,21 +59,21 @@ Per the skill: candidates, not interfaces. Twelve carried from the prior audit (
 ### Carried from 2026-05-16
 
 **C1. ✓ SHIPPED.** Collapse `App`'s tab-dispatch accessors.
-*Files:* `trench/src/app/mod.rs:681-736`.
+*Files:* `one-research/src/app/mod.rs:681-736`.
 *Problem:* Four 4-arm `match self.feed.feed_tab` getter/setter pairs at the `App` interface. Callers already know the tab context they're in.
 *Solution:* Inline the matches at the ~8 call sites that have tab context in scope.
 *Benefits:* Locality wins — tab-conditional logic moves where the tab is a known invariant. Deletion test concentrates complexity correctly.
 *Outcome:* Landed in commits leading up to `e5ea079`. Audit-stated count was generous — only 5 call sites in `handle_history_tab` had tab as a known constant; the remaining accessors on `App` are tab-agnostic helpers (move_down / move_up etc.) and stayed.
 
 **C2. ✓ SHIPPED.** Promote `keys/feed.rs` flat `match` into semantically named sub-gestures.
-*Files:* `trench/src/keys/feed.rs`, `keys/reader.rs`, `keys/popups.rs`.
+*Files:* `one-research/src/keys/feed.rs`, `keys/reader.rs`, `keys/popups.rs`.
 *Problem:* 510-line file, multiple nested 70+ line `match key.code` blocks. No internal seams. A reader sees `KeyCode::Esc` instead of "exit_narrow_feed_or_close_details_popup".
 *Solution:* Extract `handle_search_bar_input`, `handle_narrow_feed_state_2`, `handle_workflow_gesture` sub-modules.
 *Benefits:* Locality (each gesture has one home). Leverage (gesture names become a vocabulary). Tests become possible — a sub-gesture module can be exercised without driving the whole event loop.
 *Outcome:* Bundled with C3 in commit `e5ea079`. `handle_feed_view` shrank from 365 to 234 lines after four named sub-gesture handlers were extracted.
 
 **C3. ✓ SHIPPED.** Finish W3 hybrid rule — `FeedModel` gestures take `&mut Workspace`.
-*Files:* `trench/src/feed/mod.rs`, `app/methods/library_filter.rs`, key handlers.
+*Files:* `one-research/src/feed/mod.rs`, `app/methods/library_filter.rs`, key handlers.
 *Problem:* ADR-001 D5 says state-local gestures should be `FeedModel::mark_read(&mut self, w: &mut Workspace)`. Today they're `app.set_workflow_state_for_url(...)` — wrapper methods on App. Three of four Slice 1 pillars are partial.
 *Solution:* Move gesture methods onto `FeedModel` with split-borrow `(feed, workspace)`. Wrapper methods on App become thin pass-throughs, then delete.
 *Benefits:* Locality concentrates workspace mutation in the model that conceptually owns it. Tests exercise `FeedModel::mark_read` directly without an `App`.
@@ -82,49 +82,49 @@ Per the skill: candidates, not interfaces. Twelve carried from the prior audit (
 **C4. ✓ SHIPPED.** `ReaderPopupModel` extracted (Slice 2 PR 1).
 
 **C5. ✓ SHIPPED.** Consolidate primary + secondary notes into `NotesInstanceModel`.
-*Files:* `trench/src/app/mod.rs:96-105`, `ui/layout/notes.rs:384`, `app/state/notes.rs`.
+*Files:* `one-research/src/app/mod.rs:96-105`, `ui/layout/notes.rs:384`, `app/state/notes.rs`.
 *Problem:* 12 field-for-field duplicates. Render branches on `FocusedReader::{Primary,Secondary}` to pick the right 6-tuple. Every notes mutation requires either two-path code or a `for side in [Primary,Secondary]` loop.
 *Solution:* `NotesInstanceModel { tabs, active_tab, mode, context }` + `notes: (NotesInstanceModel, Option<NotesInstanceModel>)`.
 *Benefits:* Same depth pattern as C4. Render becomes `let inst = &app.notes[side]`. Tests exercise notes-instance behavior without picking a side.
 *Outcome:* Landed as slice 3 across 4 PRs (`d78fdb7` → `359607a` → `300e5c8` → `1fe957c`). ADR-003 Accepted; tripwires I8-I11 in `scripts/check-render-purification.sh`.
 
 **C6. ✓ SHIPPED.** Lift layout-derived metrics into a per-frame `LayoutMetrics` struct.
-*Files:* `trench/src/ui/layout/main_row.rs`, `details.rs`, `reader.rs:419-441`.
+*Files:* `one-research/src/ui/layout/main_row.rs`, `details.rs`, `reader.rs:419-441`.
 *Problem:* Geometry computed multiple times per frame. Scroll-state mutation discipline relies on developer-marked comments ("Intentional render-time mutation" at reader.rs:424-428).
 *Solution:* One `LayoutMetrics` struct computed in `pre_draw_update`, threaded into renders.
 *Benefits:* Eliminates a class of stale-scroll-max bugs. Renders become pure functions of metrics + model. Per-pane bench scenarios become possible.
 *Outcome:* Landed as `FrameLayout` + `App::apply_frame_layout` across 3 PRs (`c63e636` → `a0a2bc0` → `fbcf171`). The audit's "one struct in pre_draw_update" framing was implemented narrowly per CLAUDE.md's "concrete forcing function" clause — one field today (the reader-bottom feed list), grows per future marker. The marker block at `reader.rs:424-428` is gone; ADR-001 §D3's "regression marker" returns to its dormant state. ADR-008 Accepted; tripwires N1-N3 in `scripts/check-frame-layout.sh`.
 
 **C7. ✓ SHIPPED.** Lift `DiscoveryState` into its own `DiscoveryModel`.
-*Files:* `trench/src/feed/mod.rs`, `discovery/`, `services/discovery.rs`.
+*Files:* `one-research/src/feed/mod.rs`, `discovery/`, `services/discovery.rs`.
 *Problem:* 1,016 LOC of agent loop, intent classification, palette, session — still nested inside `FeedModel.discovery`. ADR-001 D2 said "lift when grown enough"; it has.
 *Solution:* `App.discovery: DiscoveryModel`.
 *Benefits:* Discovery agent thread survives feed-tab switches (latent bug today). Render seam decouples from feed pane's. Tests drive the discovery state machine without a `FeedModel`.
 *Outcome:* Landed as slice 5 across 4 PRs (`489f5b7` → `3466381` → `a91bd9d` → `889eb34`). ADR-005 Accepted; tripwires K1-K4 in `scripts/check-render-purification.sh`. The audit's "latent bug" claim about the discovery agent thread proved false — the channel rx was already model-owned and unaffected by tab switches. Recorded for honesty in ADR-005 §Consequences.
 
 **C8. ✓ SHIPPED.** Extract a `Store<T: StorageEntry>` seam.
-*Files:* `trench/src/store/{cache,enrichment_cache,discovery_cache,session,history,tags}.rs`.
+*Files:* `one-research/src/store/{cache,enrichment_cache,discovery_cache,session,history,tags}.rs`.
 *Problem:* Each store reimplements path construction, atomic-write, corruption quarantine, serde error handling. `atomic_write` reuse is partial — the surrounding boilerplate still copies. Adding a seventh store repeats ~30 lines.
 *Solution:* `trait StorageEntry { const KEY: &str; fn load() -> Self; fn save(&self); }` with a generic `Store<T>` providing the path/atomic/quarantine machinery.
 *Benefits:* Pure depth — small interface, ~180 lines saved, future stores collapse to ~10 lines.
 *Outcome:* Landed as `load_json<T>` + `save_json<T>` free functions (not a trait) across 3 PRs (`9c59664` → `5a4c924` → `50d36f0`). Departure from audit's phrasing documented in ADR-006 §S1: stores have no iteration use case (unlike Source), so free fns parameterised over `T: DeserializeOwned + Default` give the same compression with zero ceremony. Net −192 LOC across 7 files (`session::clear` retained as `SEAM-EXEMPT`). ADR-006 Accepted; tripwires L1-L4.
 
 **C9. ✓ SHIPPED.** Give `Workspace` an interface (`ItemStore`).
-*Files:* `trench/src/data/workspace_store.rs`, ~103 call sites.
+*Files:* `one-research/src/data/workspace_store.rs`, ~103 call sites.
 *Problem:* Six public collections, one method (`new`). No invariant enforced. Index drift between `items` / `url_index` / `arxiv_id_index` possible if caller forgets `rebuild_indices`.
 *Solution:* `ItemStore` with `add_item`, `remove_by_url`, `find_by_url`, `find_by_arxiv_id` methods that maintain the index invariant.
 *Benefits:* The invariant moves from "we hope callers remembered" to "the type enforces it." 80+ call sites collapse to method calls. Tests verify the invariant once.
 *Outcome:* Landed across 3 PRs (`bee593e` → `2031891` → `c1dab04`). Net +252 / −216 across 13 files. `DiscoveryModel`'s parallel triple deferred to "C9b" per ADR-007 §S3. The pre-C9 test `rebuild_indices_clears_stale_entries` was deleted — post-C9 there's no public API to make `items_store` carry stale entries, so the assertion is no longer expressible. The bug class is type-eliminated. ADR-007 Accepted; tripwires M1-M4.
 
 **C10. ✓ SHIPPED.** Extract a `Source` trait + `FetchContext` for ingestion.
-*Files:* `trench/src/ingestion/{arxiv,huggingface,rss,semantic_scholar,openreview}.rs`.
+*Files:* `one-research/src/ingestion/{arxiv,huggingface,rss,semantic_scholar,openreview}.rs`.
 *Problem:* Four sources share a message type (`FetchMessage`) but no behavior contract. No shared HTTP client, no shared retry, no shared cache handle. `fetch_arxiv_with_retry` (newly added) is a one-off.
 *Solution:* `trait Source { fn fetch(&self, ctx: &FetchContext) -> Result<Vec<FeedItem>>; }` with `FetchContext` bundling HTTP client + retry policy + caches.
 *Benefits:* `fetch_arxiv_with_retry` collapses to `ctx.fetch_with_retry(url, RetryPolicy::arxiv())`. Future rate-limit bugs in arxiv/openreview/RSS get the same fix automatically. Semantic Scholar splits into `trait EnrichmentSource` — enrichment-vs-source confusion resolves.
 *Outcome:* Landed across 3 PRs (`e555fce` → `b1211a1` → `28974b3`). Split into two traits (`Source` + `EnrichmentSource`) because fetch and enrich have structurally different inputs/outputs/scheduling. `EnrichmentSource: Send` only (not `Sync`) — `RefCell`-owned caches are `!Sync`; single-threaded enrichment phase makes Sync unnecessary. Bundled C13 (the retry seam). ADR-004 Accepted; tripwires J1-J5.
 
 **C11. Delete forward-design stubs that Slice 2 didn't claim.**
-*Files:* `trench/src/primitives/list_state.rs` (6 methods), `scroll_state.rs`, `text_input.rs`, `surfaces/overlays/modal_stack.rs::pop`, `AsyncLoad::*`.
+*Files:* `one-research/src/primitives/list_state.rs` (6 methods), `scroll_state.rs`, `text_input.rs`, `surfaces/overlays/modal_stack.rs::pop`, `AsyncLoad::*`.
 *Problem:* Slice 2 PR 1 shipped without using these. They are no longer "forward design"; they are dead code wearing a forward-design label.
 *Solution:* Delete now. If a future slice needs them, the actual usage will inform the design.
 *Benefits:* The warning surface becomes trustworthy. Compiler warnings stop being noise.
@@ -136,9 +136,9 @@ Per the skill: candidates, not interfaces. Twelve carried from the prior audit (
 ### New friction surfaced by 2-day commits
 
 **C13. ✓ SHIPPED.** Push `fetch_arxiv_with_retry` into a shared `http::with_retry` seam.
-*Files:* `trench/src/ingestion/huggingface.rs:74-103`, `crates/http/`.
+*Files:* `one-research/src/ingestion/huggingface.rs:74-103`, `crates/http/`.
 *Problem:* Commit `5491470` added inline 429/503 retry to one source. The other four sources have the same upstream-rate-limit risk and will need duplicated logic when they bite.
-*Solution:* Lift the retry decision (retriable codes, backoff curve) into `trench-http` as `with_retry(req, RetryPolicy)`. Each ingestion source threads it through `FetchContext` (C10).
+*Solution:* Lift the retry decision (retriable codes, backoff curve) into `one-research-http` as `with_retry(req, RetryPolicy)`. Each ingestion source threads it through `FetchContext` (C10).
 *Benefits:* Pure depth, ~30 lines saved per future retry site, one place to tune backoff. *Educationally:* this is the most common shape of architectural debt — a tactical fix that should have been a seam, written under pressure where the seam wasn't visible.
 *Outcome:* Bundled into C10 PR 1. `RetryPolicy { backoffs_ms, retriable }` lives in `crates/http`; `RetryPolicy::arxiv()` matches the deleted inline constants byte-for-byte. `FetchContext::with_retry(policy, make)` forwards from the trait surface.
 
@@ -150,7 +150,7 @@ Per the skill: candidates, not interfaces. Twelve carried from the prior audit (
 *Outcome:* Landed as commit `6718762` ("chore(tooling): move bench harnesses from /tmp/ into scripts/bench/").
 
 **C15. ✓ SHIPPED.** Promote `bench.rs::synthetic_item` to a public test fixture.
-*Files:* `trench/src/bench.rs:145-209`, missing `trench/src/models/fixtures.rs`.
+*Files:* `one-research/src/bench.rs:145-209`, missing `one-research/src/models/fixtures.rs`.
 *Problem:* `synthetic_item` is a deterministic FeedItem factory but lives inside the bench module. Five inline FeedItem construction blocks across tests duplicate the same field list. When FeedItem gains a field, all of these drift.
 *Solution:* Move `synthetic_item` to `models/fixtures.rs` behind `#[cfg(any(test, debug_assertions))]`. Reuse from bench and tests.
 *Benefits:* One canonical FeedItem construction site. Future fields ripple through one helper.

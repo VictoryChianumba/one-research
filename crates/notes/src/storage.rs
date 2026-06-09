@@ -11,14 +11,14 @@ fn notes_dir() -> PathBuf {
   static CACHE: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
   CACHE
     .get_or_init(|| match dirs::config_dir() {
-      Some(p) => p.join("trench").join("notes"),
+      Some(p) => p.join("one-research").join("notes"),
       None => {
         log::error!(
           "notes::notes_dir: dirs::config_dir() returned None — falling \
-           back to ./trench/notes. Set HOME or XDG_CONFIG_HOME to avoid \
+           back to ./one-research/notes. Set HOME or XDG_CONFIG_HOME to avoid \
            writing notes into the launching directory."
         );
-        PathBuf::from(".").join("trench").join("notes")
+        PathBuf::from(".").join("one-research").join("notes")
       }
     })
     .clone()
@@ -67,7 +67,7 @@ pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 
 /// Move a corrupt note file aside (`<path>.broken-<unix_nanos>-<pid>`) so
 /// the user keeps a recovery copy and the next save_note doesn't overwrite
-/// it. Mirrors the trench-side `quarantine_corrupted` helper. Best-effort:
+/// it. Mirrors the one-research-side `quarantine_corrupted` helper. Best-effort:
 /// rename failure is non-fatal.
 fn quarantine_corrupt_note(path: &Path, err: &dyn std::fmt::Display) {
   use std::sync::atomic::{AtomicU64, Ordering};
@@ -96,7 +96,7 @@ fn quarantine_corrupt_note(path: &Path, err: &dyn std::fmt::Display) {
 }
 
 /// Cap on per-file load size for notes. Defends against an attacker-planted
-/// 4-GB JSON OOMing trench at startup. Notes are user-authored, so the
+/// 4-GB JSON OOMing one-research at startup. Notes are user-authored, so the
 /// legit upper bound is small; 8 MB is generous.
 const MAX_NOTE_BYTES: u64 = 8 * 1024 * 1024;
 

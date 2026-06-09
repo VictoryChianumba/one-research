@@ -17,8 +17,8 @@ cd "$(dirname "$0")/.."
 
 fail=0
 
-workspace_rs="trench/src/data/workspace_store.rs"
-app_mod="trench/src/app/mod.rs"
+workspace_rs="one-research/src/data/workspace_store.rs"
+app_mod="one-research/src/app/mod.rs"
 
 # M1.  Workspace must declare `pub items_store: ItemStore` and must NOT
 #      declare `pub items:` / `pub url_index:` / `pub arxiv_id_index:`
@@ -41,8 +41,8 @@ done
 #      outside item_store.rs.  Reads go through methods — get, iter,
 #      find_by_url, find_by_arxiv_id, etc.  `.items_store.items()` is
 #      the slice escape hatch and is allowed (note the `()`).
-hits=$(grep -rnE '\.items_store\.items[^(]' trench/src/ \
-  | grep -v "^trench/src/data/item_store.rs:" \
+hits=$(grep -rnE '\.items_store\.items[^(]' one-research/src/ \
+  | grep -v "^one-research/src/data/item_store.rs:" \
   | grep -v 'SEAM-EXEMPT' \
   || true)
 if [[ -n "$hits" ]]; then
@@ -51,8 +51,8 @@ if [[ -n "$hits" ]]; then
   fail=1
 fi
 for field in "url_index" "arxiv_id_index"; do
-  hits=$(grep -rnE "\.items_store\.${field}\b" trench/src/ \
-    | grep -v "^trench/src/data/item_store.rs:" \
+  hits=$(grep -rnE "\.items_store\.${field}\b" one-research/src/ \
+    | grep -v "^one-research/src/data/item_store.rs:" \
     | grep -v 'SEAM-EXEMPT' \
     || true)
   if [[ -n "$hits" ]]; then
@@ -64,12 +64,12 @@ done
 
 # M3.  No `workspace.url_index.(insert|remove)` or
 #      `workspace.arxiv_id_index.(insert|remove)` calls anywhere in
-#      trench/src.  Index mutation is ItemStore-internal.  The legacy
+#      one-research/src.  Index mutation is ItemStore-internal.  The legacy
 #      field names should produce E0609 at the type level too, but
 #      this catches docs/comments that leak old patterns and any
 #      future-typo'd field name re-introduction.
 for op in "url_index" "arxiv_id_index"; do
-  hits=$(grep -rnE "workspace\.${op}\.(insert|remove)\(" trench/src/ \
+  hits=$(grep -rnE "workspace\.${op}\.(insert|remove)\(" one-research/src/ \
     | grep -v 'SEAM-EXEMPT' \
     || true)
   if [[ -n "$hits" ]]; then

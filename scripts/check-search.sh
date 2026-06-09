@@ -26,18 +26,18 @@ fail=0
 #      filter is back and selection could disagree with the rendered
 #      ranked list. (History's title_lower.contains lives in
 #      app/methods/history.rs and feed/mod.rs::filtered_history_for.)
-if grep -nE '\.title_lower\.contains' trench/src/app/mod.rs; then
+if grep -nE '\.title_lower\.contains' one-research/src/app/mod.rs; then
   echo "FAIL: inline title_lower substring search found in app/mod.rs (visible_items must delegate to visible_indices_for)"
   fail=1
 fi
 
 # Q2.  Ranking runs OFF-THREAD via nucleo (ADR-013 §D1): the dependency
 #      exists and the feed consumes the engine's ranked snapshot.
-if ! grep -qE '^nucleo *=' trench/Cargo.toml; then
-  echo "FAIL: nucleo dependency missing from trench/Cargo.toml (ADR-013 §D1)"
+if ! grep -qE '^nucleo *=' one-research/Cargo.toml; then
+  echo "FAIL: nucleo dependency missing from one-research/Cargo.toml (ADR-013 §D1)"
   fail=1
 fi
-if ! grep -qE 'ranked_urls\(\)' trench/src/feed/mod.rs; then
+if ! grep -qE 'ranked_urls\(\)' one-research/src/feed/mod.rs; then
   echo "FAIL: visible_indices_for does not consume the nucleo snapshot (engine.ranked_urls()) (ADR-013 §D1)"
   fail=1
 fi
@@ -46,11 +46,11 @@ fi
 #      index (ADR-013 §D5). Indexing by position would go stale whenever
 #      items_store re-sorts on merge; the feed must re-map URL→index via
 #      find_index_by_url instead.
-if grep -qE 'Nucleo<u32>' trench/src/search/engine.rs; then
+if grep -qE 'Nucleo<u32>' one-research/src/search/engine.rs; then
   echo "FAIL: search engine still keyed on Nucleo<u32> — must key on the stable URL (ADR-013 §D5)"
   fail=1
 fi
-if ! grep -qE 'find_index_by_url' trench/src/feed/mod.rs; then
+if ! grep -qE 'find_index_by_url' one-research/src/feed/mod.rs; then
   echo "FAIL: visible_indices_for must map ranked URLs to current indices via find_index_by_url (ADR-013 §D5)"
   fail=1
 fi
@@ -58,18 +58,18 @@ fi
 # Q3.  The synchronous fuzzy matcher stays removed (ADR-013 supersedes
 #      ADR-012 §D3-D4). No fuzzy-matcher dependency, no SkimMatcherV2,
 #      no per-item Query::score in the render path.
-if grep -qE '^fuzzy-matcher *=' trench/Cargo.toml; then
+if grep -qE '^fuzzy-matcher *=' one-research/Cargo.toml; then
   echo "FAIL: fuzzy-matcher dependency is back — synchronous matching must stay off the render thread (ADR-013)"
   fail=1
 fi
-if grep -rqE 'SkimMatcherV2|fuzzy_matcher' trench/src; then
-  echo "FAIL: SkimMatcherV2 / fuzzy_matcher reference found in trench/src (ADR-013 removed the synchronous matcher)"
+if grep -rqE 'SkimMatcherV2|fuzzy_matcher' one-research/src; then
+  echo "FAIL: SkimMatcherV2 / fuzzy_matcher reference found in one-research/src (ADR-013 removed the synchronous matcher)"
   fail=1
 fi
 
 # Q4.  The parser grammar exists: all five field prefixes are recognised.
 for prefix in '"ti"' '"abs"' '"au"' '"cat"' '"year"'; do
-  if ! grep -qF "$prefix" trench/src/search/mod.rs; then
+  if ! grep -qF "$prefix" one-research/src/search/mod.rs; then
     echo "FAIL: search/mod.rs parser missing field prefix arm ${prefix} (ADR-012 §D2)"
     fail=1
   fi
@@ -77,8 +77,8 @@ done
 
 # Q5.  The feed search path parses the raw query (the engine + gates read
 #      feed.search_query directly; the lowercase mirror belongs to History).
-if grep -nE 'fn visible_indices_for' trench/src/feed/mod.rs >/dev/null; then
-  body=$(awk '/pub fn visible_indices_for/{p=1} p; /^}/{if(p)exit}' trench/src/feed/mod.rs)
+if grep -nE 'fn visible_indices_for' one-research/src/feed/mod.rs >/dev/null; then
+  body=$(awk '/pub fn visible_indices_for/{p=1} p; /^}/{if(p)exit}' one-research/src/feed/mod.rs)
   if ! grep -qE 'Query::parse\(&feed\.search_query\)' <<<"$body"; then
     echo "FAIL: visible_indices_for does not parse feed.search_query via search::Query::parse"
     fail=1

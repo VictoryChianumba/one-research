@@ -1,6 +1,6 @@
 # ADR-012 — Feed search is fuzzy, field-scoped, and relevance-ranked
 
-- **Status:** Accepted (2026-05-21). Shipped as PR 1 (this ADR + new `trench/src/search/mod.rs` query parser + field-weighted fuzzy scorer + `fuzzy-matcher` dependency + `visible_indices_for` reworked into a non-search filter pass followed by a scoring pass with relevance ordering + `app/mod.rs::visible_items` collapsed onto `visible_indices_for` for every tab + search-syntax hint in `ui/layout/title.rs` + Search section in `ui/layout/popups/help.rs` + README Search section + `scripts/check-search.sh` invariants Q1-Q5 + 9 inline parser/scorer tests).
+- **Status:** Accepted (2026-05-21). Shipped as PR 1 (this ADR + new `one-research/src/search/mod.rs` query parser + field-weighted fuzzy scorer + `fuzzy-matcher` dependency + `visible_indices_for` reworked into a non-search filter pass followed by a scoring pass with relevance ordering + `app/mod.rs::visible_items` collapsed onto `visible_indices_for` for every tab + search-syntax hint in `ui/layout/title.rs` + Search section in `ui/layout/popups/help.rs` + README Search section + `scripts/check-search.sh` invariants Q1-Q5 + 9 inline parser/scorer tests).
 - **Date:** 2026-05-21
 - **Owner:** Victory Chianumba
 - **Extends:** [ADR-011](ADR-011-browse-scoped-feed.md) §E3 (`apply_sort_mode`) — the sort mode still governs the no-query case; a live query overrides it with relevance order.
@@ -31,7 +31,7 @@ The data was already present on `FeedItem` (`title`, `authors`, `summary_short`,
 
 ### D1 — A dedicated `search` module owns parsing and scoring
 
-`trench/src/search/mod.rs` parses the raw bar text once into a `Query`
+`one-research/src/search/mod.rs` parses the raw bar text once into a `Query`
 { free, title, author, summary, year } and exposes `score(item, matcher) ->
 Option<i64>`. Parsing and matching are pure and unit-tested in isolation; the
 feed pipeline only calls `Query::parse` + `Query::score`.

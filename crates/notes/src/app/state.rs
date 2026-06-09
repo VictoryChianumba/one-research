@@ -16,7 +16,7 @@ impl AppState {
   fn state_path() -> PathBuf {
     dirs::config_dir()
       .unwrap_or_else(|| PathBuf::from("."))
-      .join("trench")
+      .join("one-research")
       .join("notes")
       .join(STATE_FILE_NAME)
   }
@@ -58,7 +58,7 @@ mod tests {
   #[test]
   fn save_to_writes_atomically_and_cleans_tmp_sidecar() {
     let dir = std::env::temp_dir()
-      .join(format!("trench_appstate_save_test_{}", std::process::id()));
+      .join(format!("one_research_appstate_save_test_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("state.json");
@@ -82,7 +82,7 @@ mod tests {
   fn save_to_produces_owner_only_permissions() {
     use std::os::unix::fs::PermissionsExt;
     let dir = std::env::temp_dir()
-      .join(format!("trench_appstate_perms_test_{}", std::process::id()));
+      .join(format!("one_research_appstate_perms_test_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("state.json");

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Render one frame of the trench TUI to plain text at a fixed terminal size.
+"""Render one frame of the one-research TUI to plain text at a fixed terminal size.
 
-Much of trench's layout is width-conditional (the narrow/wide split at 100
+Much of one-research's layout is width-conditional (the narrow/wide split at 100
 cols, the responsive right column, the tab-bar nav wrap). This drives the
 built binary inside a pseudo-terminal at a chosen size, captures the bytes it
 emits, and replays them through a terminal emulator (pyte) to reconstruct the
@@ -9,13 +9,13 @@ on-screen cell grid — so a layout change can be eyeballed as text without
 firing up the full interactive TUI.
 
 Because it renders the actual binary, it also catches a stale build: run
-`cargo build -p trench --release` first, or pass --binary.
+`cargo build -p one-research --release` first, or pass --binary.
 
 Usage:
   scripts/tui-snapshot.py                       # 100x45, Inbox tab
   scripts/tui-snapshot.py --keys '\t'           # press Tab -> Browse
   scripts/tui-snapshot.py --cols 150 --rows 40  # wide layout
-  scripts/tui-snapshot.py --binary target/debug/trench
+  scripts/tui-snapshot.py --binary target/debug/one-research
 
 --keys is a literal string with Python escapes interpreted, so '\t' is Tab,
 '\x1b' is Esc, etc. Sent after the initial render settles.
@@ -83,7 +83,7 @@ def capture(binary, cols, rows, keys, settle, after):
 def main():
   ap = argparse.ArgumentParser(description=__doc__,
                                formatter_class=argparse.RawDescriptionHelpFormatter)
-  ap.add_argument("--binary", default="target/release/trench")
+  ap.add_argument("--binary", default="target/release/one-research")
   ap.add_argument("--cols", type=int, default=100)
   ap.add_argument("--rows", type=int, default=45)
   ap.add_argument("--keys", default="",
@@ -100,7 +100,7 @@ def main():
     sys.exit("error: pyte not installed — run `pip install pyte`")
 
   if not os.path.exists(args.binary):
-    sys.exit(f"error: {args.binary} not found — run `cargo build -p trench --release`")
+    sys.exit(f"error: {args.binary} not found — run `cargo build -p one-research --release`")
 
   keys = args.keys.encode().decode("unicode_escape") if args.keys else ""
   data = capture(args.binary, args.cols, args.rows, keys, args.settle, args.after)

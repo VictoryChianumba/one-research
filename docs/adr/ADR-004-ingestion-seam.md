@@ -8,7 +8,7 @@
 
 ## Goal
 
-Introduce a uniform contract for trench's bulk-refresh ingestion path. Today six modules (`arxiv`, `huggingface`, `rss`, `openreview`, `core`, plus the enrichment-not-source `semantic_scholar`) share a channel type (`FetchMessage`) but no behavior contract. After this ADR:
+Introduce a uniform contract for one-research's bulk-refresh ingestion path. Today six modules (`arxiv`, `huggingface`, `rss`, `openreview`, `core`, plus the enrichment-not-source `semantic_scholar`) share a channel type (`FetchMessage`) but no behavior contract. After this ADR:
 
 - A `Source` trait expresses *what every bulk-ingestion source does* (one `fetch(&FetchContext) -> Result<Vec<FeedItem>>` call plus `name()` + `host_group()` for the orchestrator's scheduling).
 - A sibling `EnrichmentSource` trait expresses the structurally different enrichment phase (`enrich(&mut [FeedItem], &FetchContext)` — best-effort, no `Result`, post-fetch).
@@ -57,7 +57,7 @@ ADR-001 D2 prescribed lazy rollout — refactor when a feature pulls. This ADR f
 
 #### D1. Two traits, not one — same module
 
-The audit phrased C10 as *"a single `Source` trait."* This ADR departs: two traits live in `trench/src/ingestion/pipeline.rs`.
+The audit phrased C10 as *"a single `Source` trait."* This ADR departs: two traits live in `one-research/src/ingestion/pipeline.rs`.
 
 ```rust
 pub trait Source: Send + Sync {
@@ -159,9 +159,9 @@ If reviewer feedback during PR 2 wants a split, fall back to slice-3's 4-PR shap
 
 `scripts/check-ingestion-seam.sh` (sibling to `scripts/check-render-purification.sh`):
 
-- **J1** Exactly five `impl Source for` blocks under `trench/src/ingestion/` — one per bulk-ingestion module (Arxiv, HuggingFace, Rss, OpenReview, Core). Off-by-one in either direction is a regression.
-- **J2** Exactly two `impl EnrichmentSource for` blocks under `trench/src/ingestion/` — `SemanticScholarEnrichment` and `HuggingFaceRepoEnrichment`.
-- **J3** No `fn fetch_arxiv_with_retry` declaration anywhere in `trench/src/` or `crates/`. The PR-2 deletion stays deleted; docstring references in `///` comments are skipped because they're historical pointers, not symbols.
+- **J1** Exactly five `impl Source for` blocks under `one-research/src/ingestion/` — one per bulk-ingestion module (Arxiv, HuggingFace, Rss, OpenReview, Core). Off-by-one in either direction is a regression.
+- **J2** Exactly two `impl EnrichmentSource for` blocks under `one-research/src/ingestion/` — `SemanticScholarEnrichment` and `HuggingFaceRepoEnrichment`.
+- **J3** No `fn fetch_arxiv_with_retry` declaration anywhere in `one-research/src/` or `crates/`. The PR-2 deletion stays deleted; docstring references in `///` comments are skipped because they're historical pointers, not symbols.
 - **J4 (scoped)** Inside `impl Source for X { fn fetch ... }` and `impl EnrichmentSource for X { fn enrich ... }` bodies, no direct `crate::http::client()` or `super::http::client()` call — must reach HTTP through `FetchContext::http()` / `FetchContext::with_retry`. **Scoped to trait-impl bodies, not transitively** — legacy free functions (e.g., `arxiv::fetch`, called from the discovery agent which has no `FetchContext`) retain direct `crate::http::client()` calls because the alternative would balloon C10's scope into the discovery layer. The seam lives at the trait-impl boundary; bypass detection is structural, not transitive.
 - **J5** This file's PR cadence table mentions every PR (analogous to I2/I6 ADR cadence checks).
 

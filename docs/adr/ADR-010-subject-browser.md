@@ -13,17 +13,17 @@
 
 ## Goal
 
-Let the user browse arXiv's full ~155-category taxonomy inside trench — three-level hierarchy `Group → Archive → Category` mirroring [arxiv.org's home page](https://arxiv.org/) — without forcing every category into the general feed. The existing curated feed (`config.sources.arxiv_categories`) stays small; the browser is where new subjects are discovered, with a gesture to promote a category into the feed permanently.
+Let the user browse arXiv's full ~155-category taxonomy inside one-research — three-level hierarchy `Group → Archive → Category` mirroring [arxiv.org's home page](https://arxiv.org/) — without forcing every category into the general feed. The existing curated feed (`config.sources.arxiv_categories`) stays small; the browser is where new subjects are discovered, with a gesture to promote a category into the feed permanently.
 
 After the slice, **the 7-entry `KNOWN_ARXIV_CATS` shortlist disappears** and arXiv-category management lives exclusively in the browser. The general feed remains a *subset* of the taxonomy — the user's promoted choices — rather than the only window onto arXiv.
 
 ## Context
 
-Today trench fetches arXiv papers from a tactical shortlist of three category codes (`cs.LG + cs.AI + stat.ML`, defined in `trench/src/config.rs:309-313`), toggleable from a sources popup driven by `KNOWN_ARXIV_CATS` (7 entries at `trench/src/config.rs:7-15`). Browsing anything outside the shortlist requires editing the config or routing through the discovery agent's free-text path.
+Today one-research fetches arXiv papers from a tactical shortlist of three category codes (`cs.LG + cs.AI + stat.ML`, defined in `one-research/src/config.rs:309-313`), toggleable from a sources popup driven by `KNOWN_ARXIV_CATS` (7 entries at `one-research/src/config.rs:7-15`). Browsing anything outside the shortlist requires editing the config or routing through the discovery agent's free-text path.
 
 The audit's framing of the shortlist — *"the seam-shaped wrong answer"* — applies. arXiv's taxonomy is a stable three-level structure: arXiv hasn't added a new top-level group in over a decade (the 8 groups in `models/arxiv_taxonomy.rs::TAXONOMY` are canonical), and the ~155 categories drift on a multi-year cadence. The shortlist exists because the codebase didn't have a typed taxonomy table; once you have one, the picker UI is just a tree-walk and the shortlist becomes redundant.
 
-[ADR-004](ADR-004-ingestion-seam.md) — landed 2026-05-18 — established the bulk-refresh `Source` trait (`trench/src/ingestion/pipeline.rs:43`). The Subject Browser is the first feature that *uses* ADR-004's framing to its advantage: Browse is selection-driven (one fetch per user keystroke), not poll-driven, so it does **not** register as a `Source`. It mirrors `spawn_discovery` (`trench/src/discovery/pipeline.rs:11`) — the on-demand worker pattern — instead. ADR-004 §D1 anticipated this split; ADR-010 is the first ADR to act on it.
+[ADR-004](ADR-004-ingestion-seam.md) — landed 2026-05-18 — established the bulk-refresh `Source` trait (`one-research/src/ingestion/pipeline.rs:43`). The Subject Browser is the first feature that *uses* ADR-004's framing to its advantage: Browse is selection-driven (one fetch per user keystroke), not poll-driven, so it does **not** register as a `Source`. It mirrors `spawn_discovery` (`one-research/src/discovery/pipeline.rs:11`) — the on-demand worker pattern — instead. ADR-004 §D1 anticipated this split; ADR-010 is the first ADR to act on it.
 
 The forcing function isn't tech-debt cleanup — it's a product expansion. The user wants `physics.optics` and `q-bio.NC` and `econ.TH` accessible alongside `cs.LG` without each one polluting the daily feed.
 
@@ -43,7 +43,7 @@ ADR-010 is a **feed-side** ADR. The render path gains one `FeedTab` variant and 
 
 The Subject Browser is a top-level feed tab, not a modal overlay. The 4-column Miller layout (Groups | Archives | Categories | Recent papers) doesn't fit a popup, and tab membership puts the surface on the same plane as Discoveries (the other "finding new stuff" tab).
 
-`FeedTab::Browse` lands at `trench/src/app/state/feed.rs:96`. The cycle order groups the "exploratory" tabs (Discoveries, Browse) together. Tab strip at `trench/src/ui/layout/title.rs` shows `Browse 155` — the static category count communicates "you can browse this many subject categories" rather than relying on a per-session counter that would always be 0 on first frame.
+`FeedTab::Browse` lands at `one-research/src/app/state/feed.rs:96`. The cycle order groups the "exploratory" tabs (Discoveries, Browse) together. Tab strip at `one-research/src/ui/layout/title.rs` shows `Browse 155` — the static category count communicates "you can browse this many subject categories" rather than relying on a per-session counter that would always be 0 on first frame.
 
 #### D2. Static taxonomy in `models/arxiv_taxonomy.rs`; does not depend on `map_arxiv_category`
 
@@ -55,9 +55,9 @@ The full taxonomy lives in its own module as a `&'static [Group]` const (`TAXONO
 
 ADR-004 §D1: the `Source` trait is bulk-refresh-only ("one `fetch` call per refresh"). Browse is selection-driven (one fetch per user keystroke, scoped to one category). Registering Browse as a `Source` would either force every refresh to enumerate the user's last browsing trail, or require a new `Source::fetch` shape with an `Option<&Scope>` input — the API churn ADR-004 §D1 rejected.
 
-Instead, PR 2 lands `trench/src/browse/pipeline.rs::spawn_browse_fetch(category, tx)` mirroring `spawn_discovery` (`discovery/pipeline.rs:11`): its own `std::thread::spawn`, its own `panic_msg`-isolated body, calls the existing `arxiv::fetch(&[category])` free function (`ingestion/arxiv.rs:30`), and sends `FetchMessage::BrowseItems { category, items }` on the existing channel.
+Instead, PR 2 lands `one-research/src/browse/pipeline.rs::spawn_browse_fetch(category, tx)` mirroring `spawn_discovery` (`discovery/pipeline.rs:11`): its own `std::thread::spawn`, its own `panic_msg`-isolated body, calls the existing `arxiv::fetch(&[category])` free function (`ingestion/arxiv.rs:30`), and sends `FetchMessage::BrowseItems { category, items }` on the existing channel.
 
-Tripwire O3 enforces this — no `impl Source for Browse*` may exist anywhere in `trench/src/`.
+Tripwire O3 enforces this — no `impl Source for Browse*` may exist anywhere in `one-research/src/`.
 
 #### D4. Merge with session scope: items land in `workspace.items`, visibility is filtered by `config.sources.arxiv_categories`
 
@@ -69,13 +69,13 @@ This is the answer to "does browsing pollute my feed?": no, unless you promote.
 
 #### D5. `BrowseModel.loaded_categories` resets on restart (session-scoped only)
 
-`BrowseModel.loaded_categories: HashMap<String, Vec<String>>` is in-memory only — not persisted to `~/.config/trench/`. Re-launching trench shows an empty column 4 until the user re-fetches.
+`BrowseModel.loaded_categories: HashMap<String, Vec<String>>` is in-memory only — not persisted to `~/.config/one-research/`. Re-launching one-research shows an empty column 4 until the user re-fetches.
 
 Persisting it would re-raise the question D4 already answered ("what does Inbox contain on launch?"). Browse stays a *session* tool; the general feed is the *persistent* surface. The two are distinct by design.
 
 #### D6. Sources popup loses its arXiv-categories section; RSS / predefined / custom-feed parts stay
 
-PR 3 trims `trench/src/surfaces/overlays/sources.rs` and `trench/src/app/methods/sources_popup.rs` to remove the arXiv-category chips and toggle handlers. `KNOWN_ARXIV_CATS` is deleted from `config.rs:7-15`. The popup retains its RSS / predefined-sources (HF, OpenAI, DeepMind, BAIR, MIT, OpenReview, CORE) / custom-feeds sections.
+PR 3 trims `one-research/src/surfaces/overlays/sources.rs` and `one-research/src/app/methods/sources_popup.rs` to remove the arXiv-category chips and toggle handlers. `KNOWN_ARXIV_CATS` is deleted from `config.rs:7-15`. The popup retains its RSS / predefined-sources (HF, OpenAI, DeepMind, BAIR, MIT, OpenReview, CORE) / custom-feeds sections.
 
 The arXiv-categories job moves into the Browser: pressing `p` on a category in column 3 toggles its membership in `config.sources.arxiv_categories` and persists via the existing `Config::save()` path. A one-line hint stays in the popup for one release ("arXiv categories now configured in Browse — Tab cycles to it").
 
@@ -87,8 +87,8 @@ Letter `O` continues the alphabet (I = render purification, J = ingestion seam, 
 
 - **O1.** `models/arxiv_taxonomy.rs::TAXONOMY` has exactly 8 groups. arXiv hasn't added a top-level group in over a decade; off-by-one is almost certainly an accidental edit, not a real schema change. The unit test `taxonomy_has_eight_groups` plus a grep over the source file's group-count anchor catches both directions.
 - **O2.** `FeedTab::Browse` is matched at every site that destructures `FeedTab`. PR 1 audits the count (today: N exhaustive matches across `app/mod.rs`, `feed/mod.rs`, `keys/reader.rs`); tripwire encodes the literal so a future contributor who adds a new dispatch site gets a heads-up.
-- **O3.** No `impl Source for Browse*` anywhere in `trench/src/`. Browse is *not* a `Source` (ADR-004 §D1); a future contributor wiring Browse into the bulk-refresh registry would silently double-fetch every browsed category on each refresh.
-- **O4.** `KNOWN_ARXIV_CATS` stays deleted across `trench/src/` and `crates/`. A revival would re-create the dual-management ambiguity D6 explicitly removed.
+- **O3.** No `impl Source for Browse*` anywhere in `one-research/src/`. Browse is *not* a `Source` (ADR-004 §D1); a future contributor wiring Browse into the bulk-refresh registry would silently double-fetch every browsed category on each refresh.
+- **O4.** `KNOWN_ARXIV_CATS` stays deleted across `one-research/src/` and `crates/`. A revival would re-create the dual-management ambiguity D6 explicitly removed.
 - **O5.** ADR-010's cadence table (Status line) lists every shipped PR with its `(...)` summary. Mirror of ADR-004 J5 / ADR-008 N's status hygiene.
 
 The script wires into `scripts/ci.sh` alongside the existing five (`check-render-purification.sh`, `check-ingestion-seam.sh`, `check-store-seam.sh`, `check-item-store.sh`, `check-frame-layout.sh`).

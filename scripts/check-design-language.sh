@@ -27,7 +27,7 @@ fail=0
 #      details panel. The divider survives as a plain full-width rule;
 #      only the label was removed. (The unrelated "Activity log" comment
 #      in data/workspace_store.rs is outside ui/layout and untouched.)
-hits=$(grep -rnF '" Activity "' trench/src/ui/layout/ 2>/dev/null || true)
+hits=$(grep -rnF '" Activity "' one-research/src/ui/layout/ 2>/dev/null || true)
 if [[ -n "$hits" ]]; then
   echo "FAIL: '\" Activity \"' divider title reappeared — dividers are plain rules (CLAUDE.md design language):"
   echo "$hits" | sed 's/^/  /'
@@ -43,7 +43,7 @@ fi
 #      (filter.rs legitimately uses the bare `"Browse"` value as a
 #      subject-follow toggle label — that is NOT a divider title, hence
 #      this check is scoped to main_row.rs only.)
-hits=$(grep -nE '"(Browse|Filters)"' trench/src/ui/layout/main_row.rs 2>/dev/null \
+hits=$(grep -nE '"(Browse|Filters)"' one-research/src/ui/layout/main_row.rs 2>/dev/null \
   | grep -vE '^[0-9]+:[[:space:]]*//' || true)
 if [[ -n "$hits" ]]; then
   echo "FAIL: '\"Browse\"' / '\"Filters\"' section title reappeared in main_row.rs (CLAUDE.md design language):"

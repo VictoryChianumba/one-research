@@ -23,11 +23,11 @@ fail=0
 #      CoreSource.  Catches a future drift where a new source is added
 #      as a free function instead of through the trait, or where a
 #      Source impl is silently deleted.
-src_count=$(grep -rE '^impl Source for [A-Z]' trench/src/ingestion/ | wc -l | tr -d ' ')
+src_count=$(grep -rE '^impl Source for [A-Z]' one-research/src/ingestion/ | wc -l | tr -d ' ')
 if [[ "$src_count" -ne 5 ]]; then
-  echo "FAIL: expected exactly 5 'impl Source for' blocks in trench/src/ingestion/, found ${src_count}"
+  echo "FAIL: expected exactly 5 'impl Source for' blocks in one-research/src/ingestion/, found ${src_count}"
   echo "      (ArxivSource, HuggingFaceSource, RssSource, OpenReviewSource, CoreSource)"
-  grep -rnE '^impl Source for [A-Z]' trench/src/ingestion/ | sed 's/^/  /'
+  grep -rnE '^impl Source for [A-Z]' one-research/src/ingestion/ | sed 's/^/  /'
   fail=1
 fi
 
@@ -35,11 +35,11 @@ fi
 #      HuggingFaceRepoEnrichment.  Catches a future drift where post-fetch
 #      mutation grows back into the orchestrator instead of behind the
 #      trait.
-enr_count=$(grep -rE '^impl EnrichmentSource for [A-Z]' trench/src/ingestion/ | wc -l | tr -d ' ')
+enr_count=$(grep -rE '^impl EnrichmentSource for [A-Z]' one-research/src/ingestion/ | wc -l | tr -d ' ')
 if [[ "$enr_count" -ne 2 ]]; then
-  echo "FAIL: expected exactly 2 'impl EnrichmentSource for' blocks in trench/src/ingestion/, found ${enr_count}"
+  echo "FAIL: expected exactly 2 'impl EnrichmentSource for' blocks in one-research/src/ingestion/, found ${enr_count}"
   echo "      (SemanticScholarEnrichment, HuggingFaceRepoEnrichment)"
-  grep -rnE '^impl EnrichmentSource for [A-Z]' trench/src/ingestion/ | sed 's/^/  /'
+  grep -rnE '^impl EnrichmentSource for [A-Z]' one-research/src/ingestion/ | sed 's/^/  /'
   fail=1
 fi
 
@@ -49,7 +49,7 @@ fi
 #      Matches actual `fn` declarations only; the docstring history
 #      references ("Pre-C10 this lived in a local fetch_arxiv_with_retry
 #      helper") are skipped because they live in `///` comment lines.
-if grep -rnE '^[[:space:]]*(pub )?fn fetch_arxiv_with_retry\b' trench/src/ crates/ 2>/dev/null; then
+if grep -rnE '^[[:space:]]*(pub )?fn fetch_arxiv_with_retry\b' one-research/src/ crates/ 2>/dev/null; then
   echo "FAIL: 'fn fetch_arxiv_with_retry' resurfaced — PR 2 deleted this helper (ADR-004 §S5 J3)"
   echo "      Use crate::ingestion::pipeline::FetchContext::with_retry instead."
   fail=1
@@ -64,7 +64,7 @@ fi
 #               `crate::http::client()` because they have no FetchContext
 #               available — the seam lives at the trait-impl boundary.
 #               See ADR-004 §S5 J4 for the scope decision.
-for f in trench/src/ingestion/*.rs; do
+for f in one-research/src/ingestion/*.rs; do
   hits=$(awk '
     /^impl (Source|EnrichmentSource) for / { in_impl = 1; brace = 0; next }
     in_impl {

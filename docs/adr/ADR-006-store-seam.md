@@ -8,7 +8,7 @@
 
 ## Goal
 
-Collapse the load/save boilerplate that's been copy-pasted across `trench/src/store/{cache, discovery_cache, enrichment_cache, history, session, tags}.rs` (and the `state.json` / `ui.json` paths inside `mod.rs`) into a single typed seam: two free functions, `load_json<T>` and `save_json<T>`, that own the read-bytes → parse-or-quarantine and serialize → atomic-write → log envelope.
+Collapse the load/save boilerplate that's been copy-pasted across `one-research/src/store/{cache, discovery_cache, enrichment_cache, history, session, tags}.rs` (and the `state.json` / `ui.json` paths inside `mod.rs`) into a single typed seam: two free functions, `load_json<T>` and `save_json<T>`, that own the read-bytes → parse-or-quarantine and serialize → atomic-write → log envelope.
 
 After this slice, a new persistent-state file gets a 3-line wrapper around the seam, not a 50-line file. Custom post-load transforms (sanitize, sort, backfill `title_lower`, invalidate empty-fields entries) stay in the per-module wrapper as a *single visible step*, not buried inside copy-pasted IO boilerplate.
 
@@ -62,14 +62,14 @@ Per-module wrappers become 3-5 lines:
 // discovery_cache.rs after PR 2
 pub fn load() -> Vec<FeedItem> {
   let Some(path) = path() else { return Vec::new() };
-  let mut items: Vec<FeedItem> = super::load_json(&path, "trench/discovery_cache");
+  let mut items: Vec<FeedItem> = super::load_json(&path, "one-research/discovery_cache");
   for item in &mut items { item.sanitize_in_place(); }
   items
 }
 
 pub fn save(items: &[FeedItem]) {
   if let Some(path) = path() {
-    super::save_json(&items, &path, "trench/discovery_cache");
+    super::save_json(&items, &path, "one-research/discovery_cache");
   }
 }
 ```
@@ -112,9 +112,9 @@ A trait `Store<T>` would force every module to be a unit struct that exists only
 
 `scripts/check-store-seam.sh` gets three new invariants:
 
-- **L1** Every module in `trench/src/store/{cache, discovery_cache, enrichment_cache, history, session, tags}.rs` references `super::load_json` and `super::save_json` *or* explains in a `// SEAM-EXEMPT:` comment why it doesn't. Catches "this new store skipped the seam" mistakes.
-- **L2** No `serde_json::from_slice` or `serde_json::to_vec` call inside `trench/src/store/` other than in `mod.rs`'s implementation of `load_json`/`save_json`. Forces the seam to be the choke point.
-- **L3** No direct `super::atomic_write` call inside `trench/src/store/` other than from `mod.rs`'s `save_json`. Same forcing function.
+- **L1** Every module in `one-research/src/store/{cache, discovery_cache, enrichment_cache, history, session, tags}.rs` references `super::load_json` and `super::save_json` *or* explains in a `// SEAM-EXEMPT:` comment why it doesn't. Catches "this new store skipped the seam" mistakes.
+- **L2** No `serde_json::from_slice` or `serde_json::to_vec` call inside `one-research/src/store/` other than in `mod.rs`'s implementation of `load_json`/`save_json`. Forces the seam to be the choke point.
+- **L3** No direct `super::atomic_write` call inside `one-research/src/store/` other than from `mod.rs`'s `save_json`. Same forcing function.
 - **L4** ADR-006 cadence table lists every committed PR (mirrors I2 / I6 / K4).
 
 ## Consequences

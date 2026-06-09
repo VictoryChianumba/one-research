@@ -33,7 +33,7 @@ impl OpenAiProvider {
       model: "gpt-4o".to_string(),
       // Share the workspace-hardened client (redirect cap, UA, timeout).
       // Client::clone is an Arc bump, not a connection-pool rebuild.
-      client: trench_http::client().clone(),
+      client: one_research_http::client().clone(),
     }
   }
 
@@ -44,7 +44,7 @@ impl OpenAiProvider {
     Self {
       api_key: api_key.into(),
       model: model.into(),
-      client: trench_http::client().clone(),
+      client: one_research_http::client().clone(),
     }
   }
 }

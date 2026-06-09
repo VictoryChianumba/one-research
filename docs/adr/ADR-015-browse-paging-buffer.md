@@ -14,7 +14,7 @@ Today a Category drill fetches one page of 50 recent papers and stops. The user 
 
 ## Context
 
-Two costs scale with feed length on a website — DOM nodes and network payload — and "Load more" exists to dodge both. In trench's TUI neither applies the way it does on the web:
+Two costs scale with feed length on a website — DOM nodes and network payload — and "Load more" exists to dodge both. In one-research's TUI neither applies the way it does on the web:
 
 1. **Render is already windowed.** `draw_item_table` (`ui/layout/feed.rs`) slices to `offset .. offset + viewport_rows + 2` and only builds `Row` objects for that visible window. Whether the underlying pool is 50 items or 5,000, per-frame render cost is constant. The Inbox feed feels bottomless not because rendering is special but because its pool was downloaded deep up front (`store::cache::load()` at startup).
 

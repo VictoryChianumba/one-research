@@ -1,0 +1,44 @@
+[package]
+name = "one-research"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "one-research"
+path = "src/main.rs"
+
+[dependencies]
+log = "0.4"
+env_logger = "0.11"
+dirs = "5"
+ratatui = "0.29"
+crossterm = "0.28"
+reqwest = { version = "0.12", features = ["blocking", "json"] }
+base64 = "0.22"
+quick-xml = "0.36"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+arboard = "3"
+chrono = { version = "0.4", features = ["serde"] }
+notes = { path = "../crates/notes" }
+chat = { path = "../crates/chat" }
+one-research-http = { path = "../crates/http" }
+# Tread — v1 arXiv reader, embedded as a library.  Path dep so
+# updates in the tread repo flow into one-research's next build
+# automatically.  Replaced cli-text-reader during the migration
+# (S4–S9); cli-text-reader and its 6 sibling crates were removed
+# in S9 once tread proved out in normal use.
+tread = { path = "../../tread/crates/tread" }
+ui-theme = { path = "../crates/ui-theme" }
+syntect = "5"
+readability = "0.3"
+url = "2"
+textwrap = "0.16"
+regex = "1"
+html2text = "0.15"
+pulldown-cmark = "0.12"
+nucleo = "0.5"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

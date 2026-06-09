@@ -114,7 +114,7 @@ pub struct App {
   initial_focus_url: String,
   /// Paper context held from `focus_article` until the CreateNote popup confirms.
   pending_paper: Option<PaperRef>,
-  /// Set after note creation so trench can add the new tab.
+  /// Set after note creation so one-research can add the new tab.
   pub last_created_note_id: Option<String>,
 }
 
@@ -174,7 +174,7 @@ impl App {
     }
   }
 
-  /// Get a note's title by note_id (used by trench to build tab label).
+  /// Get a note's title by note_id (used by one-research to build tab label).
   pub fn get_note_title(&self, note_id: &str) -> Option<String> {
     self.notes.iter().find(|n| n.note_id == note_id).map(|n| n.title.clone())
   }

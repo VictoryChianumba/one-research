@@ -8,7 +8,7 @@
 
 ## Goal
 
-Close the remaining `// Intentional render-time mutation` comment in the codebase (`trench/src/ui/layout/reader.rs:424-441`) by giving it a typed home: a `FrameLayout` struct that carries the post-layout `Rect`s the mutation needs, plus an `App::apply_frame_layout(&FrameLayout)` hook invoked between the layout pass and the render pass.
+Close the remaining `// Intentional render-time mutation` comment in the codebase (`one-research/src/ui/layout/reader.rs:424-441`) by giving it a typed home: a `FrameLayout` struct that carries the post-layout `Rect`s the mutation needs, plus an `App::apply_frame_layout(&FrameLayout)` hook invoked between the layout pass and the render pass.
 
 After this slice, **renders become pure functions of `&App + &Layout`** — every state mutation lives in either `pre_draw_update` (no layout knowledge) or `apply_frame_layout` (post-layout). The comment marker that ADR-001 D3 named as the "regression marker" disappears.
 
@@ -18,7 +18,7 @@ ADR-001 §D3 said:
 
 > Any mutation that needs layout-derived values (viewport size, auto-scroll, width-aware wrapping) lives in `Model::pre_draw(viewport)`, which runs once per frame before render. The `// intentional render-time mutation` comments are a regression marker; their disappearance is how we know a slice is done.
 
-Today only one such marker survives, at `trench/src/ui/layout/reader.rs:424-428`:
+Today only one such marker survives, at `one-research/src/ui/layout/reader.rs:424-428`:
 
 ```rust
 // Intentional render-time mutation. Same pattern as draw_item_table /
@@ -29,7 +29,7 @@ Today only one such marker survives, at `trench/src/ui/layout/reader.rs:424-428`
 app.reader_bottom_scroll.set_max(total.saturating_sub(1));
 ```
 
-The pre-existing `pre_draw_update` (in `trench/src/app/methods/history.rs:48-83`) handles the *details* side of `reader_bottom_scroll.max` (the `usize::MAX` case for paragraph clipping). It cannot handle the *feed* side because `viewport_rows` is a function of the bottom-drawer list area — only known after the layout pass runs.
+The pre-existing `pre_draw_update` (in `one-research/src/app/methods/history.rs:48-83`) handles the *details* side of `reader_bottom_scroll.max` (the `usize::MAX` case for paragraph clipping). It cannot handle the *feed* side because `viewport_rows` is a function of the bottom-drawer list area — only known after the layout pass runs.
 
 The CLAUDE.md TODO list captured the deferred shape verbatim:
 
@@ -39,7 +39,7 @@ The forcing function is the marker block itself. ADR-008 is the layout-metrics e
 
 ## Decision
 
-### The struct (`trench/src/ui/layout/mod.rs` or sibling)
+### The struct (`one-research/src/ui/layout/mod.rs` or sibling)
 
 ```rust
 /// Layout-derived inputs that `apply_frame_layout` needs to size scroll
@@ -60,7 +60,7 @@ pub struct FrameLayout {
 
 PR 1 lands the struct + a one-field constructor + smoke tests. The migration of `reader.rs:434` happens in PR 2.
 
-### The hook (`trench/src/app/mod.rs` or `methods/history.rs`)
+### The hook (`one-research/src/app/mod.rs` or `methods/history.rs`)
 
 ```rust
 impl App {
@@ -110,8 +110,8 @@ The pattern matches ADR-001 §D3 inside a layout-aware envelope. Renders become 
 
 ### Invariants for PR 3 tripwire
 
-- **N1** No `// Intentional render-time mutation` comments remain anywhere in `trench/src/`. The marker class is gone.
-- **N2** No `set_max(` / `set_offset(` calls inside `trench/src/ui/layout/` outside of explicitly exempt sites (the help popup keeps inline scroll math — too small to warrant `FrameLayout` fields today; gets `// SEAM-EXEMPT:` annotations).
+- **N1** No `// Intentional render-time mutation` comments remain anywhere in `one-research/src/`. The marker class is gone.
+- **N2** No `set_max(` / `set_offset(` calls inside `one-research/src/ui/layout/` outside of explicitly exempt sites (the help popup keeps inline scroll math — too small to warrant `FrameLayout` fields today; gets `// SEAM-EXEMPT:` annotations).
 - **N3** ADR-008 cadence table lists every committed PR (mirrors I2 / I6 / K4 / L4 / M4).
 
 ## Consequences

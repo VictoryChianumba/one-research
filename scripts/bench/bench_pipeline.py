@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""Spawn trench under a pty with TRENCH_DEBUG_LOG=1, wait N seconds for the
+"""Spawn one-research under a pty with ONE_RESEARCH_DEBUG_LOG=1, wait N seconds for the
 ingestion pipeline to complete, then send 'q' (clean shutdown) instead of
-SIGTERM. Clean shutdown runs trench's cleanup + drop handlers, which is what
+SIGTERM. Clean shutdown runs one-research's cleanup + drop handlers, which is what
 flushes buffered env_logger output to disk — SIGTERM kills before that
 happens and loses everything except the first second of logs."""
 import os, pty, time, signal, sys, select, errno, fcntl, struct, termios
 
-BIN = "/Users/temp/Desktop/projects/pproject-forks/trench/target/release/trench"
+BIN = "/Users/temp/Desktop/projects/pproject-forks/one-research/target/release/one-research"
 WAIT_SECS = float(sys.argv[1]) if len(sys.argv) > 1 else 30.0
 ROWS, COLS = 40, 120
 
 env = os.environ.copy()
-env["TRENCH_DEBUG_LOG"] = "1"
+env["ONE_RESEARCH_DEBUG_LOG"] = "1"
 env["COLUMNS"] = str(COLS)
 env["LINES"] = str(ROWS)
 
@@ -22,7 +22,7 @@ if pid == 0:
 # Set pty window size so the first draw doesn't panic on a 0x0 area.
 fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", ROWS, COLS, 0, 0))
 
-# Drain pty output so trench doesn't block on a full pty buffer.
+# Drain pty output so one-research doesn't block on a full pty buffer.
 deadline = time.monotonic() + WAIT_SECS
 while time.monotonic() < deadline:
     r, _, _ = select.select([fd], [], [], 0.05)
@@ -34,14 +34,14 @@ while time.monotonic() < deadline:
                 break
             raise
 
-# CLEAN SHUTDOWN: send 'q' so trench's main loop hits the quit path,
+# CLEAN SHUTDOWN: send 'q' so one-research's main loop hits the quit path,
 # runs cleanup, and drop handlers fire (flushing env_logger buffer).
 try:
     os.write(fd, b"q")
 except OSError:
     pass
 
-# Give trench time to clean up. Drain any remaining output during this window.
+# Give one-research time to clean up. Drain any remaining output during this window.
 cleanup_deadline = time.monotonic() + 2.0
 while time.monotonic() < cleanup_deadline:
     r, _, _ = select.select([fd], [], [], 0.05)

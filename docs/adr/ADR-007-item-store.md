@@ -33,7 +33,7 @@ The pattern's *correctness today* is encouraging. The pattern's *fragility going
 
 ## Decision
 
-### The type (`trench/src/data/item_store.rs`)
+### The type (`one-research/src/data/item_store.rs`)
 
 ```rust
 /// Coordinated triple: items + url-index + arxiv-id-index. Owns the
@@ -100,7 +100,7 @@ The audit's literal phrasing was "ItemStore for Workspace" — interpreted here 
 
 #### S2. `persisted_states` stays on `Workspace`
 
-`persisted_states` maps URL → WorkflowState, persisted to `~/.config/trench/state.json` independently of `cache.json`. Folding it into `ItemStore` would couple the item-triple invariant to a disk-persistence concern. ADR-007 keeps the scope tight: `ItemStore` owns *only* the triple.
+`persisted_states` maps URL → WorkflowState, persisted to `~/.config/one-research/state.json` independently of `cache.json`. Folding it into `ItemStore` would couple the item-triple invariant to a disk-persistence concern. ADR-007 keeps the scope tight: `ItemStore` owns *only* the triple.
 
 #### S3. `DiscoveryModel`'s parallel triple is out of scope
 
@@ -116,15 +116,15 @@ Discovery's triple stays. A future "C9b" or opportunistic refactor can unify, on
 
 | # | PR | Behaviour change |
 |---|---|---|
-| 1 | ADR-007 + `ItemStore` skeleton (`trench/src/data/item_store.rs`) + 8 inline smoke tests + CONTEXT.md vocabulary. | None — the type is unused. |
+| 1 | ADR-007 + `ItemStore` skeleton (`one-research/src/data/item_store.rs`) + 8 inline smoke tests + CONTEXT.md vocabulary. | None — the type is unused. |
 | 2 | Migrate Workspace: collapse `items + url_index + arxiv_id_index` → `items_store: ItemStore`. ~103 call sites + 2 dedup branches + `rebuild_indices`. | None — invariant: same items, same indices, same observable behaviour. |
 | 3 | `scripts/check-item-store.sh` with M1-M4 tripwires; ci.sh wired; ADR-007 → Accepted. | None |
 
 ### Invariants for PR 3 tripwire
 
-- **M1** `trench/src/data/workspace_store.rs` declares `pub items_store: ItemStore` and does NOT declare `pub items:`, `pub url_index:`, or `pub arxiv_id_index:`. Awk-scoped to the Workspace struct body.
-- **M2** Outside `trench/src/data/item_store.rs`, no expression matches `\.items_store\.items` (raw vec access) or `\.items_store\.url_index` / `\.items_store\.arxiv_id_index` (raw map access). Reads go through methods.
-- **M3** No `workspace\.url_index\.insert` / `workspace\.url_index\.remove` / `workspace\.arxiv_id_index\.(insert|remove)` calls anywhere in `trench/src/`. Index mutation is `ItemStore`-internal.
+- **M1** `one-research/src/data/workspace_store.rs` declares `pub items_store: ItemStore` and does NOT declare `pub items:`, `pub url_index:`, or `pub arxiv_id_index:`. Awk-scoped to the Workspace struct body.
+- **M2** Outside `one-research/src/data/item_store.rs`, no expression matches `\.items_store\.items` (raw vec access) or `\.items_store\.url_index` / `\.items_store\.arxiv_id_index` (raw map access). Reads go through methods.
+- **M3** No `workspace\.url_index\.insert` / `workspace\.url_index\.remove` / `workspace\.arxiv_id_index\.(insert|remove)` calls anywhere in `one-research/src/`. Index mutation is `ItemStore`-internal.
 - **M4** ADR-007 cadence table lists every committed PR (1, 2, 3).
 
 ## Consequences

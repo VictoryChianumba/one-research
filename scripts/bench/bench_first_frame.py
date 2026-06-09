@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Spawn trench --bench-startup under a pty, wait for natural exit, and
+"""Spawn one-research --bench-startup under a pty, wait for natural exit, and
 print:
- - first_frame_ready_ms (from trench's stdout, source-of-truth instrumented)
+ - first_frame_ready_ms (from one-research's stdout, source-of-truth instrumented)
  - wall_clock_ms (Python's measure of fork→exit, includes process startup +
    binary load + dyld + std init + first frame + clean exit)
 
 Run N times for a distribution."""
 import os, pty, time, signal, sys, select, errno, fcntl, struct, termios
 
-BIN = "/Users/temp/Desktop/projects/pproject-forks/trench/target/release/trench"
+BIN = "/Users/temp/Desktop/projects/pproject-forks/one-research/target/release/one-research"
 N = int(sys.argv[1]) if len(sys.argv) > 1 else 5
 TIMEOUT_SECS = 5.0
 ROWS, COLS = 40, 120
