@@ -2,13 +2,13 @@ use crate::models::{
   ContentType, FeedItem, SignalLevel, SourcePlatform, WorkflowState,
   detect_subtopics,
 };
+use one_research_http::RetryPolicy;
 use quick_xml::Reader;
 use quick_xml::events::Event as XmlEvent;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use one_research_http::RetryPolicy;
 
 use super::pipeline::{EnrichmentSource, FetchContext, Source};
 

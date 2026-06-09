@@ -57,8 +57,9 @@ static WRITER_TX: OnceLock<Sender<WriterMsg>> = OnceLock::new();
 fn writer_handle() -> &'static Sender<WriterMsg> {
   WRITER_TX.get_or_init(|| {
     let (tx, rx) = mpsc::channel::<WriterMsg>();
-    let _ = thread::Builder::new().name("one-research-cache-writer".into()).spawn(
-      move || {
+    let _ = thread::Builder::new()
+      .name("one-research-cache-writer".into())
+      .spawn(move || {
         // Wrap the loop body in catch_unwind so a panic in serde_json /
         // fs / atomic_write surfaces a diagnostic instead of dying
         // silently. Without this, a panicking writer leaves WRITER_TX
@@ -82,8 +83,7 @@ fn writer_handle() -> &'static Sender<WriterMsg> {
              will silently fail. Restart one-research to recover."
           );
         }
-      },
-    );
+      });
     tx
   })
 }

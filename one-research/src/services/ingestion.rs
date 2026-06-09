@@ -91,7 +91,9 @@ pub(crate) fn spawn_fetch(
       // per-source cache file already lives in); falls back to a temp
       // dir only on the unreachable case of `$HOME` being unset.
       let cache_dir = std::env::var_os("HOME")
-        .map(|h| std::path::PathBuf::from(h).join(".config").join("one-research"))
+        .map(|h| {
+          std::path::PathBuf::from(h).join(".config").join("one-research")
+        })
         .unwrap_or_else(std::env::temp_dir);
       let ctx = FetchContext { config: &config, cache_dir: &cache_dir };
 
