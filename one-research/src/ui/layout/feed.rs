@@ -292,8 +292,6 @@ fn draw_history_tab(
 
   let header_style = Style::default().fg(t.header).add_modifier(Modifier::BOLD);
   let header = Row::new(vec![
-    feed_header_cell("Src", header_style),
-    feed_header_cell("Kind", header_style),
     feed_header_cell("Title", header_style),
     feed_header_cell("Date", header_style),
     feed_header_cell("Viewed", header_style),
@@ -321,21 +319,23 @@ fn draw_history_tab(
   }
 
   let now = chrono::Utc::now();
-  let title_w = (inner.width.saturating_sub(7 + 7 + 10 + 10 + 4)) as usize;
+  // Title + Date + Viewed: two fixed metadata columns and two column gaps.
+  let title_w =
+    (inner.width.saturating_sub(2 * FEED_META_W + 2 * FEED_COL_SPACING))
+      as usize;
   let title_wrap_w = title_w.max(10);
   let viewport_rows = inner.height.saturating_sub(2) as usize;
   if viewport_rows == 0 {
     let table = Table::new(
       Vec::<Row>::new(),
       [
-        Constraint::Length(5),
         Constraint::Min(0),
-        Constraint::Length(14),
-        Constraint::Length(10),
+        Constraint::Length(FEED_META_W),
+        Constraint::Length(FEED_META_W),
       ],
     )
     .header(header)
-    .column_spacing(1)
+    .column_spacing(FEED_COL_SPACING)
     .row_highlight_style(Style::default());
     frame.render_widget(table, inner);
     return;
@@ -397,32 +397,13 @@ fn draw_history_tab(
       } else {
         Style::default().fg(t.text_dim)
       };
-      let source = cached_item
-        .map(feed_source_label)
-        .unwrap_or_else(|| history_source_label(entry));
-      let kind = match (entry.kind, cached_item) {
-        (crate::history::HistoryKind::Paper, Some(item)) => {
-          item.content_type.short_label().to_string()
-        }
-        (crate::history::HistoryKind::Paper, None) => "paper".to_string(),
-        (crate::history::HistoryKind::Query, _) => "query".to_string(),
-      };
       let date = cached_item
         .map(|item| item.published_at.as_str())
         .or_else(|| {
           entry.paper_meta.as_ref().map(|meta| meta.published_at.as_str())
         })
         .unwrap_or("");
-      let source_style = if is_selected {
-        selected_text_style
-      } else if entry.kind == crate::history::HistoryKind::Query {
-        Style::default().fg(t.text_dim)
-      } else {
-        Style::default().fg(t.text_dim)
-      };
       Row::new(vec![
-        feed_cell(&source, source_style),
-        feed_cell(&kind, dim_style),
         Cell::from(Text::from({
           let title_style =
             if is_selected { selected_text_style } else { Style::default() };
@@ -444,15 +425,13 @@ fn draw_history_tab(
   let table = Table::new(
     rows,
     [
-      Constraint::Length(7),
-      Constraint::Length(7),
       Constraint::Min(0),
-      Constraint::Length(10),
-      Constraint::Length(10),
+      Constraint::Length(FEED_META_W),
+      Constraint::Length(FEED_META_W),
     ],
   )
   .header(header)
-  .column_spacing(1)
+  .column_spacing(FEED_COL_SPACING)
   .row_highlight_style(Style::default());
   frame.render_widget(table, inner);
 
@@ -685,6 +664,14 @@ fn reader_feed_row_lines_with_wrapped(
     .collect()
 }
 
+/// Shared feed-table column widths — one source of truth so every tab
+/// (Inbox / Library / Discoveries / Browse / History) renders its metadata
+/// columns at the same width and the layout doesn't shift when switching
+/// tabs. Title is always the flexible remainder; the only per-tab variation
+/// is which contextual column appears (Subject in Browse, Viewed in History).
+const FEED_META_W: u16 = 10;
+const FEED_COL_SPACING: u16 = 2;
+
 pub fn draw_item_table(
   frame: &mut Frame,
   model: &mut crate::feed::FeedModel,
@@ -700,16 +687,17 @@ pub fn draw_item_table(
   let header_style =
     Style::default().fg(if browse_feed_dimmed { t.text_dim } else { t.header });
 
-  // ADR-011 §E5: Subject column appears in Browse only. Width 12 chars
-  // fits codes like `astro-ph.GA` (11); longer codes like
-  // `cond-mat.dis-nn` (15) ellipsise. Other tabs leave the column out
-  // entirely so Inbox / Library layouts stay untouched.
+  // ADR-011 §E5: Subject column appears in Browse only — other tabs leave it
+  // out so their layout is just Title + Date. Width is the shared metadata
+  // width so the column lines up with Date / Viewed across tabs; codes like
+  // `astro-ph.GA` (11) ellipsise to fit. Browse is the only tab with a
+  // contextual left column, so its Title starts one column over — every other
+  // tab keeps Title flush-left.
   let show_subject_col = model.feed_tab == FeedTab::Browse;
-  const SUBJECT_COL_W: u16 = 12;
+  const SUBJECT_COL_W: u16 = FEED_META_W;
 
   let header = if show_subject_col {
     Row::new(vec![
-      feed_header_cell(" ", header_style),
       feed_header_cell("Subject", header_style),
       feed_header_cell("Title", header_style),
       feed_header_cell("Date", header_style),
@@ -717,7 +705,6 @@ pub fn draw_item_table(
     .height(2)
   } else {
     Row::new(vec![
-      feed_header_cell(" ", header_style),
       feed_header_cell("Title", header_style),
       feed_header_cell("Date", header_style),
     ])
@@ -741,10 +728,13 @@ pub fn draw_item_table(
   };
 
   // Available width for title column: total inner width minus fixed cols.
-  // sig(1) + [subject(12) + gap(2) if Browse] + date(10) + 2 column gaps of 2 each
-  let subject_w = if show_subject_col { SUBJECT_COL_W + 2 } else { 0 };
+  // Base = date(FEED_META_W) + 1 column gap. Browse adds a subject column +
+  // its own gap.
+  let subject_w =
+    if show_subject_col { SUBJECT_COL_W + FEED_COL_SPACING } else { 0 };
   let title_col_w =
-    (inner.width.saturating_sub(1 + subject_w + 10 + 4)) as usize;
+    (inner.width.saturating_sub(subject_w + FEED_META_W + FEED_COL_SPACING))
+      as usize;
   let title_wrap_w = title_col_w.max(10);
 
   // Viewport height in rows (inner height minus 2 header rows).
@@ -834,18 +824,6 @@ pub fn draw_item_table(
 
       let vm = crate::view_models::FeedRowVm::from_item(item);
 
-      let signal_style = if browse_feed_dimmed {
-        Style::default().fg(t.border)
-      } else {
-        match vm.signal {
-          crate::models::SignalLevel::Primary => Style::default().fg(t.accent),
-          crate::models::SignalLevel::Secondary => {
-            Style::default().fg(t.text_dim)
-          }
-          crate::models::SignalLevel::Tertiary => Style::default().fg(t.border),
-        }
-      };
-
       let row_style =
         if is_selected { t.style_selection() } else { Style::default() };
       let selected_text_style = t.style_selection_text();
@@ -854,14 +832,12 @@ pub fn draw_item_table(
       let row_height = content_height + 1;
 
       // Suppress unused-variable warnings for view-model fields no longer
-      // shown in the table (still rendered in the details pane).
+      // shown in the table (still rendered in the details pane). The signal
+      // marker column was removed for a uniform Title-flush layout.
       let _ = (&vm.source_label, vm.content_type_short, &vm.author);
+      let _ = (vm.signal, vm.signal_indicator);
       let _ = selected_dim_style;
 
-      let signal_cell = feed_cell(
-        vm.signal_indicator,
-        if is_selected { selected_text_style } else { signal_style },
-      );
       let title_cell = Cell::from(Text::from({
         let title_style = if is_selected {
           selected_text_style
@@ -904,9 +880,9 @@ pub fn draw_item_table(
             Style::default().fg(t.accent)
           },
         );
-        vec![signal_cell, subject_cell, title_cell, date_cell]
+        vec![subject_cell, title_cell, date_cell]
       } else {
-        vec![signal_cell, title_cell, date_cell]
+        vec![title_cell, date_cell]
       };
 
       Row::new(cells).style(row_style).height(row_height)
@@ -920,17 +896,16 @@ pub fn draw_item_table(
 
   let constraints: Vec<Constraint> = if show_subject_col {
     vec![
-      Constraint::Length(1),
       Constraint::Length(SUBJECT_COL_W),
       Constraint::Min(0),
-      Constraint::Length(10),
+      Constraint::Length(FEED_META_W),
     ]
   } else {
-    vec![Constraint::Length(1), Constraint::Min(0), Constraint::Length(10)]
+    vec![Constraint::Min(0), Constraint::Length(FEED_META_W)]
   };
   let table = Table::new(rows, constraints)
     .header(header)
-    .column_spacing(2)
+    .column_spacing(FEED_COL_SPACING)
     .row_highlight_style(Style::default());
 
   let t_render = std::time::Instant::now();
