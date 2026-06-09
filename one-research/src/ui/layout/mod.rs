@@ -136,7 +136,7 @@ fn draw_feed(frame: &mut Frame, app: &mut App) {
       .split(area);
 
     let t = std::time::Instant::now();
-    draw_title_bar(frame, app, rows[0]);
+    draw_title_bar(frame, app, h_margin(rows[0], margin));
     log::debug!("draw_title_bar: {}ms", t.elapsed().as_millis());
 
     let t = std::time::Instant::now();
@@ -170,7 +170,7 @@ fn draw_feed(frame: &mut Frame, app: &mut App) {
     );
 
     let t = std::time::Instant::now();
-    draw_footer(frame, app, rows[4]);
+    draw_footer(frame, app, h_margin(rows[4], margin));
     log::debug!("draw_footer: {}ms", t.elapsed().as_millis());
   } else {
     let rows = Layout::default()
@@ -185,7 +185,7 @@ fn draw_feed(frame: &mut Frame, app: &mut App) {
       .split(area);
 
     let t = std::time::Instant::now();
-    draw_title_bar(frame, app, rows[0]);
+    draw_title_bar(frame, app, h_margin(rows[0], margin));
     log::debug!("draw_title_bar: {}ms", t.elapsed().as_millis());
 
     let t = std::time::Instant::now();
@@ -221,7 +221,7 @@ fn draw_feed(frame: &mut Frame, app: &mut App) {
     );
 
     let t = std::time::Instant::now();
-    draw_footer(frame, app, rows[4]);
+    draw_footer(frame, app, h_margin(rows[4], margin));
     log::debug!("draw_footer: {}ms", t.elapsed().as_millis());
   }
 

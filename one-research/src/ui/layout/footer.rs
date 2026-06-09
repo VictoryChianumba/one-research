@@ -7,6 +7,7 @@ use ratatui::{
 };
 
 use crate::app::{App, FeedTab, FocusedReader, NotesMode, PaneId};
+use std::borrow::Cow;
 
 const SPINNER: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
@@ -41,7 +42,7 @@ pub fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
     None
   };
 
-  let command_line = footer_command_line(app);
+  let command_line = footer_command_line(app, area.width);
   if let Some(line) = status_line {
     frame.render_widget(Paragraph::new(vec![line]), rows[0]);
     frame.render_widget(Paragraph::new(vec![command_line]), rows[1]);
@@ -51,7 +52,7 @@ pub fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
   }
 }
 
-fn footer_command_line(app: &App) -> Line<'static> {
+fn footer_command_line(app: &App, width: u16) -> Line<'static> {
   let t = app.theme();
   let ordinary = Style::default().fg(t.text_dim);
   let accent = Style::default().fg(t.accent).add_modifier(Modifier::BOLD);
@@ -70,12 +71,23 @@ fn footer_command_line(app: &App) -> Line<'static> {
   let mut spans = Vec::new();
 
   if app.leader.is_active() {
-    spans.push(Span::styled("leader", accent));
-    spans.push(Span::styled(
-      ": f feed | t tab | [/] tabs | n notes | c chat | h/j/k/l focus | ? help",
+    const KEYS: &[FooterKey] = &[
+      FooterKey { key: "f", label: "feed" },
+      FooterKey { key: "t", label: "tab" },
+      FooterKey { key: "[/]", label: "tabs" },
+      FooterKey { key: "n", label: "notes" },
+      FooterKey { key: "c", label: "chat" },
+      FooterKey { key: "h/j/k/l", label: "focus" },
+    ];
+    return responsive_footer(
+      Vec::new(),
+      "leader",
+      KEYS,
+      true,
+      width,
       ordinary,
-    ));
-    return Line::from(spans);
+      accent,
+    );
   }
 
   if app.reader.dual_active
@@ -87,45 +99,96 @@ fn footer_command_line(app: &App) -> Line<'static> {
     } else {
       "feed drawer"
     };
-    let keys = if app.reader_bottom.details {
-      ": j/k scroll | d back | q/Esc close | ? help"
+    const DETAILS: &[FooterKey] = &[
+      FooterKey { key: "j/k", label: "scroll" },
+      FooterKey { key: "d", label: "back" },
+      FooterKey { key: "q/Esc", label: "close" },
+    ];
+    const SEARCH: &[FooterKey] = &[
+      FooterKey { key: "type filter", label: "" },
+      FooterKey { key: "Enter", label: "keep" },
+      FooterKey { key: "Esc", label: "clear" },
+      FooterKey { key: "j/k", label: "move" },
+    ];
+    const BROWSE: &[FooterKey] = &[
+      FooterKey { key: "j/k", label: "move" },
+      FooterKey { key: "/", label: "search" },
+      FooterKey { key: "Enter", label: "open" },
+      FooterKey { key: "d", label: "details" },
+      FooterKey { key: "q/Esc", label: "close" },
+    ];
+    let items = if app.reader_bottom.details {
+      DETAILS
     } else if app.feed.search_active {
-      ": type filter | Enter keep | Esc clear | j/k move | ? help"
+      SEARCH
     } else {
-      ": j/k move | / search | Enter open | d details | q/Esc close | ? help"
+      BROWSE
     };
-    spans.push(Span::styled(label, accent));
-    spans.push(Span::styled(keys, ordinary));
-    return Line::from(spans);
+    return responsive_footer(
+      Vec::new(),
+      label,
+      items,
+      true,
+      width,
+      ordinary,
+      accent,
+    );
   }
 
   if app.feed.search_active {
-    spans.push(Span::styled("search", accent));
-    spans.push(Span::styled(
-      ": type to filter | Enter keep | Esc clear | ? help",
+    const KEYS: &[FooterKey] = &[
+      FooterKey { key: "type to filter", label: "" },
+      FooterKey { key: "Enter", label: "keep" },
+      FooterKey { key: "Esc", label: "clear" },
+    ];
+    return responsive_footer(
+      Vec::new(),
+      "search",
+      KEYS,
+      true,
+      width,
       ordinary,
-    ));
-    return Line::from(spans);
+      accent,
+    );
   }
 
   if app.feed.filter_focus {
-    spans.push(Span::styled("filters", accent));
-    spans.push(Span::styled(
-      ": j/k move | Space toggle | c clear | f/Tab/Esc close",
+    const KEYS: &[FooterKey] = &[
+      FooterKey { key: "j/k", label: "move" },
+      FooterKey { key: "Space", label: "toggle" },
+      FooterKey { key: "c", label: "clear" },
+      FooterKey { key: "f/Tab/Esc", label: "close" },
+    ];
+    return responsive_footer(
+      Vec::new(),
+      "filters",
+      KEYS,
+      false,
+      width,
       ordinary,
-    ));
-    return Line::from(spans);
+      accent,
+    );
   }
 
   if app.focus.focused_pane == PaneId::Reader
     || app.focus.focused_pane == PaneId::SecondaryReader
   {
-    spans.push(Span::styled("reader", accent));
-    spans.push(Span::styled(
-      ": q/Esc close | Tab switch pane | Ldr+t new tab | Ldr+[ / ] tabs | Ldr+n notes | ? help",
+    const KEYS: &[FooterKey] = &[
+      FooterKey { key: "q/Esc", label: "close" },
+      FooterKey { key: "Tab", label: "switch pane" },
+      FooterKey { key: "Ldr+t", label: "new tab" },
+      FooterKey { key: "Ldr+[ / ]", label: "tabs" },
+      FooterKey { key: "Ldr+n", label: "notes" },
+    ];
+    return responsive_footer(
+      Vec::new(),
+      "reader",
+      KEYS,
+      true,
+      width,
       ordinary,
-    ));
-    return Line::from(spans);
+      accent,
+    );
   }
 
   if (app.focus.focused_pane == PaneId::Notes && app.notes.primary_visible)
@@ -137,30 +200,64 @@ fn footer_command_line(app: &App) -> Line<'static> {
     } else {
       FocusedReader::Primary
     };
-    spans
-      .push(Span::styled(app.notes_mode_for_side(side).footer_label(), accent));
-    let keys = match app.notes_mode_for_side(side) {
-      NotesMode::Capture => {
-        ": [ / ] modes | n/Enter create | Ldr+n hide | ? help"
-      }
-      NotesMode::PaperNotes => {
-        ": [ / ] modes | j/k move | a attach | x detach | Enter edit | Ldr+[ / ] tabs | Ldr+w close | Ldr+n hide | ? help"
-      }
-      NotesMode::Library => {
-        ": [ / ] modes | j/k move | Enter edit | a attach | x detach | Ldr+[ / ] tabs | Ldr+w close | Ldr+n hide | ? help"
-      }
+    let mode = app.notes_mode_for_side(side);
+    const CAPTURE: &[FooterKey] = &[
+      FooterKey { key: "[ / ]", label: "modes" },
+      FooterKey { key: "n/Enter", label: "create" },
+      FooterKey { key: "Ldr+n", label: "hide" },
+    ];
+    const PAPER: &[FooterKey] = &[
+      FooterKey { key: "[ / ]", label: "modes" },
+      FooterKey { key: "j/k", label: "move" },
+      FooterKey { key: "a", label: "attach" },
+      FooterKey { key: "x", label: "detach" },
+      FooterKey { key: "Enter", label: "edit" },
+      FooterKey { key: "Ldr+[ / ]", label: "tabs" },
+      FooterKey { key: "Ldr+w", label: "close" },
+      FooterKey { key: "Ldr+n", label: "hide" },
+    ];
+    const LIBRARY: &[FooterKey] = &[
+      FooterKey { key: "[ / ]", label: "modes" },
+      FooterKey { key: "j/k", label: "move" },
+      FooterKey { key: "Enter", label: "edit" },
+      FooterKey { key: "a", label: "attach" },
+      FooterKey { key: "x", label: "detach" },
+      FooterKey { key: "Ldr+[ / ]", label: "tabs" },
+      FooterKey { key: "Ldr+w", label: "close" },
+      FooterKey { key: "Ldr+n", label: "hide" },
+    ];
+    let items = match mode {
+      NotesMode::Capture => CAPTURE,
+      NotesMode::PaperNotes => PAPER,
+      NotesMode::Library => LIBRARY,
     };
-    spans.push(Span::styled(keys, ordinary));
-    return Line::from(spans);
+    return responsive_footer(
+      Vec::new(),
+      mode.footer_label(),
+      items,
+      true,
+      width,
+      ordinary,
+      accent,
+    );
   }
 
   if app.focus.focused_pane == PaneId::Chat && app.chat.active {
-    spans.push(Span::styled("chat", accent));
-    spans.push(Span::styled(
-      ": Enter send | / commands | Esc sessions | Ldr+c hide | ? help",
+    const KEYS: &[FooterKey] = &[
+      FooterKey { key: "Enter", label: "send" },
+      FooterKey { key: "/", label: "commands" },
+      FooterKey { key: "Esc", label: "sessions" },
+      FooterKey { key: "Ldr+c", label: "hide" },
+    ];
+    return responsive_footer(
+      Vec::new(),
+      "chat",
+      KEYS,
+      true,
+      width,
       ordinary,
-    ));
-    return Line::from(spans);
+      accent,
+    );
   }
 
   if filtered {
@@ -173,59 +270,189 @@ fn footer_command_line(app: &App) -> Line<'static> {
   }
 
   if app.feed.feed_tab == FeedTab::Discoveries {
-    spans.push(Span::styled("discoveries", accent));
-    spans.push(Span::styled(
-      ": / search | Enter open | Ctrl+N new | Tab history | ? help",
+    const KEYS: &[FooterKey] = &[
+      FooterKey { key: "/", label: "search" },
+      FooterKey { key: "Enter", label: "open" },
+      FooterKey { key: "Ctrl+N", label: "new" },
+      FooterKey { key: "Tab", label: "history" },
+    ];
+    return responsive_footer(
+      spans,
+      "discoveries",
+      KEYS,
+      true,
+      width,
       ordinary,
-    ));
-  } else if app.feed.feed_tab == FeedTab::Library {
-    let label = if app.feed.library_visual_mode {
-      "library visual".to_string()
-    } else {
-      format!("library · {}", app.feed.library_filter.label())
-    };
-    let keys = if app.feed.library_visual_mode {
-      ": j/k select | r read | w queue | x archive | t tag | Esc cancel"
-    } else {
-      ": [/] state | v select | t tag | Tab discoveries | ? help"
-    };
-    spans.push(Span::styled(label, accent));
-    spans.push(Span::styled(keys, ordinary));
-  } else if app.feed.feed_tab == FeedTab::History {
-    spans.push(Span::styled(
-      format!("history · {}", app.feed.history_filter.label()),
       accent,
-    ));
-    spans.push(Span::styled(
-      ": [/] time | Enter reopen | Ctrl+D delete | / search | Tab inbox | ? help",
-      ordinary,
-    ));
+    );
+  } else if app.feed.feed_tab == FeedTab::Library {
+    if app.feed.library_visual_mode {
+      const KEYS: &[FooterKey] = &[
+        FooterKey { key: "j/k", label: "select" },
+        FooterKey { key: "r", label: "read" },
+        FooterKey { key: "w", label: "queue" },
+        FooterKey { key: "x", label: "archive" },
+        FooterKey { key: "t", label: "tag" },
+        FooterKey { key: "Esc", label: "cancel" },
+      ];
+      return responsive_footer(
+        spans,
+        "library visual",
+        KEYS,
+        false,
+        width,
+        ordinary,
+        accent,
+      );
+    } else {
+      const KEYS: &[FooterKey] = &[
+        FooterKey { key: "[/]", label: "state" },
+        FooterKey { key: "v", label: "select" },
+        FooterKey { key: "t", label: "tag" },
+        FooterKey { key: "Tab", label: "discoveries" },
+      ];
+      let mode = format!("library · {}", app.feed.library_filter.label());
+      return responsive_footer(
+        spans, mode, KEYS, true, width, ordinary, accent,
+      );
+    }
+  } else if app.feed.feed_tab == FeedTab::History {
+    const KEYS: &[FooterKey] = &[
+      FooterKey { key: "[/]", label: "time" },
+      FooterKey { key: "Enter", label: "reopen" },
+      FooterKey { key: "Ctrl+D", label: "delete" },
+      FooterKey { key: "/", label: "search" },
+      FooterKey { key: "Tab", label: "inbox" },
+    ];
+    let mode = format!("history · {}", app.feed.history_filter.label());
+    return responsive_footer(spans, mode, KEYS, true, width, ordinary, accent);
   } else if app.feed.feed_tab == FeedTab::Browse {
     if app.browse.focus == crate::app::BrowseFocus::Feed {
-      spans.push(Span::styled("browse feed", accent));
-      spans.push(Span::styled(
-        ": j/k move | Enter read | Space details | l subjects | x archive | Tab library | ? help",
+      const KEYS: &[FooterKey] = &[
+        FooterKey { key: "j/k", label: "move" },
+        FooterKey { key: "Enter", label: "read" },
+        FooterKey { key: "Space", label: "details" },
+        FooterKey { key: "l", label: "subjects" },
+        FooterKey { key: "x", label: "archive" },
+        FooterKey { key: "Tab", label: "library" },
+      ];
+      return responsive_footer(
+        spans,
+        "browse feed",
+        KEYS,
+        true,
+        width,
         ordinary,
-      ));
+        accent,
+      );
     } else {
-      spans.push(Span::styled("browse", accent));
-      spans.push(Span::styled(
-        ": h back/feed | l drill | j/k move | Enter load | p promote | x follow | Tab library",
-        ordinary,
-      ));
+      const KEYS: &[FooterKey] = &[
+        FooterKey { key: "h", label: "back/feed" },
+        FooterKey { key: "l", label: "drill" },
+        FooterKey { key: "j/k", label: "move" },
+        FooterKey { key: "Enter", label: "load" },
+        FooterKey { key: "p", label: "promote" },
+        FooterKey { key: "x", label: "follow" },
+        FooterKey { key: "Tab", label: "library" },
+      ];
+      return responsive_footer(
+        spans, "browse", KEYS, false, width, ordinary, accent,
+      );
     }
   } else {
-    spans.push(Span::styled("feed", accent));
-    spans.push(Span::styled(
-      ": j/k move | Enter read | Space details | f filters | Tab browse",
-      ordinary,
-    ));
-    spans.push(Span::styled(" | ", ordinary));
-    spans.push(Span::styled(
-      "i inbox | r read | w queue | x archive | q quit | ? help",
-      ordinary,
-    ));
+    const FEED_KEYS: &[FooterKey] = &[
+      FooterKey { key: "j/k", label: "move" },
+      FooterKey { key: "Enter", label: "read" },
+      FooterKey { key: "Space", label: "details" },
+      FooterKey { key: "f", label: "filters" },
+      FooterKey { key: "Tab", label: "browse" },
+      FooterKey { key: "i", label: "inbox" },
+      FooterKey { key: "r", label: "read" },
+      FooterKey { key: "w", label: "queue" },
+      FooterKey { key: "x", label: "archive" },
+      FooterKey { key: "q", label: "quit" },
+    ];
+    return responsive_footer(
+      spans, "feed", FEED_KEYS, true, width, ordinary, accent,
+    );
+  }
+}
+
+/// One footer hotkey: the key glyph(s) and the action it performs. A blank
+/// `label` marks an instruction phrase (e.g. `type to filter`) that has no
+/// distinct key — it renders verbatim and is left intact when collapsed.
+struct FooterKey {
+  key: &'static str,
+  label: &'static str,
+}
+
+/// Build a footer command line that collapses to keys-only when the fully
+/// labelled form would overflow `width`. `leading` carries any prefix spans
+/// already accumulated (e.g. the `N/M filtered` or `v repo` hints); the `mode`
+/// label is always shown, and `? help` is pinned when `help` is set — only the
+/// inner key *labels* are dropped on collapse, so no hotkey ever disappears.
+fn responsive_footer(
+  leading: Vec<Span<'static>>,
+  mode: impl Into<Cow<'static, str>>,
+  items: &[FooterKey],
+  help: bool,
+  width: u16,
+  ordinary: Style,
+  accent: Style,
+) -> Line<'static> {
+  let mode = mode.into();
+  let full = build_footer_line(
+    &leading,
+    mode.clone(),
+    items,
+    help,
+    false,
+    ordinary,
+    accent,
+  );
+  if full.width() as u16 <= width {
+    full
+  } else {
+    build_footer_line(&leading, mode, items, help, true, ordinary, accent)
+  }
+}
+
+/// Assemble the footer line in one of two tiers. Full tier renders
+/// `mode: key label | …`; keys-only renders `mode: key · …`. The hotkey run is
+/// a single dim span (matching the existing footer styling); `? help` is
+/// appended (kept labelled) only when `help` is set.
+fn build_footer_line(
+  leading: &[Span<'static>],
+  mode: Cow<'static, str>,
+  items: &[FooterKey],
+  help: bool,
+  keys_only: bool,
+  ordinary: Style,
+  accent: Style,
+) -> Line<'static> {
+  let sep = if keys_only { " · " } else { " | " };
+  let mut s = String::from(": ");
+  let mut first = true;
+  for it in items {
+    if !first {
+      s.push_str(sep);
+    }
+    first = false;
+    s.push_str(it.key);
+    if !keys_only && !it.label.is_empty() {
+      s.push(' ');
+      s.push_str(it.label);
+    }
+  }
+  if help {
+    if !first {
+      s.push_str(sep);
+    }
+    s.push_str("? help");
   }
 
+  let mut spans = leading.to_vec();
+  spans.push(Span::styled(mode, accent));
+  spans.push(Span::styled(s, ordinary));
   Line::from(spans)
 }
