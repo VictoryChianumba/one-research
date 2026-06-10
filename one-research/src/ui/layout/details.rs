@@ -58,9 +58,10 @@ pub fn draw_details_panel(frame: &mut Frame, app: &mut App, area: Rect) {
     let recent_arxiv = counts.recent_arxiv;
     let recent_other = counts.recent_other;
 
-    // Single-channel emphasis: dim color is enough; no bold.
-    let activity_label_style = Style::default().fg(t.text_dim);
-    let label_style = Style::default().fg(t.text_dim);
+    // Labels use the header color (tier 1), like the per-paper detail labels
+    // and the column headers; values stay on the content color.
+    let activity_label_style = Style::default().fg(t.header);
+    let label_style = Style::default().fg(t.header);
     let val_style = Style::default().fg(t.text);
 
     // Continue Reading
@@ -164,12 +165,17 @@ pub(super) fn draw_item_detail(frame: &mut Frame, app: &mut App, area: Rect) {
   // details_scroll is already correct for the current selection.
   let history = app.filtered_history();
   if let Some(subject) = details_subject(app, &history) {
+    // Three text tiers (see also the column headers in feed.rs):
+    //   - field labels (Authors / Source / Topics / …) use the header color so
+    //     they read like the column headers (Title / Date);
+    //   - metadata values (source / repo / topics / URL) use the accent color;
+    //   - content values (authors / summary) use the terminal-default fg so
+    //     they match the reading view and the abstract.
     let title_style = Style::default().fg(t.text).add_modifier(Modifier::BOLD);
     let meta_style = Style::default().fg(t.text_dim);
-    // Single-channel emphasis: dim color carries the "label" signal; no bold.
-    let label_style = Style::default().fg(t.text_dim);
+    let label_style = Style::default().fg(t.header);
     let dim_style = Style::default().fg(t.text_dim);
-    let value_style = Style::default().fg(t.text);
+    let value_style = Style::default();
     let accent_style = Style::default().fg(t.accent);
     let detail_w = inner.width.max(1) as usize;
     let mut lines = render_details_subject(
@@ -382,7 +388,8 @@ fn render_feed_item_details<'a>(
       "Topics",
       &tags,
       s.label_style,
-      s.value_style,
+      // Metadata tier — same accent as source / repo / URL / tags.
+      s.accent_style,
       detail_w,
       2,
     );

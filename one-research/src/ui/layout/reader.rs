@@ -246,13 +246,11 @@ pub(super) fn draw_narrow_feed_details_popup(
 
   frame.render_widget(Clear, popup_rect);
 
+  // No box title; border matches the main content boxes (`t.border`) in every
+  // theme. The footer carries the hotkey hints.
   let block = Block::default()
     .borders(Borders::ALL)
-    .border_style(Style::default().fg(t.border_active))
-    .title(Span::styled(
-      " Details · d/Esc: close ",
-      Style::default().fg(t.accent),
-    ));
+    .border_style(Style::default().fg(t.border));
 
   let inner = block.inner(popup_rect);
   frame.render_widget(block, popup_rect);
@@ -338,102 +336,13 @@ pub(super) fn draw_reader_bottom_pane(
   }
 }
 
-fn draw_bottom_pane_details(frame: &mut Frame, app: &App, area: Rect) {
-  // reader_bottom.scroll.max is set in App::pre_draw_update to MAX
-  // when details mode is open. We just read offset() here.
-  let scroll = app.reader_bottom.scroll.offset();
-
-  let t = app.theme();
-  let sel = app.reader_bottom.feed_popup_selected;
-  if app.feed.feed_tab == FeedTab::History {
-    let Some(entry) = app.history_get(sel) else { return };
-    let rows =
-      Layout::vertical([Constraint::Length(3), Constraint::Min(0)]).split(area);
-    let title = Line::from(Span::styled(
-      entry.title.clone(),
-      Style::default().fg(t.text).add_modifier(Modifier::BOLD),
-    ));
-    let meta = Line::from(vec![
-      Span::styled(
-        super::feed::history_source_label(entry),
-        Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
-      ),
-      Span::styled("  ", Style::default().fg(t.text_dim)),
-      Span::styled(
-        match entry.kind {
-          crate::history::HistoryKind::Paper => "paper",
-          crate::history::HistoryKind::Query => "query",
-        },
-        Style::default().fg(t.text_dim),
-      ),
-      Span::styled("  ", Style::default().fg(t.text_dim)),
-      Span::styled(
-        crate::history::format_ago(entry.opened_at, chrono::Utc::now()),
-        Style::default().fg(t.text_dim),
-      ),
-    ]);
-    frame.render_widget(
-      Paragraph::new(vec![title, Line::from(""), meta])
-        .wrap(ratatui::widgets::Wrap { trim: false }),
-      rows[0],
-    );
-
-    let body = if let Some(item) = app.history_item(entry) {
-      if item.summary_short.trim().is_empty() {
-        "No summary available.".to_string()
-      } else {
-        item.summary_short
-      }
-    } else {
-      match entry.kind {
-        crate::history::HistoryKind::Paper => {
-          "This history entry is not backed by a cached paper body.".to_string()
-        }
-        crate::history::HistoryKind::Query => {
-          format!("Discovery query:\n\n{}", entry.key)
-        }
-      }
-    };
-    let para = Paragraph::new(body)
-      .wrap(ratatui::widgets::Wrap { trim: false })
-      .scroll((scroll as u16, 0))
-      .style(Style::default().fg(t.text));
-    frame.render_widget(para, rows[1]);
-    return;
-  }
-
-  let Some(item) = app.visible_get(sel) else { return };
-
-  let rows =
-    Layout::vertical([Constraint::Length(3), Constraint::Min(0)]).split(area);
-  let title = Line::from(Span::styled(
-    item.title.clone(),
-    Style::default().fg(t.text).add_modifier(Modifier::BOLD),
-  ));
-  let meta = Line::from(vec![
-    Span::styled(
-      super::feed::feed_source_label(item),
-      Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
-    ),
-    Span::styled("  ", Style::default().fg(t.text_dim)),
-    Span::styled(
-      item.content_type.short_label(),
-      Style::default().fg(t.text_dim),
-    ),
-    Span::styled("  ", Style::default().fg(t.text_dim)),
-    Span::styled(item.published_at.clone(), Style::default().fg(t.text_dim)),
-  ]);
-  frame.render_widget(
-    Paragraph::new(vec![title, Line::from(""), meta])
-      .wrap(ratatui::widgets::Wrap { trim: false }),
-    rows[0],
-  );
-
-  let para = Paragraph::new(item.summary_short.clone())
-    .wrap(ratatui::widgets::Wrap { trim: false })
-    .scroll((scroll as u16, 0))
-    .style(Style::default().fg(t.text));
-  frame.render_widget(para, rows[1]);
+fn draw_bottom_pane_details(frame: &mut Frame, app: &mut App, area: Rect) {
+  // Show the same structured per-paper detail the wide layout and the
+  // reader-feed `D` popup use (authors / source / topics / summary / URL /
+  // action), not an abstract-style title + summary blob. The drawer keeps its
+  // selection synced to the main feed (on `D` and on details-mode j/k), so
+  // `draw_item_detail` — which reads the main selection — shows the right item.
+  super::details::draw_item_detail(frame, app, area);
 }
 
 fn draw_bottom_pane_feed(frame: &mut Frame, app: &mut App, area: Rect) {

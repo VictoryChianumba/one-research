@@ -65,27 +65,32 @@ pub(super) fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
 
   match key.code {
     KeyCode::Char('j') | KeyCode::Down => {
-      if app.reader_bottom.details {
-        app.reader_bottom.scroll.scroll_down(1);
-      } else {
-        let count = reader_feed_count(app);
-        if count > 0 {
-          app.reader_bottom.feed_popup_selected =
-            (app.reader_bottom.feed_popup_selected + 1).min(count - 1);
+      let count = reader_feed_count(app);
+      if count > 0 {
+        app.reader_bottom.feed_popup_selected =
+          (app.reader_bottom.feed_popup_selected + 1).min(count - 1);
+        // In details mode the structured detail tracks the selection, which
+        // `draw_item_detail` reads from the main feed — keep it in sync.
+        if app.reader_bottom.details {
+          app.set_active_selected_index(app.reader_bottom.feed_popup_selected);
         }
       }
     }
     KeyCode::Char('k') | KeyCode::Up => {
+      app.reader_bottom.feed_popup_selected =
+        app.reader_bottom.feed_popup_selected.saturating_sub(1);
       if app.reader_bottom.details {
-        app.reader_bottom.scroll.scroll_up(1);
-      } else {
-        app.reader_bottom.feed_popup_selected =
-          app.reader_bottom.feed_popup_selected.saturating_sub(1);
+        app.set_active_selected_index(app.reader_bottom.feed_popup_selected);
       }
     }
     KeyCode::Char('d') => {
       app.reader_bottom.details = !app.reader_bottom.details;
       app.reader_bottom.scroll.reset();
+      // Sync so `draw_item_detail` shows the drawer's selected paper, not the
+      // stale main-feed selection.
+      if app.reader_bottom.details {
+        app.set_active_selected_index(app.reader_bottom.feed_popup_selected);
+      }
     }
     KeyCode::Char(' ') => {
       // Quick-view the abstract — uniform with the main / reader feed. Sync the

@@ -10,9 +10,8 @@ use ratatui::{
 };
 
 use super::reader::drawer_feed_header_line;
-use super::widgets::{pane_inset, safe_truncate_chars, truncate, truncate_str};
+use super::widgets::{pane_inset, safe_truncate_chars, truncate_str};
 use crate::app::FeedTab;
-use crate::models::SourcePlatform;
 use crate::models::arxiv_taxonomy::TAXONOMY;
 
 pub fn draw_feed_pane(
@@ -447,20 +446,6 @@ fn draw_history_tab(
       scrollbar_rect,
       &mut scrollbar_state,
     );
-  }
-}
-
-pub(super) fn history_source_label(
-  entry: &crate::history::HistoryEntry,
-) -> String {
-  match entry.paper_meta.as_ref().map(|meta| &meta.source_platform) {
-    Some(SourcePlatform::HuggingFace) => "hf".to_string(),
-    Some(SourcePlatform::ArXiv) => "arxiv".to_string(),
-    Some(SourcePlatform::Rss) if !entry.source.is_empty() => {
-      truncate(&entry.source, 7)
-    }
-    Some(platform) => platform.short_label().to_string(),
-    None => truncate(&entry.source, 7),
   }
 }
 
