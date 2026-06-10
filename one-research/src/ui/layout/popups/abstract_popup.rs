@@ -34,7 +34,8 @@ pub fn draw_abstract_popup(frame: &mut Frame, app: &App) {
   } else {
     textwrap::wrap(&item.summary_short, content_w)
       .into_iter()
-      .map(|s| Line::styled(s.to_string(), Style::default().fg(t.text)))
+      // Bright default foreground (white) so the abstract stands out.
+      .map(|s| Line::styled(s.to_string(), Style::default()))
       .collect()
   };
 
@@ -44,7 +45,9 @@ pub fn draw_abstract_popup(frame: &mut Frame, app: &App) {
 
   frame.render_widget(Clear, popup_rect);
 
-  let block = quiet_popup_block(" Abstract · Space/Esc close ", &t);
+  // No box title — section headers / inline hotkey hints were dropped from the
+  // design language; Space/Esc dismiss is muscle-memory and in the help overlay.
+  let block = quiet_popup_block("", &t);
 
   let block_inner = block.inner(popup_rect);
   let inner = popup_inner(block_inner, 1, 1);
