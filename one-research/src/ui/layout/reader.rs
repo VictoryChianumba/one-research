@@ -316,14 +316,13 @@ pub(super) fn draw_reader_bottom_pane(
 
   frame.render_widget(Clear, popup_rect);
 
-  let focused = app.reader_bottom.focused;
-  let border_color = if focused { t.border_active } else { t.border };
-
   // No box title — section headers were dropped from the design language; the
   // footer carries the drawer's hotkey hints (j/k · Enter · Space · d · …).
+  // Border matches the main content boxes (`t.border`) in every theme; the
+  // drawer's focus is conveyed by its selected-row highlight, not the border.
   let block = Block::default()
     .borders(Borders::ALL)
-    .border_style(Style::default().fg(border_color));
+    .border_style(Style::default().fg(t.border));
 
   let inner = block.inner(popup_rect);
   frame.render_widget(block, popup_rect);

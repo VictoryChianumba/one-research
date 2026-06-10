@@ -40,7 +40,8 @@ pub fn draw_tag_picker(frame: &mut Frame, app: &App) {
 
   let block = Block::default()
     .borders(Borders::ALL)
-    .border_style(Style::default().fg(t.border_active))
+    // Match the main content boxes (`t.border`) for consistent popup borders.
+    .border_style(Style::default().fg(t.border))
     .title(Span::styled(
       format!(" tags · {target_label} "),
       Style::default().fg(t.header).add_modifier(Modifier::BOLD),

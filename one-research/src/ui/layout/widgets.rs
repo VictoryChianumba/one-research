@@ -48,7 +48,10 @@ pub(super) fn quiet_popup_block(
 ) -> Block<'static> {
   Block::default()
     .borders(Borders::ALL)
-    .border_style(Style::default().fg(t.border_active))
+    // Match the main content boxes (`t.border`) so popup borders read the same
+    // as the rest of the UI in every theme — see `settings_card_block`, which
+    // already uses the same role.
+    .border_style(Style::default().fg(t.border))
     .title(Span::styled(
       title,
       Style::default().fg(t.header).add_modifier(Modifier::BOLD),
