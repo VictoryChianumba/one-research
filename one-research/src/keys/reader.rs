@@ -87,6 +87,17 @@ pub(super) fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
       app.reader_bottom.details = !app.reader_bottom.details;
       app.reader_bottom.scroll.reset();
     }
+    KeyCode::Char(' ') => {
+      // Quick-view the abstract — uniform with the main / reader feed. Sync the
+      // main feed selection to the drawer's first so the abstract (and a later
+      // feed return) lands on the paper you're looking at.
+      if !app.reader_bottom.details {
+        app.set_active_selected_index(app.reader_bottom.feed_popup_selected);
+        if app.selected_item().is_some() {
+          app.view_flags.abstract_popup_active = true;
+        }
+      }
+    }
     KeyCode::Char('/') => {
       app.feed.search_active = true;
       app.clear_search_query();

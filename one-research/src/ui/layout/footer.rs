@@ -112,9 +112,10 @@ fn footer_command_line(app: &App, width: u16) -> Line<'static> {
     ];
     const BROWSE: &[FooterKey] = &[
       FooterKey { key: "j/k", label: "move" },
-      FooterKey { key: "/", label: "search" },
       FooterKey { key: "Enter", label: "open" },
+      FooterKey { key: "Space", label: "abstract" },
       FooterKey { key: "d", label: "details" },
+      FooterKey { key: "/", label: "search" },
       FooterKey { key: "q/Esc", label: "close" },
     ];
     let items = if app.reader_bottom.details {

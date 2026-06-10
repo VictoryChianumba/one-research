@@ -140,8 +140,24 @@ pub fn draw_details_panel(frame: &mut Frame, app: &mut App, area: Rect) {
     frame.render_widget(Paragraph::new(lines), dash_inner);
   }
 
+  // Top pane: the selected-item detail (factored out so the narrow-feed `D`
+  // popup can reuse exactly this content without the activity dashboard).
+  draw_item_detail(frame, app, top_area);
+
+  log::debug!(
+    "draw_details_panel total: {}ms",
+    t_details.elapsed().as_millis()
+  );
+}
+
+/// Render just the selected-item detail — title / source / authors / topics /
+/// summary / URL / action — into `area`. Does NOT include the activity
+/// dashboard. Used by the wide details panel (its top pane) and the
+/// narrow-feed `D` popup, so both show identical per-paper content.
+pub(super) fn draw_item_detail(frame: &mut Frame, app: &mut App, area: Rect) {
+  let t = app.theme();
   // Standard pane padding — same helper as the feed pane uses.
-  let inner = pane_inset(top_area);
+  let inner = pane_inset(area);
 
   // The selection-change reset for details_scroll lives in
   // App::pre_draw_update (Phase 4 hoist). By the time draw runs,
@@ -191,11 +207,6 @@ pub fn draw_details_panel(frame: &mut Frame, app: &mut App, area: Rect) {
       .style(Style::default().fg(t.text_dim));
     frame.render_widget(hint, inner);
   }
-
-  log::debug!(
-    "draw_details_panel total: {}ms",
-    t_details.elapsed().as_millis()
-  );
 }
 
 enum DetailsSubject<'a> {

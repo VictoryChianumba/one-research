@@ -21,17 +21,9 @@ reader can find the code without this context.
 
 ## UI / UX
 
-- **Narrow-feed column language not yet unified (deferred 2026-06-09).** The wide
-  feed (`draw_item_table`) and History were normalized to a shared column spec
-  (`FEED_META_W` / `FEED_COL_SPACING` in `one-research/src/ui/layout/feed.rs`):
-  Title flush-left, `Subject`/`Date`/`Viewed` at the shared metadata width, and
-  the signal + `Src` + `Kind` columns removed (all already shown in the details
-  pane). The *narrow* renderer (`draw_narrow_feed` → `reader.rs` `n_line`, used
-  when the feed pane drops below 70 cols — e.g. the reader-drawer strip) still
-  shows `Src Kind Title Date`.
-  **Open question:** match it to the wide language, or keep the compact
-  `Src`/`Kind` for the thin reader strip where the details pane may not be
-  visible? No decision yet.
+_(none recorded yet — the narrow-feed / reader-feed / feed-drawer column
+unification was resolved 2026-06-10; both the reader feed and the feed drawer
+now share the home feed's column language, separators, and hotkeys.)_
 
 ## Features
 

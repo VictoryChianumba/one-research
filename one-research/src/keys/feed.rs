@@ -709,15 +709,22 @@ fn handle_workflow_gesture(key: KeyEvent, app: &mut App) -> bool {
 /// the side reader.
 fn handle_narrow_feed_state_2(key: KeyEvent, app: &mut App) {
   if app.view_flags.narrow_feed_details_open {
+    // The popup shows the selected item's detail (sized to fit, not scrolled).
+    // j/k keep moving through the feed with the popup open, so it tracks the
+    // selection; Esc/q/d dismiss.
     match key.code {
       KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('d') => {
         app.view_flags.narrow_feed_details_open = false;
       }
       KeyCode::Char('j') | KeyCode::Down => {
-        app.details_scroll.scroll_down(1);
+        if kbd_scroll_ok(app) {
+          app.move_down();
+        }
       }
       KeyCode::Char('k') | KeyCode::Up => {
-        app.details_scroll.scroll_up(1);
+        if kbd_scroll_ok(app) {
+          app.move_up();
+        }
       }
       _ => {}
     }
@@ -732,6 +739,12 @@ fn handle_narrow_feed_state_2(key: KeyEvent, app: &mut App) {
     KeyCode::Char('d') => {
       app.view_flags.narrow_feed_details_open = true;
       app.details_scroll.reset();
+    }
+    KeyCode::Char(' ') => {
+      // Space quick-views the abstract — uniform with the main feed.
+      if app.selected_item().is_some() {
+        app.view_flags.abstract_popup_active = true;
+      }
     }
     KeyCode::Char('/') => {
       app.feed.enter_search();

@@ -7,7 +7,7 @@ use ratatui::{
 };
 
 use super::widgets::{
-  popup_inner, popup_rect, quiet_popup_block, truncate, truncate_str,
+  h_margin, popup_inner, popup_rect, quiet_popup_block, truncate, truncate_str,
 };
 use crate::app::{App, FeedTab, FocusedReader, ReaderTab};
 
@@ -232,11 +232,13 @@ pub fn draw_reader_popup(frame: &mut Frame, app: &mut App, area: Rect) {
 
 pub(super) fn draw_narrow_feed_details_popup(
   frame: &mut Frame,
-  app: &App,
+  app: &mut App,
   area: Rect,
 ) {
   let t = app.theme();
-  let popup_h = (area.height * 40 / 100).max(6).min(area.height);
+  // Taller than the old abstract-only popup: this now shows the full details
+  // panel (selected-paper detail + activity dashboard), so it needs the room.
+  let popup_h = (area.height * 60 / 100).max(8).min(area.height);
   let popup_w = area.width.saturating_sub(4).max(20);
   let popup_x = area.x + (area.width.saturating_sub(popup_w)) / 2;
   let popup_y = area.y + area.height.saturating_sub(popup_h);
@@ -248,7 +250,7 @@ pub(super) fn draw_narrow_feed_details_popup(
     .borders(Borders::ALL)
     .border_style(Style::default().fg(t.border_active))
     .title(Span::styled(
-      " Details · j/k: scroll  d/Esc: close ",
+      " Details · d/Esc: close ",
       Style::default().fg(t.accent),
     ));
 
@@ -259,19 +261,11 @@ pub(super) fn draw_narrow_feed_details_popup(
     return;
   }
 
-  // details_scroll.max is set in App::pre_draw_update to MAX when
-  // the narrow popup is open. We just read offset() here.
-  let scroll = app.details_scroll.offset();
-  let items = app.items_for_tab();
-  let sel = app.active_selected_index();
-  let Some(item) = items.get(sel) else { return };
-
-  let text = format!("{}\n\n{}", item.title, item.summary_short);
-  let para = Paragraph::new(text)
-    .wrap(ratatui::widgets::Wrap { trim: false })
-    .scroll((scroll as u16, 0))
-    .style(Style::default().fg(t.text));
-  frame.render_widget(para, inner);
+  // Reuse the per-paper detail (authors / source / topics / summary / URL /
+  // action) the wide layout shows — without the activity dashboard, which
+  // isn't relevant to a single-item popup. `Space` remains the lightweight
+  // abstract quick-view.
+  super::details::draw_item_detail(frame, app, inner);
 }
 
 /// Compute the bottom-drawer popup `Rect` from the full frame area.
@@ -279,9 +273,14 @@ pub(super) fn draw_narrow_feed_details_popup(
 /// that populates `FrameLayout::reader_bottom_feed_list` (ADR-008).
 pub(super) fn reader_bottom_popup_rect(area: Rect) -> Rect {
   const POPUP_H: u16 = 11; // border(2) + hint row(1) + sep(1) + content(7)
+  // The drawer anchors to the full frame, but the reader's bottom border sits
+  // one footer-zone (2 rows) above the frame bottom. Reserve that so the
+  // drawer's bottom border lines up with the reader's instead of overhanging
+  // into the footer.
+  const FOOTER_RESERVE: u16 = 2;
   let popup_w = (area.width as u32 * 60 / 100) as u16;
   let popup_x = area.x + (area.width.saturating_sub(popup_w)) / 2;
-  let popup_y = area.y + area.height.saturating_sub(POPUP_H);
+  let popup_y = area.y + area.height.saturating_sub(POPUP_H + FOOTER_RESERVE);
   Rect::new(popup_x, popup_y, popup_w, POPUP_H)
 }
 
@@ -320,17 +319,11 @@ pub(super) fn draw_reader_bottom_pane(
   let focused = app.reader_bottom.focused;
   let border_color = if focused { t.border_active } else { t.border };
 
-  let title_str = if app.reader_bottom.details {
-    " Feed Drawer Details · d: back  j/k: scroll  Esc: back "
-  } else if app.feed.search_active || !app.feed.search_query.is_empty() {
-    " Feed Drawer · / search active  Enter: open  Esc: clear  q: close "
-  } else {
-    " Feed Drawer · j/k: navigate  /: search  Enter: open  d: details  q: close "
-  };
+  // No box title — section headers were dropped from the design language; the
+  // footer carries the drawer's hotkey hints (j/k · Enter · Space · d · …).
   let block = Block::default()
     .borders(Borders::ALL)
-    .border_style(Style::default().fg(border_color))
-    .title(Span::styled(title_str, Style::default().fg(t.accent)));
+    .border_style(Style::default().fg(border_color));
 
   let inner = block.inner(popup_rect);
   frame.render_widget(block, popup_rect);
@@ -448,8 +441,10 @@ fn draw_bottom_pane_feed(frame: &mut Frame, app: &mut App, area: Rect) {
   let t = app.theme();
   let rows =
     Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(area);
-  let header_area = rows[0];
-  let list_area = rows[1];
+  // Horizontal breathing room from the border, matching the home/reader feed.
+  // Only the x/width shrink, so the height-derived scroll math is unaffected.
+  let header_area = h_margin(rows[0], 2);
+  let list_area = h_margin(rows[1], 2);
   let viewport_rows = list_area.height as usize;
   if viewport_rows == 0 {
     return;
@@ -485,48 +480,68 @@ fn draw_bottom_pane_feed(frame: &mut Frame, app: &mut App, area: Rect) {
     return;
   }
 
+  // Each item occupies 2 rows — a content line plus a blank separator —
+  // uniform with the home/reader feed. The drawer is wide, so titles stay
+  // single-line (ellipsised) rather than wrapping.
+  let bottom = list_area.y + list_area.height;
   if app.feed.feed_tab == FeedTab::History {
     let window =
       app.history_window(offset, offset.saturating_add(viewport_rows));
     for (rel_i, entry) in window.iter().enumerate() {
-      let i = offset + rel_i;
-      let is_selected = i == sel;
-      let row_y = list_area.y + rel_i as u16;
-      let row_rect = Rect::new(list_area.x, row_y, list_area.width, 1);
+      let row_y = list_area.y + (rel_i as u16) * 2;
+      if row_y >= bottom {
+        break;
+      }
+      let is_selected = offset + rel_i == sel;
       let row = drawer_history_row_line(
         entry,
         list_area.width as usize,
         is_selected,
         &t,
       );
-      if is_selected {
-        frame.render_widget(
-          Paragraph::new(row).style(t.style_selection()),
-          row_rect,
-        );
-      } else {
-        frame.render_widget(Paragraph::new(row), row_rect);
-      }
+      draw_drawer_row(frame, list_area, row_y, bottom, row, is_selected, &t);
     }
     return;
   }
 
   let window = app.visible_window(offset, offset.saturating_add(viewport_rows));
   for (rel_i, item) in window.iter().enumerate() {
-    let i = offset + rel_i;
-    let is_selected = i == sel;
-    let row_y = list_area.y + rel_i as u16;
-    let row_rect = Rect::new(list_area.x, row_y, list_area.width, 1);
+    let row_y = list_area.y + (rel_i as u16) * 2;
+    if row_y >= bottom {
+      break;
+    }
+    let is_selected = offset + rel_i == sel;
     let row =
       drawer_feed_row_line(item, list_area.width as usize, is_selected, &t);
-    if is_selected {
+    draw_drawer_row(frame, list_area, row_y, bottom, row, is_selected, &t);
+  }
+}
+
+/// Render one drawer feed row: the content line at `row_y` plus a blank
+/// separator on the next row. When selected, the highlight spans both rows so
+/// the selection reads as a single 2-row block.
+fn draw_drawer_row(
+  frame: &mut Frame,
+  list_area: Rect,
+  row_y: u16,
+  bottom: u16,
+  row: Line<'static>,
+  is_selected: bool,
+  t: &crate::theme::Theme,
+) {
+  let row_rect = Rect::new(list_area.x, row_y, list_area.width, 1);
+  if is_selected {
+    frame
+      .render_widget(Paragraph::new(row).style(t.style_selection()), row_rect);
+    let sep_y = row_y + 1;
+    if sep_y < bottom {
       frame.render_widget(
-        Paragraph::new(row).style(t.style_selection()),
-        row_rect,
+        Paragraph::new(Line::from(" ")).style(t.style_selection()),
+        Rect::new(list_area.x, sep_y, list_area.width, 1),
       );
-    } else {
-      frame.render_widget(Paragraph::new(row), row_rect);
     }
+  } else {
+    frame.render_widget(Paragraph::new(row), row_rect);
   }
 }
 
@@ -536,30 +551,27 @@ fn drawer_history_row_line(
   selected: bool,
   t: &crate::theme::Theme,
 ) -> Line<'static> {
-  let source_w = 7usize;
-  let kind_w = 6usize;
+  // Uniform with the paper drawer rows: Title · Date (Src / Kind dropped —
+  // both shown in the details view).
   let date_w = 10usize;
-  let title_w = width.saturating_sub(source_w + kind_w + date_w + 3).max(8);
-  let source =
-    truncate_str(&super::feed::history_source_label(entry), source_w);
-  let kind = match entry.kind {
-    crate::history::HistoryKind::Paper => "paper",
-    crate::history::HistoryKind::Query => "query",
-  };
+  let gap_w = 1usize;
+  let title_w = width.saturating_sub(date_w + gap_w).max(8);
   let date = entry
     .paper_meta
     .as_ref()
     .map(|m| truncate_str(&m.published_at, date_w))
     .unwrap_or_default();
   let title = truncate_str(&entry.title, title_w);
-  let row = format!(
-    "{source:<source_w$} {kind:<kind_w$} {title:<title_w$} {date:<date_w$}"
-  );
+
   if selected {
-    Line::from(Span::styled(row, t.style_selection_text()))
-  } else {
-    Line::from(row)
+    let row = format!("{title:<title_w$} {date:<date_w$}");
+    return Line::from(Span::styled(row, t.style_selection_text()));
   }
+  Line::from(vec![
+    Span::styled(format!("{title:<title_w$}"), Style::default().fg(t.text)),
+    Span::raw(" "),
+    Span::styled(format!("{date:<date_w$}"), Style::default().fg(t.text_dim)),
+  ])
 }
 
 pub(super) fn drawer_feed_header_line(
@@ -573,23 +585,11 @@ pub(super) fn drawer_feed_header_line(
     ));
   }
 
-  let source_w = 7usize;
-  let kind_w = 6usize;
   let date_w = 10usize;
-  let gap_w = 3usize;
-  let title_w = width.saturating_sub(source_w + kind_w + date_w + gap_w).max(8);
+  let gap_w = 1usize;
+  let title_w = width.saturating_sub(date_w + gap_w).max(8);
 
   Line::from(vec![
-    Span::styled(
-      format!("{:<source_w$}", "Src"),
-      Style::default().fg(t.header).add_modifier(Modifier::BOLD),
-    ),
-    Span::raw(" "),
-    Span::styled(
-      format!("{:<kind_w$}", "Kind"),
-      Style::default().fg(t.header).add_modifier(Modifier::BOLD),
-    ),
-    Span::raw(" "),
     Span::styled(
       format!("{:<title_w$}", "Title"),
       Style::default().fg(t.header).add_modifier(Modifier::BOLD),
@@ -618,29 +618,19 @@ pub(super) fn drawer_feed_row_line(
     return Line::from(Span::styled(title, style));
   }
 
-  let source_w = 7usize;
-  let kind_w = 6usize;
   let date_w = 10usize;
-  let gap_w = 3usize;
-  let title_w = width.saturating_sub(source_w + kind_w + date_w + gap_w).max(8);
+  let gap_w = 1usize;
+  let title_w = width.saturating_sub(date_w + gap_w).max(8);
 
-  let source = truncate_str(&super::feed::feed_source_label(item), source_w);
-  let kind = truncate_str(item.content_type.short_label(), kind_w);
   let title = truncate_str(&item.title, title_w);
   let date = truncate_str(&item.published_at, date_w);
 
   if selected {
-    let row = format!(
-      "{source:<source_w$} {kind:<kind_w$} {title:<title_w$} {date:<date_w$}"
-    );
+    let row = format!("{title:<title_w$} {date:<date_w$}");
     return Line::from(Span::styled(row, t.style_selection_text()));
   }
 
   Line::from(vec![
-    Span::styled(format!("{source:<source_w$}"), Style::default().fg(t.accent)),
-    Span::raw(" "),
-    Span::styled(format!("{kind:<kind_w$}"), Style::default().fg(t.text_dim)),
-    Span::raw(" "),
     Span::styled(format!("{title:<title_w$}"), Style::default().fg(t.text)),
     Span::raw(" "),
     Span::styled(format!("{date:<date_w$}"), Style::default().fg(t.text_dim)),

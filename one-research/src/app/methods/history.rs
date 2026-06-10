@@ -238,16 +238,18 @@ impl App {
       } else {
         self.visible_count()
       };
-      // Mirrors the pre-C6 inline math at reader.rs:434-441 exactly:
-      // cap max at `total - 1`, then clamp offset so the selection is
-      // within [offset, offset + viewport_rows).
+      // Each drawer item renders as 2 rows (content + blank separator), so
+      // the number of items visible is half the available rows. Cap max at
+      // `total - 1`, then clamp offset so the selection stays within
+      // [offset, offset + items_per_viewport).
+      let items_per_viewport = (viewport_rows / 2).max(1);
       self.reader_bottom.scroll.set_max(total.saturating_sub(1));
       let sel = self.reader_bottom.feed_popup_selected;
       let mut offset = self.reader_bottom.scroll.offset();
       if sel < offset {
         offset = sel;
-      } else if sel >= offset.saturating_add(viewport_rows) {
-        offset = sel + 1 - viewport_rows;
+      } else if sel >= offset.saturating_add(items_per_viewport) {
+        offset = sel + 1 - items_per_viewport;
       }
       self.reader_bottom.scroll.set_offset(offset);
     }

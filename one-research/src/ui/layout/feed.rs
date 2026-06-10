@@ -9,7 +9,7 @@ use ratatui::{
   },
 };
 
-use super::reader::{drawer_feed_header_line, drawer_feed_row_line};
+use super::reader::drawer_feed_header_line;
 use super::widgets::{pane_inset, safe_truncate_chars, truncate, truncate_str};
 use crate::app::FeedTab;
 use crate::models::SourcePlatform;
@@ -472,6 +472,9 @@ pub fn draw_narrow_feed(
   area: Rect,
 ) {
   let t = ctx.theme;
+  // Inset for breathing room inside the pane border — same padding the home
+  // feed (draw_item_table) uses, so the reader feed isn't flush to the edges.
+  let area = pane_inset(area);
   let rows =
     Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(area);
   let header_area = rows[0];
@@ -522,9 +525,26 @@ pub fn draw_narrow_feed(
     .iter()
     .map(|&i| &items[i])
     .collect();
-  // Pre-wrap titles once per item; `reader_feed_row_lines` previously
-  // re-ran textwrap on each call, doubling work against the same
-  // textwrap done for row-height counting.
+  render_wrapped_feed_window(frame, list_area, &visible, offset, selected, &t);
+}
+
+/// Render a window of feed items into `list_area` with wrapped 2-line titles, a
+/// blank separator row between items, and selection highlight. Shared by the
+/// reader feed (`draw_narrow_feed`) and the feed drawer so both render
+/// uniformly with the home feed's language. `visible` is the item slice
+/// starting at `offset`; `selected` is the absolute selected index.
+pub(super) fn render_wrapped_feed_window(
+  frame: &mut Frame,
+  list_area: Rect,
+  visible: &[&crate::models::FeedItem],
+  offset: usize,
+  selected: usize,
+  t: &crate::theme::Theme,
+) {
+  let title_w = reader_feed_title_width(list_area.width as usize);
+  // Pre-wrap titles once per item; `reader_feed_row_lines` previously re-ran
+  // textwrap on each call, doubling work against the same textwrap done for
+  // row-height counting.
   let pre_wrapped: Vec<Vec<String>> = visible
     .iter()
     .map(|item| reader_feed_title_lines(&item.title, title_w))
@@ -541,7 +561,7 @@ pub fn draw_narrow_feed(
       &pre_wrapped[rel_i],
       list_area.width as usize,
       is_selected,
-      &t,
+      t,
     );
     for line in row_lines {
       if y >= list_area.y + list_area.height {
@@ -577,11 +597,11 @@ fn reader_feed_title_width(width: usize) -> usize {
   if width < 34 {
     width.max(8)
   } else {
-    let source_w = 7usize;
-    let kind_w = 6usize;
+    // Uniform with the wide feed: Title is the flexible remainder after the
+    // Date column (Src / Kind dropped — both shown in the details pane).
     let date_w = 10usize;
-    let gap_w = 3usize;
-    width.saturating_sub(source_w + kind_w + date_w + gap_w).max(8)
+    let gap_w = 1usize;
+    width.saturating_sub(date_w + gap_w).max(8)
   }
 }
 
@@ -620,42 +640,38 @@ fn reader_feed_row_lines_with_wrapped(
   t: &crate::theme::Theme,
 ) -> Vec<Line<'static>> {
   if width < 34 {
-    return vec![drawer_feed_row_line(item, width, selected, t)];
+    // No room for a Date column here — render the wrapped title lines
+    // full-width so long titles wrap to the next line instead of being
+    // truncated to a single ellipsised line. Selection highlight is applied
+    // to the whole row rect by the caller, so no padding is needed.
+    let style = if selected {
+      t.style_selection_text()
+    } else {
+      Style::default().fg(t.text)
+    };
+    return title_lines
+      .iter()
+      .map(|title| Line::from(Span::styled(title.clone(), style)))
+      .collect();
   }
 
-  let source_w = 7usize;
-  let kind_w = 6usize;
   let date_w = 10usize;
   let title_w = reader_feed_title_width(width);
-  let source = truncate_str(&feed_source_label(item), source_w);
-  let kind = truncate_str(item.content_type.short_label(), kind_w);
   let date = truncate_str(&item.published_at, date_w);
 
   title_lines
     .iter()
     .enumerate()
     .map(|(idx, title)| {
-      let source_text = if idx == 0 {
-        format!("{source:<source_w$}")
-      } else {
-        " ".repeat(source_w)
-      };
-      let kind_text =
-        if idx == 0 { format!("{kind:<kind_w$}") } else { " ".repeat(kind_w) };
       let date_text =
         if idx == 0 { format!("{date:<date_w$}") } else { " ".repeat(date_w) };
 
       if selected {
-        let row =
-          format!("{source_text} {kind_text} {title:<title_w$} {date_text}");
+        let row = format!("{title:<title_w$} {date_text}");
         return Line::from(Span::styled(row, t.style_selection_text()));
       }
 
       Line::from(vec![
-        Span::styled(source_text, Style::default().fg(t.text_dim)),
-        Span::raw(" "),
-        Span::styled(kind_text, Style::default().fg(t.text_dim)),
-        Span::raw(" "),
         Span::styled(format!("{title:<title_w$}"), Style::default().fg(t.text)),
         Span::raw(" "),
         Span::styled(date_text, Style::default().fg(t.text_dim)),

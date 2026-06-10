@@ -96,14 +96,10 @@ pub fn draw_main_row(
     draw_reader_workspace_header(frame, app, workspace_area, "Dual Reader");
     let inner_w = body_area.width.saturating_sub(2);
     let right_w = (inner_w / 2).max(1);
-    let (left_rect, right_rect) = draw_horiz_split_box(
-      frame,
-      body_area,
-      right_w,
-      "Primary",
-      "Secondary",
-      &t,
-    );
+    // No border titles — the per-reader tab bars already label each side, and
+    // section headers were dropped from the design language.
+    let (left_rect, right_rect) =
+      draw_horiz_split_box(frame, body_area, right_w, "", "", &t);
     let (left_reader_rect, left_notes_rect) = if app.notes.primary_visible {
       let (reader, notes) = split_reader_note_dock(left_rect);
       (reader, Some(notes))
@@ -203,14 +199,10 @@ pub fn draw_main_row(
     draw_reader_workspace_header(frame, app, workspace_area, "Reader + Feed");
     let inner_w = body_area.width.saturating_sub(2);
     let reader_w = (inner_w * 60 / 100).max(1);
-    let (feed_rect, reader_rect) = draw_horiz_split_box(
-      frame,
-      body_area,
-      reader_w,
-      "Reader Feed",
-      "Reader",
-      &t,
-    );
+    // No border titles — the column header and reader tab bar already name
+    // each region, and section headers were dropped from the design language.
+    let (feed_rect, reader_rect) =
+      draw_horiz_split_box(frame, body_area, reader_w, "", "", &t);
     dispatch_feed_pane(frame, app, feed_rect);
     {
       let rows = Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
