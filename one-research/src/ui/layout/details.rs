@@ -171,7 +171,7 @@ pub(super) fn draw_item_detail(frame: &mut Frame, app: &mut App, area: Rect) {
     //   - metadata values (source / repo / topics / URL) use the accent color;
     //   - content values (authors / summary) use the terminal-default fg so
     //     they match the reading view and the abstract.
-    let title_style = Style::default().fg(t.text).add_modifier(Modifier::BOLD);
+    let title_style = Style::default().add_modifier(Modifier::BOLD);
     let meta_style = Style::default().fg(t.text_dim);
     let label_style = Style::default().fg(t.header);
     let dim_style = Style::default().fg(t.text_dim);
