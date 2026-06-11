@@ -26,14 +26,6 @@ impl NotesMode {
   pub const CYCLE_ORDER: [NotesMode; 3] =
     [NotesMode::PaperNotes, NotesMode::Library, NotesMode::Capture];
 
-  pub fn title(self) -> &'static str {
-    match self {
-      Self::PaperNotes => "Paper Notes",
-      Self::Library => "Notes Library",
-      Self::Capture => "Capture",
-    }
-  }
-
   pub fn footer_label(self) -> &'static str {
     match self {
       Self::PaperNotes => "paper notes",

@@ -63,7 +63,10 @@ fn draw_notes_mode_switcher(
   focused: bool,
   t: &crate::theme::Theme,
 ) {
-  let ordinary = Style::default().fg(t.text_dim);
+  // Bold carries the hierarchy: the whole switcher reads as the pane header by
+  // weight, so no divider rule is needed to set it apart from the content below.
+  let separator = Style::default().fg(t.text_dim);
+  let inactive = Style::default().fg(t.text_dim).add_modifier(Modifier::BOLD);
   let active = if focused {
     Style::default().fg(t.accent).add_modifier(Modifier::BOLD)
   } else {
@@ -76,7 +79,7 @@ fn draw_notes_mode_switcher(
       .enumerate()
   {
     if idx > 0 {
-      spans.push(Span::styled("  ·  ", ordinary));
+      spans.push(Span::styled("  ·  ", separator));
     }
     let label = match candidate {
       NotesMode::PaperNotes => "Paper Notes",
@@ -85,7 +88,7 @@ fn draw_notes_mode_switcher(
     };
     spans.push(Span::styled(
       label,
-      if candidate == mode { active } else { ordinary },
+      if candidate == mode { active } else { inactive },
     ));
   }
   frame.render_widget(
@@ -342,7 +345,7 @@ fn draw_notes_browser_preview(
     Line::from(""),
     Line::from(Span::styled(
       truncate(&note.title, inner.width as usize),
-      Style::default().fg(t.header).add_modifier(Modifier::BOLD),
+      Style::default().fg(t.text).add_modifier(Modifier::BOLD),
     )),
   ];
   lines.push(Line::from(Span::styled(
@@ -395,42 +398,33 @@ pub fn draw_notes_surface(
       Constraint::Length(1),
       Constraint::Length(1),
       Constraint::Length(1),
-      Constraint::Length(1),
       Constraint::Min(0),
     ]
   } else {
     vec![
       Constraint::Length(1),
       Constraint::Length(1),
-      Constraint::Length(1),
       Constraint::Min(0),
     ]
   })
   .split(area);
-  draw_note_dock_rule(
-    frame,
-    rows[0],
-    app.notes_mode_for_side(side).title(),
-    is_focused,
-    theme,
-  );
   draw_notes_mode_switcher(
     frame,
-    rows[1],
+    rows[0],
     app.notes_mode_for_side(side),
     is_focused,
     theme,
   );
   frame.render_widget(
-    Paragraph::new(build_notes_summary_line(app, side, rows[2].width, theme))
+    Paragraph::new(build_notes_summary_line(app, side, rows[1].width, theme))
       .wrap(Wrap { trim: false }),
-    rows[2],
+    rows[1],
   );
   let content_row = if show_tabs {
-    draw_notes_tab_bar(frame, rows[3], &tabs, active, is_focused, theme);
-    4
-  } else {
+    draw_notes_tab_bar(frame, rows[2], &tabs, active, is_focused, theme);
     3
+  } else {
+    2
   };
   let content_area = rows[content_row];
 
@@ -546,36 +540,6 @@ pub fn draw_note_dock(
   theme: &crate::theme::Theme,
 ) {
   draw_notes_surface(frame, app, area, side, true, theme);
-}
-
-pub(super) fn draw_note_dock_rule(
-  frame: &mut Frame,
-  area: Rect,
-  title: &str,
-  focused: bool,
-  t: &crate::theme::Theme,
-) {
-  let w = area.width as usize;
-  let style = if focused {
-    Style::default().fg(t.border_active)
-  } else {
-    Style::default().fg(t.border)
-  };
-  let title_style = if focused {
-    Style::default().fg(t.accent).add_modifier(Modifier::BOLD)
-  } else {
-    Style::default().fg(t.header).add_modifier(Modifier::BOLD)
-  };
-  let left = "── ";
-  let right = " ";
-  let fill =
-    "─".repeat(w.saturating_sub(left.len() + title.len() + right.len()));
-  let line = Line::from(vec![
-    Span::styled(left, style),
-    Span::styled(title.to_string(), title_style),
-    Span::styled(format!("{right}{fill}"), style),
-  ]);
-  frame.render_widget(Paragraph::new(line), area);
 }
 
 fn draw_note_preview(

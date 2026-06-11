@@ -381,11 +381,6 @@ pub fn draw_main_row(
 
   // ── Narrow mode (< 100 cols): vertical stack — feed top, details/notes bottom ──
   if area.width < 100 {
-    let bottom_title = if app.notes.primary_visible {
-      app.notes.primary.mode.title()
-    } else {
-      ""
-    };
     // Inset by 1 row top + 1 row bottom for breathing room around the frame.
     let area = Rect {
       y: area.y.saturating_add(1),
@@ -393,7 +388,7 @@ pub fn draw_main_row(
       ..area
     };
     let (feed_rect, bottom_rect) =
-      draw_vert_split_box(frame, area, 50, "", bottom_title, &t);
+      draw_vert_split_box(frame, area, 50, "", "", &t);
 
     let t = std::time::Instant::now();
     dispatch_feed_pane(frame, app, feed_rect);
@@ -447,11 +442,8 @@ pub fn draw_main_row(
   } else {
     right_col_width(area.width).min(inner_w.saturating_sub(2))
   };
-  let right_title =
-    if app.notes.primary_visible { app.notes.primary.mode.title() } else { "" };
-
   let (feed_rect, right_rect) =
-    draw_horiz_split_box(frame, area, right_w, "", right_title, &t);
+    draw_horiz_split_box(frame, area, right_w, "", "", &t);
 
   let t = std::time::Instant::now();
   dispatch_feed_pane(frame, app, feed_rect);
