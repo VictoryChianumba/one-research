@@ -28,28 +28,6 @@ use sources::handle_sources_popup;
 
 /// Top-level key dispatcher — called once per key press event from the main loop.
 pub fn dispatch(key: KeyEvent, app: &mut App) {
-  dispatch_inner(key, app);
-  reconcile_notes_selection_from_backend(app);
-}
-
-/// Mirror the backend's `current_note_id` into the per-side model
-/// selection after every key dispatch (ADR-016 PR2, safe half).
-///
-/// Render reads `app.notes.<side>.selected`; the backend still owns the
-/// operational selection. Both notes instances share one backend, so
-/// both mirror the same `current_note_id` — matching the old render,
-/// which read that single id regardless of side. PR3 inverts the
-/// ownership and removes this mirror.
-fn reconcile_notes_selection_from_backend(app: &mut App) {
-  let current =
-    app.notes.app.as_ref().and_then(|na| na.current_note_id.clone());
-  app.notes.primary.selected = current.clone();
-  if let Some(sec) = app.notes.secondary.as_mut() {
-    sec.selected = current;
-  }
-}
-
-fn dispatch_inner(key: KeyEvent, app: &mut App) {
   // Tag picker popup — intercepts all keys when open.
   if app.tag_picker.active {
     handle_tag_picker(key, app);
@@ -352,26 +330,12 @@ fn visible_note_ids(app: &App, side: FocusedReader) -> Vec<String> {
 }
 
 fn ensure_notes_browser_selection(app: &mut App, side: FocusedReader) {
+  // The model owns selection (ADR-016). Reconcile it against the live
+  // visible set; the backend is seeded lazily at the editor handoff.
   let visible_ids = visible_note_ids(app, side);
-  let Some(notes_app) = app.notes.app.as_mut() else {
-    return;
-  };
-
-  notes_app.notes_state = notes::app::NotesState::List;
-  if visible_ids.is_empty() {
-    notes_app.set_current_note(None);
-    return;
+  if let Some(inst) = app.notes.instance_mut(side) {
+    inst.reconcile_selection(&visible_ids);
   }
-
-  let current = notes_app.current_note_id.clone();
-  if current
-    .as_ref()
-    .is_some_and(|id| visible_ids.iter().any(|visible| visible == id))
-  {
-    return;
-  }
-
-  notes_app.set_current_note(visible_ids.first().cloned());
 }
 
 fn sync_notes_tabs_for_paper_mode(
@@ -409,24 +373,9 @@ fn sync_notes_tabs_for_paper_mode(
   }
 }
 
-fn sync_notes_tab_selection_to_current_note(
-  app: &mut App,
-  side: FocusedReader,
-) {
-  let current_id = app
-    .notes
-    .app
-    .as_ref()
-    .and_then(|notes_app| notes_app.current_note_id.clone());
-  let Some(current_id) = current_id else {
-    return;
-  };
+fn focus_notes_tab_for_selection(app: &mut App, side: FocusedReader) {
   if let Some(inst) = app.notes.instance_mut(side) {
-    if let Some(idx) =
-      inst.tabs.iter().position(|tab| tab.note_id == current_id)
-    {
-      inst.active_tab = idx;
-    }
+    inst.focus_tab_for_selection();
   }
 }
 
@@ -447,8 +396,9 @@ fn activate_notes_mode(app: &mut App, side: FocusedReader, mode: NotesMode) {
 
   match mode {
     NotesMode::Capture => {
-      if let Some(notes_app) = app.notes.app.as_mut() {
-        notes_app.set_current_note(None);
+      // Capture has no browser list; clear the selection.
+      if let Some(inst) = app.notes.instance_mut(side) {
+        inst.select(None);
       }
     }
     NotesMode::Library => {
@@ -459,7 +409,7 @@ fn activate_notes_mode(app: &mut App, side: FocusedReader, mode: NotesMode) {
         sync_notes_tabs_for_paper_mode(app, side, context);
       }
       ensure_notes_browser_selection(app, side);
-      sync_notes_tab_selection_to_current_note(app, side);
+      focus_notes_tab_for_selection(app, side);
     }
   }
 }
@@ -487,22 +437,6 @@ fn begin_capture_note(app: &mut App, side: FocusedReader) {
   notes_app.apply_initial_focus();
 }
 
-fn select_notes_browser_index(
-  app: &mut App,
-  side: FocusedReader,
-  index: usize,
-) {
-  let visible_ids = visible_note_ids(app, side);
-  let Some(note_id) = visible_ids.get(index).cloned() else {
-    return;
-  };
-  if let Some(notes_app) = app.notes.app.as_mut() {
-    notes_app.set_current_note(Some(note_id));
-    notes_app.notes_state = notes::app::NotesState::List;
-  }
-  sync_notes_tab_selection_to_current_note(app, side);
-}
-
 fn move_notes_browser_selection(
   app: &mut App,
   side: FocusedReader,
@@ -510,39 +444,30 @@ fn move_notes_browser_selection(
   page_size: usize,
   absolute: Option<usize>,
 ) {
+  // Selection lives on the model; the backend is untouched until the
+  // editor handoff. The tab highlight follows when the selection is an
+  // open tab.
   let visible_ids = visible_note_ids(app, side);
-  if visible_ids.is_empty() {
-    if let Some(notes_app) = app.notes.app.as_mut() {
-      notes_app.set_current_note(None);
-      notes_app.notes_state = notes::app::NotesState::List;
-    }
-    return;
+  if let Some(inst) = app.notes.instance_mut(side) {
+    inst.move_selection(&visible_ids, delta, page_size, absolute);
+    inst.focus_tab_for_selection();
   }
+}
 
-  let current_idx = app
-    .notes
-    .app
-    .as_ref()
-    .and_then(|notes_app| {
-      notes_app.current_note_id.as_ref().and_then(|current_id| {
-        visible_ids.iter().position(|note_id| note_id == current_id)
-      })
-    })
-    .unwrap_or(0);
-
-  let target = if let Some(absolute) = absolute {
-    absolute.min(visible_ids.len() - 1)
-  } else if delta == 0 {
-    current_idx
-  } else if delta > 1 || delta < -1 {
-    (current_idx as isize + delta * page_size as isize)
-      .clamp(0, (visible_ids.len() - 1) as isize) as usize
-  } else {
-    (current_idx as isize + delta).clamp(0, (visible_ids.len() - 1) as isize)
-      as usize
-  };
-
-  select_notes_browser_index(app, side, target);
+/// Explicit editor handoff (ADR-016 §S4). Copy the model's selection
+/// into the backend so the editor, delete, and list-popup operations
+/// target the selected note, and drive the backend in `List` so `Esc`
+/// closes the pane. Replaces the old per-keystroke `current_note_id`
+/// reset (`sync_notes_app_to_side`) that conflated selection with the
+/// active tab. Called just before any browser-key fall-through.
+fn seed_backend_from_selection(app: &mut App, side: FocusedReader) {
+  let selected = app.notes.instance(side).and_then(|inst| inst.selected.clone());
+  if let Some(notes_app) = app.notes.app.as_mut() {
+    if notes_app.current_note_id != selected {
+      notes_app.set_current_note(selected);
+    }
+    notes_app.notes_state = notes::app::NotesState::List;
+  }
 }
 
 fn mutate_note_links_for_context(
@@ -554,6 +479,8 @@ fn mutate_note_links_for_context(
     app.set_notification("No paper context for this notes pane.".to_string());
     return;
   };
+  // Operate on the model's selection, not the backend's last-focused note.
+  seed_backend_from_selection(app, side);
   let Some(notes_app) = app.notes.app.as_mut() else {
     return;
   };
@@ -597,7 +524,7 @@ fn mutate_note_links_for_context(
     sync_notes_tabs_for_paper_mode(app, side, &context);
   }
   ensure_notes_browser_selection(app, side);
-  sync_notes_tab_selection_to_current_note(app, side);
+  focus_notes_tab_for_selection(app, side);
   let action = if detach { "Detached" } else { "Attached" };
   app.set_notification(format!("{action} current paper in note."));
 }
@@ -646,17 +573,12 @@ fn focused_note_side(app: &App) -> Option<FocusedReader> {
 }
 
 fn sync_notes_app_to_side(app: &mut App, side: FocusedReader) {
+  // The backend's `current_note_id` is no longer reset to the active tab
+  // here (ADR-016 PR3) — that conflated browser selection with the
+  // editor target. Selection lives on the model; the backend is seeded
+  // at the editor handoff. This now only tracks which reader side has
+  // focus.
   app.reader.focused = side;
-  let note_id = app
-    .notes
-    .instance(side)
-    .and_then(|inst| inst.tabs.get(inst.active_tab))
-    .map(|tab| tab.note_id.clone());
-  if let (Some(na), Some(note_id)) = (app.notes.app.as_mut(), note_id) {
-    if na.current_note_id.as_deref() != Some(note_id.as_str()) {
-      na.set_current_note(Some(note_id));
-    }
-  }
 }
 
 fn sync_focus_after_pane_change(app: &mut App) {
@@ -1235,13 +1157,13 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
 
 fn notes_prev_tab(app: &mut App, side: FocusedReader) {
   if let Some(note_id) = app.notes.prev_tab(side) {
-    sync_notes_backend_to_active(app, &note_id);
+    select_notes_tab_note(app, side, note_id);
   }
 }
 
 fn notes_next_tab(app: &mut App, side: FocusedReader) {
   if let Some(note_id) = app.notes.next_tab(side) {
-    sync_notes_backend_to_active(app, &note_id);
+    select_notes_tab_note(app, side, note_id);
   }
 }
 
@@ -1253,15 +1175,17 @@ fn notes_close_active_tab(app: &mut App, side: FocusedReader) {
       app.focus.focused_pane = focus_fallback_after_notes(app, side);
     }
     CloseTabOutcome::Switched(note_id) => {
-      sync_notes_backend_to_active(app, &note_id);
+      select_notes_tab_note(app, side, note_id);
     }
   }
 }
 
-fn sync_notes_backend_to_active(app: &mut App, note_id: &str) {
-  if let Some(na) = app.notes.app.as_mut() {
-    na.focus_note(note_id);
-    na.notes_state = notes::app::NotesState::List;
+/// Switching tabs moves the browser selection to the tab's note
+/// (ADR-016 PR3 — model-owned; the old form drove the backend's
+/// `focus_note`/`current_note_id`).
+fn select_notes_tab_note(app: &mut App, side: FocusedReader, note_id: String) {
+  if let Some(inst) = app.notes.instance_mut(side) {
+    inst.select(Some(note_id));
   }
 }
 
@@ -1331,9 +1255,6 @@ fn handle_notes_pane(key: KeyEvent, app: &mut App) -> bool {
   let allows_shell_shortcuts =
     app.notes.app.as_ref().is_some_and(notes_shell_shortcuts_allowed);
   if allows_shell_shortcuts {
-    if let Some(notes_app) = app.notes.app.as_mut() {
-      notes_app.notes_state = notes::app::NotesState::List;
-    }
     match key.code {
       KeyCode::Char('[') => {
         cycle_notes_mode(app, side, -1);
@@ -1403,6 +1324,10 @@ fn handle_notes_pane(key: KeyEvent, app: &mut App) -> bool {
       }
       _ => {}
     }
+    // Unmatched browser key (Enter to edit, d delete, f/o// popups, Tab,
+    // Esc to close): hand the model's selection to the backend so the
+    // operation targets it, then let the backend handle the key.
+    seed_backend_from_selection(app, side);
   }
   if let Some(notes_app) = app.notes.app.as_mut() {
     if notes::handle_key(key, notes_app) {
@@ -1429,10 +1354,115 @@ fn handle_notes_pane(key: KeyEvent, app: &mut App) -> bool {
     if app.notes_mode_for_side(side) == NotesMode::Capture {
       app.set_notes_mode_for_side(side, NotesMode::PaperNotes);
     }
-    ensure_notes_browser_selection(app, side);
-    sync_notes_tab_selection_to_current_note(app, side);
+    if let Some(inst) = app.notes.instance_mut(side) {
+      inst.select(Some(note_id));
+      inst.focus_tab_for_selection();
+    }
+  }
+  // The backend fall-through may have changed the note set (delete,
+  // undo/redo). Reconcile the model selection against the new visible
+  // set so a deleted/filtered selection doesn't dangle.
+  let visible_ids = visible_note_ids(app, side);
+  if let Some(inst) = app.notes.instance_mut(side) {
+    inst.reconcile_selection(&visible_ids);
   }
   true
+}
+
+// ── ADR-016 PR3 — dock-owns-selection characterization tests ──────────────────
+//
+// These drive `dispatch` end-to-end against an in-memory notes backend.
+// They pin the behaviour the inversion was supposed to fix (selection
+// persists across keystrokes; Enter edits the *selected* note, not the
+// active tab) and guard the editor handoff from regressing.
+
+#[cfg(test)]
+mod notes_selection_tests {
+  use super::*;
+
+  fn note(id: &str) -> notes::Note {
+    notes::Note {
+      note_id: id.to_string(),
+      title: format!("Note {id}"),
+      content: String::new(),
+      tags: Vec::new(),
+      linked_papers: Vec::new(),
+      created_at: chrono::Utc::now(),
+      updated_at: chrono::Utc::now(),
+    }
+  }
+
+  /// An App with the primary notes pane open in Library mode over the
+  /// given notes, selection seeded as `open_notes` would.
+  fn library_app(ids: &[&str]) -> App {
+    let mut app = App::new();
+    let mut backend = notes::app::App::new();
+    backend.notes = ids.iter().map(|id| note(id)).collect();
+    app.notes.app = Some(backend);
+    app.notes.primary_visible = true;
+    app.notes.primary.mode = NotesMode::Library;
+    app.focus.focused_pane = PaneId::Notes;
+    let visible = visible_note_ids(&app, FocusedReader::Primary);
+    app.notes.primary.reconcile_selection(&visible);
+    app
+  }
+
+  fn press(app: &mut App, code: KeyCode) {
+    dispatch(KeyEvent::new(code, KeyModifiers::empty()), app);
+  }
+
+  #[test]
+  fn selection_persists_across_keystrokes() {
+    let mut app = library_app(&["a", "b", "c", "d"]);
+    assert_eq!(app.notes.primary.selected_note_id(), Some("a"));
+    // Two j's must move two rows. Before the inversion, the per-keystroke
+    // reset to the active tab made every j start over from the same row.
+    press(&mut app, KeyCode::Char('j'));
+    press(&mut app, KeyCode::Char('j'));
+    assert_eq!(app.notes.primary.selected_note_id(), Some("c"));
+    press(&mut app, KeyCode::Char('k'));
+    assert_eq!(app.notes.primary.selected_note_id(), Some("b"));
+  }
+
+  #[test]
+  fn enter_edits_the_selected_note_not_the_active_tab() {
+    let mut app = library_app(&["a", "b", "c"]);
+    press(&mut app, KeyCode::Char('j')); // → b
+    press(&mut app, KeyCode::Char('j')); // → c
+    assert_eq!(app.notes.primary.selected_note_id(), Some("c"));
+    press(&mut app, KeyCode::Enter);
+    let backend = app.notes.app.as_ref().unwrap();
+    assert_eq!(
+      backend.notes_state,
+      notes::app::NotesState::Editor,
+      "Enter opens the editor"
+    );
+    assert_eq!(
+      backend.current_note_id.as_deref(),
+      Some("c"),
+      "editor handoff targets the selected note, not the active tab"
+    );
+  }
+
+  #[test]
+  fn g_and_capital_g_jump_to_ends() {
+    let mut app = library_app(&["a", "b", "c", "d"]);
+    press(&mut app, KeyCode::Char('G'));
+    assert_eq!(app.notes.primary.selected_note_id(), Some("d"));
+    press(&mut app, KeyCode::Char('g'));
+    assert_eq!(app.notes.primary.selected_note_id(), Some("a"));
+  }
+
+  #[test]
+  fn esc_in_browser_closes_the_pane() {
+    let mut app = library_app(&["a", "b"]);
+    assert!(app.notes.is_visible(FocusedReader::Primary));
+    press(&mut app, KeyCode::Esc);
+    assert!(
+      !app.notes.is_visible(FocusedReader::Primary),
+      "Esc from the browser list (List state) hides the pane"
+    );
+  }
 }
 
 // ── View handlers ─────────────────────────────────────────────────────────────

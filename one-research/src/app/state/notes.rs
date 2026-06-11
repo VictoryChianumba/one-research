@@ -77,11 +77,6 @@ pub struct NotesInstanceModel {
   pub selected: Option<String>,
 }
 
-// PR2 (safe half) wires the render side: `selected` is read by the
-// renderer and written by the orchestrator's backend mirror. These
-// selection *methods* are wired into the dock's nav in PR3, where the
-// ownership inverts; staged ahead of use per ADR-016 §S5.
-#[allow(dead_code)]
 impl NotesInstanceModel {
   /// The `note_id` currently selected in this instance's browser, if any.
   pub fn selected_note_id(&self) -> Option<&str> {
@@ -156,6 +151,19 @@ impl NotesInstanceModel {
     };
     self.selected = visible_ids.get(target).cloned();
     self.selected.as_deref()
+  }
+
+  /// Point `active_tab` at the open tab matching the current selection,
+  /// if one exists. No-op when the selection isn't an open tab (e.g. a
+  /// Library note that was never opened) — the tab bar simply doesn't
+  /// follow. Keeps the tab highlight coherent with the browser cursor.
+  pub fn focus_tab_for_selection(&mut self) {
+    let Some(id) = self.selected.as_ref() else {
+      return;
+    };
+    if let Some(idx) = self.tabs.iter().position(|tab| &tab.note_id == id) {
+      self.active_tab = idx;
+    }
   }
 }
 

@@ -48,7 +48,7 @@ fn notes_browser_selected_index(
   // Selection identity is owned by the model (ADR-016). The orchestrator
   // keeps `selected` in sync with the backend after each key dispatch;
   // render reads it here, never `current_note_id`.
-  let selected = app.notes.instance(side)?.selected.as_deref()?;
+  let selected = app.notes.instance(side)?.selected_note_id()?;
   visible.iter().position(|note| note.note_id == selected)
 }
 

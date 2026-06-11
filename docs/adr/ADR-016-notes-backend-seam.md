@@ -1,6 +1,6 @@
 # ADR-016 — Notes backend seam: the dock owns selection
 
-- **Status:** Proposed (2026-06-11). PR 1 (this ADR + `selected` field on `NotesInstanceModel` + boundary tests) landed. PR 2 landed as a **render-only safe half** (see §S5 and the Discovery note below); the nav inversion moved into PR 3. PR 4 follows.
+- **Status:** Proposed (2026-06-11). PR 1 (this ADR + `selected` field on `NotesInstanceModel` + boundary tests) landed. PR 2 landed as a **render-only safe half** (see §S5 and the Discovery note below). PR 3 (nav inversion + editor handoff + force-`List`/dead-`Preview` removal) landed and **intentionally fixes the two latent bugs the entanglement caused** (see the Discovery note). PR 4 (tripwire + Accepted) follows.
 - **Date:** 2026-06-11
 - **Owner:** Victory Chianumba
 - **Supersedes:** none
@@ -26,6 +26,13 @@ This was surfaced by the 2026-06-11 notes deep-dive, not by a feature pulling on
 Tracing the seam to write PR 2 revealed that `current_note_id` is **not** cleanly "the browser selection." It is reset to the *active tab's* note at the top of every notes keystroke (`handle_notes_pane` → `sync_notes_app_to_side`, `keys/mod.rs:1307`), then overridden by specific handlers (`j`/`k`/`g`/`G`, mode switch) and by tab navigation (`sync_notes_backend_to_active` → `focus_note`). Browser-selection and the **editor target** (what `Enter` edits) are conflated through that one field, and the per-keystroke reset interacts with Library mode (where the visible list contains notes that are not open tabs) in a way that could not be verified behaviour-identical without running the app.
 
 Consequence: the nav inversion ("delete the five helpers, nav writes the model") cannot be made *provably* behaviour-preserving in isolation, because deciding what the per-keystroke reset should do is bound up with the editor-target decision — PR 3's explicit-handoff work. PR 2 was therefore split: the **render half** (provably safe) landed; the **nav inversion** moved into PR 3, where `sync_notes_app_to_side` and the editor target can be untangled in one coherent pass.
+
+**PR 3 outcome — two latent bugs fixed, not preserved.** Removing the per-keystroke reset (`sync_notes_app_to_side` no longer writes `current_note_id`) and routing the editor through an explicit handoff (`seed_backend_from_selection`) changed two Library-mode behaviours that the entanglement had silently broken:
+
+1. **Selection now persists across keystrokes.** Before, the reset re-pinned the cursor to the active tab each key, so consecutive `j`/`k` could fail to advance for a non-tab note. Now `j`,`j` moves two rows.
+2. **`Enter` edits the selected note, not the active tab.** Before, the reset meant `Enter` on a non-tab Library note opened the editor on whatever the active tab was. Now the handoff seeds `current_note_id` from `selected`, so the editor opens on the highlighted note.
+
+Both are pinned by dispatch-level characterization tests (`keys::notes_selection_tests`) that drive `dispatch` end-to-end against an in-memory backend. This is why PR 3's behaviour-change cell reads "intended-equivalent" rather than "none": equivalent for the paths that already worked, corrected for the two that didn't. (Interactive run-testing was the intended manual check; it is not possible in the headless CI/sandbox — the dispatch-level tests stand in for it.)
 
 ## Decision
 
