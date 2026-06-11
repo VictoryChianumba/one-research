@@ -28,6 +28,28 @@ use sources::handle_sources_popup;
 
 /// Top-level key dispatcher — called once per key press event from the main loop.
 pub fn dispatch(key: KeyEvent, app: &mut App) {
+  dispatch_inner(key, app);
+  reconcile_notes_selection_from_backend(app);
+}
+
+/// Mirror the backend's `current_note_id` into the per-side model
+/// selection after every key dispatch (ADR-016 PR2, safe half).
+///
+/// Render reads `app.notes.<side>.selected`; the backend still owns the
+/// operational selection. Both notes instances share one backend, so
+/// both mirror the same `current_note_id` — matching the old render,
+/// which read that single id regardless of side. PR3 inverts the
+/// ownership and removes this mirror.
+fn reconcile_notes_selection_from_backend(app: &mut App) {
+  let current =
+    app.notes.app.as_ref().and_then(|na| na.current_note_id.clone());
+  app.notes.primary.selected = current.clone();
+  if let Some(sec) = app.notes.secondary.as_mut() {
+    sec.selected = current;
+  }
+}
+
+fn dispatch_inner(key: KeyEvent, app: &mut App) {
   // Tag picker popup — intercepts all keys when open.
   if app.tag_picker.active {
     handle_tag_picker(key, app);

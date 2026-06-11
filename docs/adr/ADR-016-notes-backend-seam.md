@@ -1,6 +1,6 @@
 # ADR-016 — Notes backend seam: the dock owns selection
 
-- **Status:** Proposed (2026-06-11). PR 1 (this ADR + `selected` field on `NotesInstanceModel` + boundary tests) lands with it; PRs 2–4 follow.
+- **Status:** Proposed (2026-06-11). PR 1 (this ADR + `selected` field on `NotesInstanceModel` + boundary tests) landed. PR 2 landed as a **render-only safe half** (see §S5 and the Discovery note below); the nav inversion moved into PR 3. PR 4 follows.
 - **Date:** 2026-06-11
 - **Owner:** Victory Chianumba
 - **Supersedes:** none
@@ -20,6 +20,12 @@ Selection currently lives in two places that don't trust each other.
 Five functions exist only to keep the two halves synchronised: `visible_note_ids`, `ensure_notes_browser_selection`, `select_notes_browser_index`, `move_notes_browser_selection`, `sync_notes_tab_selection_to_current_note`. Because the dock renders its **own** preview pane (`one-research/src/ui/layout/notes.rs:320`), the backend's `Preview` / `PreviewScroll` states and its nav methods are dead weight in the embedded path — two preview implementations, one never reached.
 
 This was surfaced by the 2026-06-11 notes deep-dive, not by a feature pulling on it. The forcing function is the dual-ownership smell itself: every new notes feature has to fight two selection state machines. Honest framing — same shape as ADR-003's "audit-grade-alone" justification, and just as thin. The compensating discipline is identical: tight scope, short PR cadence, hard tripwire.
+
+### Discovery during PR 2 — the seam is more entangled than first read
+
+Tracing the seam to write PR 2 revealed that `current_note_id` is **not** cleanly "the browser selection." It is reset to the *active tab's* note at the top of every notes keystroke (`handle_notes_pane` → `sync_notes_app_to_side`, `keys/mod.rs:1307`), then overridden by specific handlers (`j`/`k`/`g`/`G`, mode switch) and by tab navigation (`sync_notes_backend_to_active` → `focus_note`). Browser-selection and the **editor target** (what `Enter` edits) are conflated through that one field, and the per-keystroke reset interacts with Library mode (where the visible list contains notes that are not open tabs) in a way that could not be verified behaviour-identical without running the app.
+
+Consequence: the nav inversion ("delete the five helpers, nav writes the model") cannot be made *provably* behaviour-preserving in isolation, because deciding what the per-keystroke reset should do is bound up with the editor-target decision — PR 3's explicit-handoff work. PR 2 was therefore split: the **render half** (provably safe) landed; the **nav inversion** moved into PR 3, where `sync_notes_app_to_side` and the editor target can be untangled in one coherent pass.
 
 ## Decision
 
@@ -69,9 +75,11 @@ Today the editor is entered by falling through to the backend's `go_to_editor`, 
 | # | PR | Behaviour change |
 |---|---|---|
 | 1 | This ADR + `selected: Option<String>` on `NotesInstanceModel` + pure `select` / `selected_note_id` / `reconcile_selection` + boundary tests. Not wired — the dock still reads the backend. | none |
-| 2 | Render + nav read/write the model's `selected`. `move_selection` lands on the model (quirk preserved). The five sync helpers and `current_note_id` round-trips delete. | none |
-| 3 | Explicit editor handoff (S4); remove force-`List` pokes and dead-`Preview` routing. | none |
+| 2 | **Render-only safe half** (rescoped — see Discovery). Render reads `app.notes.<side>.selected`; render no longer reads `current_note_id`. A single mirror in `keys::dispatch` (`reconcile_notes_selection_from_backend`) keeps `selected` equal to the backend's `current_note_id` after every key dispatch. `move_selection` lands on the model (quirk preserved), staged for PR 3. The nav helpers and the backend's operational ownership are **untouched** — this is provably behaviour-identical. | none |
+| 3 | The nav inversion deferred from PR 2: nav writes the model; delete the five sync helpers and the `current_note_id` mirror; untangle `sync_notes_app_to_side`'s per-keystroke reset; explicit editor handoff (S4); remove force-`List` pokes and dead-`Preview` routing. **Behaviour-risky** — needs run-testing, not a pure guarantee. | intended-equivalent |
 | 4 | Tripwires I12–I14 in `scripts/check-render-purification.sh`; ADR → Accepted. | none |
+
+The render half (PR 2) and the nav inversion (PR 3) were one PR in the original plan. The split is the honest consequence of the Discovery above: the render half is provably safe and shipped first; the nav inversion is behaviour-risky and gets its own PR with run-testing.
 
 ### Invariants for the PR 4 tripwire
 

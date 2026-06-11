@@ -77,6 +77,11 @@ pub struct NotesInstanceModel {
   pub selected: Option<String>,
 }
 
+// PR2 (safe half) wires the render side: `selected` is read by the
+// renderer and written by the orchestrator's backend mirror. These
+// selection *methods* are wired into the dock's nav in PR3, where the
+// ownership inverts; staged ahead of use per ADR-016 §S5.
+#[allow(dead_code)]
 impl NotesInstanceModel {
   /// The `note_id` currently selected in this instance's browser, if any.
   pub fn selected_note_id(&self) -> Option<&str> {
@@ -106,6 +111,50 @@ impl NotesInstanceModel {
     {
       self.selected = visible_ids.first().cloned();
     }
+    self.selected.as_deref()
+  }
+
+  /// Move the selection within the visible set. `delta` is the step
+  /// direction (the current callers pass ±1); `page` scales multi-row
+  /// jumps; `absolute` overrides to a fixed index (`g` → `Some(0)`,
+  /// `G` → `Some(usize::MAX)`). Clamps at both edges. Returns the
+  /// resulting selection. Wired into the dock in ADR-016 PR3.
+  ///
+  /// NOTE: carries forward verbatim the quirk in the dock's original
+  /// `move_notes_browser_selection` — `page` only applies on the
+  /// `|delta| > 1` branch, which the callers never take, so PageUp /
+  /// PageDown effectively step by one. Preserved deliberately for
+  /// behaviour parity (ADR-016 §S5); a deliberate fix is deferred.
+  pub fn move_selection(
+    &mut self,
+    visible_ids: &[String],
+    delta: isize,
+    page: usize,
+    absolute: Option<usize>,
+  ) -> Option<&str> {
+    if visible_ids.is_empty() {
+      self.selected = None;
+      return None;
+    }
+    let last = visible_ids.len() - 1;
+    let target = if let Some(absolute) = absolute {
+      absolute.min(last)
+    } else {
+      let current = self
+        .selected
+        .as_ref()
+        .and_then(|id| visible_ids.iter().position(|v| v == id))
+        .unwrap_or(0);
+      if delta == 0 {
+        current
+      } else if delta > 1 || delta < -1 {
+        (current as isize + delta * page as isize).clamp(0, last as isize)
+          as usize
+      } else {
+        (current as isize + delta).clamp(0, last as isize) as usize
+      }
+    };
+    self.selected = visible_ids.get(target).cloned();
     self.selected.as_deref()
   }
 }
@@ -432,6 +481,53 @@ mod tests {
   fn reconcile_with_no_selection_defaults_to_first() {
     let mut m = NotesInstanceModel::default();
     assert_eq!(m.reconcile_selection(&ids(&["a", "b"])), Some("a"));
+  }
+
+  #[test]
+  fn move_selection_steps_and_clamps_at_edges() {
+    let mut m = NotesInstanceModel::default();
+    let v = ids(&["a", "b", "c"]);
+    m.select(Some("a".into()));
+    assert_eq!(m.move_selection(&v, 1, 1, None), Some("b")); // j
+    assert_eq!(m.move_selection(&v, 1, 1, None), Some("c"));
+    assert_eq!(m.move_selection(&v, 1, 1, None), Some("c")); // clamp at last
+    assert_eq!(m.move_selection(&v, -1, 1, None), Some("b")); // k
+  }
+
+  #[test]
+  fn move_selection_absolute_g_and_capital_g() {
+    let mut m = NotesInstanceModel::default();
+    let v = ids(&["a", "b", "c"]);
+    m.select(Some("b".into()));
+    // `G` passes usize::MAX and must land on the last note, not panic.
+    assert_eq!(m.move_selection(&v, 0, 1, Some(usize::MAX)), Some("c"));
+    // `g` passes 0.
+    assert_eq!(m.move_selection(&v, 0, 1, Some(0)), Some("a"));
+  }
+
+  #[test]
+  fn move_selection_empty_clears() {
+    let mut m = NotesInstanceModel::default();
+    m.select(Some("a".into()));
+    assert_eq!(m.move_selection(&ids(&[]), 1, 1, None), None);
+    assert!(m.selected.is_none());
+  }
+
+  #[test]
+  fn move_selection_page_jump_quirk_is_preserved() {
+    // Locks ADR-016 §S5: PageUp/PageDown pass delta=±1, page=8, but the
+    // dock's original logic only multiplies by `page` on the |delta|>1
+    // branch — so page keys step by ONE, not eight. We carry this
+    // forward verbatim for behaviour parity; this test fails loudly if a
+    // future change "fixes" it without intending to.
+    let mut m = NotesInstanceModel::default();
+    let v = ids(&["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"]);
+    m.select(Some("a".into()));
+    assert_eq!(
+      m.move_selection(&v, 1, 8, None),
+      Some("b"),
+      "page key steps by one, matching the preserved dock quirk"
+    );
   }
 
   #[test]

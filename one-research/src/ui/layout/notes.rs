@@ -42,17 +42,22 @@ fn notes_browser_visible<'a>(
 
 fn notes_browser_selected_index(
   app: &App,
+  side: FocusedReader,
   visible: &[&notes::Note],
 ) -> Option<usize> {
-  let current_id = app.notes.app.as_ref()?.current_note_id.as_ref()?;
-  visible.iter().position(|note| &note.note_id == current_id)
+  // Selection identity is owned by the model (ADR-016). The orchestrator
+  // keeps `selected` in sync with the backend after each key dispatch;
+  // render reads it here, never `current_note_id`.
+  let selected = app.notes.instance(side)?.selected.as_deref()?;
+  visible.iter().position(|note| note.note_id == selected)
 }
 
 fn notes_browser_selected_note<'a>(
   app: &App,
+  side: FocusedReader,
   visible: &[&'a notes::Note],
 ) -> Option<&'a notes::Note> {
-  let idx = notes_browser_selected_index(app, visible)?;
+  let idx = notes_browser_selected_index(app, side, visible)?;
   visible.get(idx).copied()
 }
 
@@ -108,7 +113,7 @@ fn build_notes_summary_line(
   // Compute visible once; previously notes_browser_visible ran twice here.
   let visible = notes_browser_visible(app, side);
   let visible_count = visible.len();
-  let selected_note = notes_browser_selected_note(app, &visible);
+  let selected_note = notes_browser_selected_note(app, side, &visible);
   let summary = match mode {
     NotesMode::Library => {
       if let Some(note) = selected_note {
@@ -448,7 +453,7 @@ pub fn draw_notes_surface(
   }
 
   if preview_when_unfocused && !is_focused {
-    draw_note_preview(frame, app, content_area, &tabs, active, theme);
+    draw_note_preview(frame, app, content_area, side, &tabs, active, theme);
     if popup_active {
       if let Some(notes_app) = app.notes.app.as_mut() {
         notes_app.draw_popup_overlay(frame, content_area);
@@ -481,7 +486,7 @@ pub fn draw_notes_surface(
           frame,
           chunks[0],
           &visible,
-          notes_browser_selected_index(app, &visible),
+          notes_browser_selected_index(app, side, &visible),
           is_focused,
           theme,
         );
@@ -492,7 +497,7 @@ pub fn draw_notes_surface(
         draw_notes_browser_preview(
           frame,
           chunks[2],
-          notes_browser_selected_note(app, &visible),
+          notes_browser_selected_note(app, side, &visible),
           theme,
         );
       } else {
@@ -506,7 +511,7 @@ pub fn draw_notes_surface(
           frame,
           chunks[0],
           &visible,
-          notes_browser_selected_index(app, &visible),
+          notes_browser_selected_index(app, side, &visible),
           is_focused,
           theme,
         );
@@ -518,7 +523,7 @@ pub fn draw_notes_surface(
         draw_notes_browser_preview(
           frame,
           chunks[2],
-          notes_browser_selected_note(app, &visible),
+          notes_browser_selected_note(app, side, &visible),
           theme,
         );
       }
@@ -546,15 +551,16 @@ fn draw_note_preview(
   frame: &mut Frame,
   app: &App,
   area: Rect,
+  side: FocusedReader,
   tabs: &[NotesTab],
   active: usize,
   t: &crate::theme::Theme,
 ) {
   let selected = app
     .notes
-    .app
-    .as_ref()
-    .and_then(|notes_app| notes_app.get_current_note())
+    .instance(side)
+    .and_then(|inst| inst.selected.as_deref())
+    .and_then(|id| app.notes.app.as_ref().and_then(|na| na.get_note(id)))
     .or_else(|| {
       tabs.get(active).and_then(|tab| {
         app.notes.app.as_ref().and_then(|na| na.get_note(&tab.note_id))
