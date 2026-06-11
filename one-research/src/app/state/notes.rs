@@ -58,12 +58,56 @@ impl Default for NotesMode {
 /// currently dispatches on a [`FocusedReader`] discriminator (see
 /// `app/methods/notes.rs`) collapses onto `instance.mode` field access
 /// in PR 2.
+///
+/// Owns the browser selection (`selected`) as of ADR-016 — the dock is
+/// the single owner of "which note is selected", not the backend's
+/// `current_note_id`.
 #[derive(Default)]
 pub struct NotesInstanceModel {
   pub tabs: Vec<NotesTab>,
   pub active_tab: usize,
   pub mode: NotesMode,
   pub context: Option<NotesContext>,
+  /// `note_id` selected in the browser list for this instance (ADR-016
+  /// §S1). Selection identity, not a list index, so it survives
+  /// re-sort / filter / deletion of other notes. `None` = nothing
+  /// selected (empty visible set, or Capture mode). Wired into the dock
+  /// in PR 2; until then the dock still reads selection from the
+  /// backend's `current_note_id`.
+  pub selected: Option<String>,
+}
+
+impl NotesInstanceModel {
+  /// The `note_id` currently selected in this instance's browser, if any.
+  pub fn selected_note_id(&self) -> Option<&str> {
+    self.selected.as_deref()
+  }
+
+  /// Set the browser selection to a specific `note_id`, or clear it.
+  pub fn select(&mut self, note_id: Option<String>) {
+    self.selected = note_id;
+  }
+
+  /// Reconcile the selection against the current visible set: keep it if
+  /// still present, otherwise fall back to the first visible note (or
+  /// clear when nothing is visible). Returns the resulting selection.
+  ///
+  /// Pure — the visible set (mode + paper-link filtering) is computed by
+  /// the orchestrator and passed in; the backend never enters here. This
+  /// replaces `ensure_notes_browser_selection` (`keys/mod.rs:332`) when
+  /// the dock is wired over in PR 2.
+  pub fn reconcile_selection(&mut self, visible_ids: &[String]) -> Option<&str> {
+    if visible_ids.is_empty() {
+      self.selected = None;
+    } else if !self
+      .selected
+      .as_ref()
+      .is_some_and(|id| visible_ids.iter().any(|v| v == id))
+    {
+      self.selected = visible_ids.first().cloned();
+    }
+    self.selected.as_deref()
+  }
 }
 
 /// Composition-root model for the notes dock. Sibling to
@@ -330,6 +374,64 @@ mod tests {
     assert_eq!(m.active_tab, 0);
     assert_eq!(m.mode, NotesMode::Library);
     assert!(m.context.is_none());
+    assert!(m.selected.is_none(), "selection defaults to None");
+  }
+
+  // ── Selection ownership (ADR-016 §S1) ────────────────────────────
+  //
+  // These exercise the model's selection logic against a caller-supplied
+  // visible set — no `notes::app::App` backend. They encode *why* the
+  // selection survives list churn: a `note_id` identity, reconciled
+  // against the current visible set, is what lets selection outlive
+  // re-sort / filter / deletion.
+
+  fn ids(xs: &[&str]) -> Vec<String> {
+    xs.iter().map(|s| s.to_string()).collect()
+  }
+
+  #[test]
+  fn select_then_read_round_trips() {
+    let mut m = NotesInstanceModel::default();
+    m.select(Some("n1".into()));
+    assert_eq!(m.selected_note_id(), Some("n1"));
+    m.select(None);
+    assert_eq!(m.selected_note_id(), None);
+  }
+
+  #[test]
+  fn reconcile_empty_visible_clears_selection() {
+    let mut m = NotesInstanceModel::default();
+    m.select(Some("n1".into()));
+    // Nothing visible (e.g. Capture mode, or a paper with no links):
+    // the selection must clear so render never points at a hidden note.
+    assert_eq!(m.reconcile_selection(&ids(&[])), None);
+    assert!(m.selected.is_none());
+  }
+
+  #[test]
+  fn reconcile_keeps_still_visible_selection() {
+    let mut m = NotesInstanceModel::default();
+    m.select(Some("n2".into()));
+    // n2 is still in the visible set after a re-sort — selection is
+    // stable, not reset to the top. This is the property index-based
+    // selection couldn't give us.
+    assert_eq!(m.reconcile_selection(&ids(&["n3", "n2", "n1"])), Some("n2"));
+  }
+
+  #[test]
+  fn reconcile_falls_back_to_first_when_selection_gone() {
+    let mut m = NotesInstanceModel::default();
+    m.select(Some("deleted".into()));
+    // The selected note was deleted / filtered out: fall back to the
+    // first visible note rather than dangling on a missing id.
+    assert_eq!(m.reconcile_selection(&ids(&["n1", "n2"])), Some("n1"));
+    assert_eq!(m.selected_note_id(), Some("n1"));
+  }
+
+  #[test]
+  fn reconcile_with_no_selection_defaults_to_first() {
+    let mut m = NotesInstanceModel::default();
+    assert_eq!(m.reconcile_selection(&ids(&["a", "b"])), Some("a"));
   }
 
   #[test]
