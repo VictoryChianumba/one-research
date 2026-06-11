@@ -1,6 +1,6 @@
 # ADR-016 — Notes backend seam: the dock owns selection
 
-- **Status:** Proposed (2026-06-11). PR 1 (this ADR + `selected` field on `NotesInstanceModel` + boundary tests) landed. PR 2 landed as a **render-only safe half** (see §S5 and the Discovery note below). PR 3 (nav inversion + editor handoff + force-`List`/dead-`Preview` removal) landed and **intentionally fixes the two latent bugs the entanglement caused** (see the Discovery note). PR 4 (tripwire + Accepted) follows.
+- **Status:** Accepted (2026-06-11). All four PRs landed: PR 1 (`selected` field + boundary tests), PR 2 (render-only safe half — see §S5 and the Discovery note), PR 3 (nav inversion + editor handoff + force-`List`/dead-`Preview` removal, **intentionally fixing the two latent bugs the entanglement caused**), PR 4 (tripwires I13–I16 in `scripts/check-render-purification.sh`; this status flip).
 - **Date:** 2026-06-11
 - **Owner:** Victory Chianumba
 - **Supersedes:** none
@@ -84,15 +84,18 @@ Today the editor is entered by falling through to the backend's `go_to_editor`, 
 | 1 | This ADR + `selected: Option<String>` on `NotesInstanceModel` + pure `select` / `selected_note_id` / `reconcile_selection` + boundary tests. Not wired — the dock still reads the backend. | none |
 | 2 | **Render-only safe half** (rescoped — see Discovery). Render reads `app.notes.<side>.selected`; render no longer reads `current_note_id`. A single mirror in `keys::dispatch` (`reconcile_notes_selection_from_backend`) keeps `selected` equal to the backend's `current_note_id` after every key dispatch. `move_selection` lands on the model (quirk preserved), staged for PR 3. The nav helpers and the backend's operational ownership are **untouched** — this is provably behaviour-identical. | none |
 | 3 | The nav inversion deferred from PR 2: nav writes the model; delete the five sync helpers and the `current_note_id` mirror; untangle `sync_notes_app_to_side`'s per-keystroke reset; explicit editor handoff (S4); remove force-`List` pokes and dead-`Preview` routing. **Behaviour-risky** — needs run-testing, not a pure guarantee. | intended-equivalent |
-| 4 | Tripwires I12–I14 in `scripts/check-render-purification.sh`; ADR → Accepted. | none |
+| 4 | Tripwires I13–I16 in `scripts/check-render-purification.sh` (renumbered — see below); ADR → Accepted. | none |
 
 The render half (PR 2) and the nav inversion (PR 3) were one PR in the original plan. The split is the honest consequence of the Discovery above: the render half is provably safe and shipped first; the nav inversion is behaviour-risky and gets its own PR with run-testing.
 
 ### Invariants for the PR 4 tripwire
 
-- **I12** No `set_current_note(` call from `one-research/src/keys/`. The dock no longer writes backend selection.
-- **I13** No `notes_state = ` assignment from `one-research/src/keys/`. The dock no longer drives backend state.
-- **I14** `NotesInstanceModel` owns `selected`; render reads selection through `app.notes.<side>.selected`, not through `notes_app.current_note_id`.
+Renumbered from the I12–I14 originally drafted here: `I12` is already taken by the workspace `&mut App` ratchet, and the drafted "no `set_current_note` from `keys/`" was wrong — PR 3's design writes backend selection in exactly one place, the explicit editor handoff (`seed_backend_from_selection`). The landed invariants (in `scripts/check-render-purification.sh`) lock the properties that actually hold:
+
+- **I13** `NotesInstanceModel` owns the browser selection (`selected` field present). The single-source-of-truth the inversion rests on.
+- **I14** The notes render (`ui/layout/notes.rs`) reads the model's selection, never the backend's `current_note_id` / `get_current_note`. Locks the render half so dual ownership can't leak back in.
+- **I15** `sync_notes_app_to_side` writes no backend selection — the per-keystroke reset that conflated the browser cursor with the editor target stays gone. The dock seeds the backend in exactly one place (the handoff).
+- **I16** ADR-016's PR table mentions every PR (mirrors I2 / I6 / K4 — the table can't silently drop a row).
 
 ## Consequences
 

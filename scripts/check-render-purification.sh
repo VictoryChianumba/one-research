@@ -2,7 +2,8 @@
 #
 # Render-purification invariants for the per-pane composition-root
 # refactor: ADR-001 (feed, slice 1), ADR-002 (reader, slice 2),
-# ADR-003 (notes, slice 3), ADR-005 (discovery, slice 5).
+# ADR-003 (notes, slice 3), ADR-005 (discovery, slice 5), and the
+# ADR-016 notes-backend-seam follow-on (dock owns selection).
 #
 # Fails CI if any of the locked-down properties regress.  Each slice
 # extends this script with its own checks when it lands.
@@ -171,6 +172,58 @@ for fld in notes_app notes_active notes_tabs notes_active_tab notes_mode notes_c
   fi
 done
 
+# ── ADR-016 (notes backend seam: dock owns selection) ──────────────────
+#
+# Follow-on to Slice 3.  Collapses the dual ownership of notes selection
+# (backend current_note_id vs. the dock's recomputed set) onto a single
+# owner: NotesInstanceModel.selected.  These lock the inversion.
+
+keys_mod="one-research/src/keys/mod.rs"
+
+# I13. NotesInstanceModel owns the browser selection (`selected`).  The
+#      whole inversion rests on this field being the single source of
+#      truth; if it disappears, selection ownership has regressed back
+#      to the backend (ADR-016 §S1).
+inst_body=$(awk '/^pub struct NotesInstanceModel/,/^\}/' "$notes_state")
+if ! echo "$inst_body" | grep -qE '\bselected\b'; then
+  echo "FAIL: ${notes_state} — NotesInstanceModel lost its 'selected' field (ADR-016 §S1)"
+  fail=1
+fi
+
+# I14. Notes render reads the model's selection, never the backend's
+#      current note.  A `current_note_id` / `get_current_note` read in the
+#      notes render file means the dual ownership leaked back into render
+#      (ADR-016 §S1).  Doc-comment mentions (full-line `//`) are exempt.
+notes_render="one-research/src/ui/layout/notes.rs"
+hits=$(grep -nE '\bcurrent_note_id\b|\bget_current_note\b' "$notes_render" \
+  | grep -v ':[[:space:]]*//' || true)
+if [[ -n "$hits" ]]; then
+  echo "FAIL: ${notes_render} render reads the backend's current note instead of app.notes.<side>.selected (ADR-016 §S1):"
+  echo "$hits" | sed 's/^/  /'
+  fail=1
+fi
+
+# I15. The per-keystroke reset is gone for good.  sync_notes_app_to_side
+#      must not write backend selection — that reset conflated the
+#      browser cursor with the editor target (ADR-016 Discovery).  The
+#      dock writes backend selection in exactly one place, the explicit
+#      editor handoff (seed_backend_from_selection); reintroducing it
+#      here is the regression vector.
+sync_body=$(awk '/^fn sync_notes_app_to_side/,/^\}/' "$keys_mod")
+if echo "$sync_body" | grep -qE 'set_current_note'; then
+  echo "FAIL: ${keys_mod} sync_notes_app_to_side writes backend selection again — the per-keystroke reset is back (ADR-016 Discovery)"
+  fail=1
+fi
+
+# I16. ADR-016 PR table mentions every PR.  Mirrors I2 / I6 / K4.
+adr16="docs/adr/ADR-016-notes-backend-seam.md"
+for tag in "| 1 |" "| 2 |" "| 3 |" "| 4 |"; do
+  if ! grep -qF "$tag" "$adr16"; then
+    echo "FAIL: ${adr16} PR table missing entry matching '${tag}'"
+    fail=1
+  fi
+done
+
 # ── Slice 5 (discovery pane) ────────────────────────────────────────────
 
 # K1.  FeedModel must NOT carry a `discovery:` field.  Pre-C7 it nested
@@ -229,6 +282,11 @@ done
 i12_baseline=(
   dispatch_feed_pane
   draw
+  # Pre-existing offenders from the details-pane work (commit db4446f,
+  # "structured drawer details"); outside ADR-016 scope, pending the
+  # details pane's own render-purification pass.
+  draw_bottom_pane_details
+  draw_item_detail
   draw_bottom_pane_feed
   draw_details_panel
   draw_feed
@@ -260,6 +318,6 @@ if [[ -n "$i12_cleared" ]]; then
 fi
 
 if [[ "$fail" -eq 0 ]]; then
-  echo "OK: render-purification invariants hold (feed + reader + notes + discovery + I12 floor)"
+  echo "OK: render-purification invariants hold (feed + reader + notes + notes-seam + discovery + I12 floor)"
 fi
 exit $fail

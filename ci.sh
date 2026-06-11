@@ -12,7 +12,7 @@ ci () {
 
   # Architectural tripwires. Cheap grep checks that catch regressions
   # before the test suite would.
-  #   - check-render-purification.sh: ADR-001/2/3/5 (per-pane composition root)
+  #   - check-render-purification.sh: ADR-001/2/3/5/16 (per-pane composition root)
   #   - check-ingestion-seam.sh:      ADR-004 (Source / EnrichmentSource seam)
   #   - check-store-seam.sh:          ADR-006 (load_json / save_json envelope)
   #   - check-item-store.sh:          ADR-007 (ItemStore encapsulates Workspace triple)

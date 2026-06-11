@@ -71,9 +71,8 @@ pub struct NotesInstanceModel {
   /// `note_id` selected in the browser list for this instance (ADR-016
   /// §S1). Selection identity, not a list index, so it survives
   /// re-sort / filter / deletion of other notes. `None` = nothing
-  /// selected (empty visible set, or Capture mode). Wired into the dock
-  /// in PR 2; until then the dock still reads selection from the
-  /// backend's `current_note_id`.
+  /// selected (empty list, or Capture mode). The dock owns this; the
+  /// backend is seeded from it at the editor handoff.
   pub selected: Option<String>,
 }
 
