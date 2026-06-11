@@ -30,10 +30,7 @@ pub use discovery::DiscoveryModel;
 pub use feed::{AppView, FeedTab, FilterState, ItemCounts, NavDirection};
 pub use help::HelpState;
 pub use leader::LeaderState;
-pub use notes::{
-  CloseTabOutcome, NotesContext, NotesInstanceModel, NotesMode, NotesPaneModel,
-  NotesTab,
-};
+pub use notes::{NotesContext, NotesMode, NotesPaneModel};
 pub use panes::{FocusedReader, PANE_COUNT, PaneId, PaneInfo};
 pub use popups::{
   DiscoverResult, QuitPopupKind, QuitPopupState, TagPickerState,

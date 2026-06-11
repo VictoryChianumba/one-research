@@ -357,13 +357,7 @@ fn handle_mouse(
         match hovered {
           Some(PaneId::Details) => {}
           Some(PaneId::Notes) => {
-            if let Some(note_id) = app
-              .notes
-              .primary
-              .tabs
-              .get(app.notes.primary.active_tab)
-              .map(|t| t.note_id.clone())
-            {
+            if let Some(note_id) = app.notes.primary.selected.clone() {
               if let Some(notes_app) = app.notes.app.as_mut() {
                 notes_app.focus_note(&note_id);
               }
@@ -373,12 +367,8 @@ fn handle_mouse(
             }
           }
           Some(PaneId::SecondaryNotes) => {
-            if let Some(note_id) = app
-              .notes
-              .secondary
-              .as_ref()
-              .and_then(|s| s.tabs.get(s.active_tab))
-              .map(|t| t.note_id.clone())
+            if let Some(note_id) =
+              app.notes.secondary.as_ref().and_then(|s| s.selected.clone())
             {
               if let Some(notes_app) = app.notes.app.as_mut() {
                 notes_app.focus_note(&note_id);
@@ -408,13 +398,7 @@ fn handle_mouse(
         match hovered {
           Some(PaneId::Details) => {}
           Some(PaneId::Notes) => {
-            if let Some(note_id) = app
-              .notes
-              .primary
-              .tabs
-              .get(app.notes.primary.active_tab)
-              .map(|t| t.note_id.clone())
-            {
+            if let Some(note_id) = app.notes.primary.selected.clone() {
               if let Some(notes_app) = app.notes.app.as_mut() {
                 notes_app.focus_note(&note_id);
               }
@@ -424,12 +408,8 @@ fn handle_mouse(
             }
           }
           Some(PaneId::SecondaryNotes) => {
-            if let Some(note_id) = app
-              .notes
-              .secondary
-              .as_ref()
-              .and_then(|s| s.tabs.get(s.active_tab))
-              .map(|t| t.note_id.clone())
+            if let Some(note_id) =
+              app.notes.secondary.as_ref().and_then(|s| s.selected.clone())
             {
               if let Some(notes_app) = app.notes.app.as_mut() {
                 notes_app.focus_note(&note_id);
@@ -480,13 +460,7 @@ fn handle_mouse(
           PaneId::Reader | PaneId::Notes => {
             app.reader.focused = FocusedReader::Primary;
             if pane == PaneId::Notes {
-              if let Some(note_id) = app
-                .notes
-                .primary
-                .tabs
-                .get(app.notes.primary.active_tab)
-                .map(|t| t.note_id.clone())
-              {
+              if let Some(note_id) = app.notes.primary.selected.clone() {
                 if let Some(notes_app) = app.notes.app.as_mut() {
                   notes_app.focus_note(&note_id);
                 }
@@ -496,12 +470,8 @@ fn handle_mouse(
           PaneId::SecondaryReader | PaneId::SecondaryNotes => {
             app.reader.focused = FocusedReader::Secondary;
             if pane == PaneId::SecondaryNotes {
-              if let Some(note_id) = app
-                .notes
-                .secondary
-                .as_ref()
-                .and_then(|s| s.tabs.get(s.active_tab))
-                .map(|t| t.note_id.clone())
+              if let Some(note_id) =
+                app.notes.secondary.as_ref().and_then(|s| s.selected.clone())
               {
                 if let Some(notes_app) = app.notes.app.as_mut() {
                   notes_app.focus_note(&note_id);
@@ -816,22 +786,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   let ui = store::load_ui();
   app.last_read = ui.last_read;
   app.last_read_source = ui.last_read_source;
-  app.notes.primary.tabs = ui.notes_tabs;
-  // Clamp in case ui.json was written with a tab count that has since shrunk.
-  app.notes.primary.active_tab =
-    ui.notes_active_tab.min(app.notes.primary.tabs.len().saturating_sub(1));
-  // Secondary persisted tabs: allocate the Option iff non-empty (preserves
-  // "never opened" semantics for None).
-  if !ui.secondary_notes_tabs.is_empty() {
-    let secondary_tabs = ui.secondary_notes_tabs;
-    let clamped =
-      ui.secondary_notes_active_tab.min(secondary_tabs.len().saturating_sub(1));
-    app.notes.secondary = Some(crate::app::NotesInstanceModel {
-      tabs: secondary_tabs,
-      active_tab: clamped,
-      ..Default::default()
-    });
-  }
   log::debug!("startup: state/ui load {}ms", t.elapsed().as_millis());
 
   // 1. Load cache immediately → populate app.workspace.items_store.
@@ -1444,20 +1398,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   store::save_ui(&store::UiState {
     last_read: app.last_read.clone(),
     last_read_source: app.last_read_source.clone(),
-    notes_tabs: app.notes.primary.tabs.clone(),
-    notes_active_tab: app.notes.primary.active_tab,
-    secondary_notes_tabs: app
-      .notes
-      .secondary
-      .as_ref()
-      .map(|s| s.tabs.clone())
-      .unwrap_or_default(),
-    secondary_notes_active_tab: app
-      .notes
-      .secondary
-      .as_ref()
-      .map(|s| s.active_tab)
-      .unwrap_or(0),
   });
 
   // Balance the kitty-keyboard push from setup. Best-effort — if any of

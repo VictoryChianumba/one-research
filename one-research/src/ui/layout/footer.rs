@@ -213,7 +213,6 @@ fn footer_command_line(app: &App, width: u16) -> Line<'static> {
       FooterKey { key: "a", label: "attach" },
       FooterKey { key: "x", label: "detach" },
       FooterKey { key: "Enter", label: "edit" },
-      FooterKey { key: "Ldr+[ / ]", label: "tabs" },
       FooterKey { key: "Ldr+w", label: "close" },
       FooterKey { key: "Ldr+n", label: "hide" },
     ];
@@ -223,7 +222,6 @@ fn footer_command_line(app: &App, width: u16) -> Line<'static> {
       FooterKey { key: "Enter", label: "edit" },
       FooterKey { key: "a", label: "attach" },
       FooterKey { key: "x", label: "detach" },
-      FooterKey { key: "Ldr+[ / ]", label: "tabs" },
       FooterKey { key: "Ldr+w", label: "close" },
       FooterKey { key: "Ldr+n", label: "hide" },
     ];

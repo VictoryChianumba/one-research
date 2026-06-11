@@ -7,7 +7,7 @@ use ratatui::{
 };
 
 use super::widgets::truncate;
-use crate::app::{App, FocusedReader, NotesMode, NotesTab, PaneId};
+use crate::app::{App, FocusedReader, NotesMode, PaneId};
 
 pub(super) fn note_pane_for_side(side: FocusedReader) -> PaneId {
   match side {
@@ -386,32 +386,17 @@ pub fn draw_notes_surface(
     return;
   }
   let is_focused = app.focus.focused_pane == note_pane_for_side(side);
-  // Inline the field access so Rust's split-borrow rules can keep the
-  // `tabs` borrow disjoint from the later `app.notes.app.as_mut()` —
-  // saves a per-draw `Vec<NotesTab>` clone. Secondary may not exist
-  // yet (Option<NotesInstanceModel>); bail in that case — layout
-  // should already have given us a 0-sized rect via the visibility
-  // gate upstream, but this is defense-in-depth.
-  let Some(inst) = app.notes.instance(side) else {
+  // Secondary may not exist yet (Option<NotesInstanceModel>); bail —
+  // layout should already have 0-sized the rect via the visibility gate
+  // upstream, but this is defense-in-depth.
+  if app.notes.instance(side).is_none() {
     return;
-  };
-  let tabs = &inst.tabs;
-  let active = inst.active_tab;
-  let show_tabs = tabs.len() > 1;
-  let rows = Layout::vertical(if show_tabs {
-    vec![
-      Constraint::Length(1),
-      Constraint::Length(1),
-      Constraint::Length(1),
-      Constraint::Min(0),
-    ]
-  } else {
-    vec![
-      Constraint::Length(1),
-      Constraint::Length(1),
-      Constraint::Min(0),
-    ]
-  })
+  }
+  let rows = Layout::vertical([
+    Constraint::Length(1),
+    Constraint::Length(1),
+    Constraint::Min(0),
+  ])
   .split(area);
   draw_notes_mode_switcher(
     frame,
@@ -425,13 +410,7 @@ pub fn draw_notes_surface(
       .wrap(Wrap { trim: false }),
     rows[1],
   );
-  let content_row = if show_tabs {
-    draw_notes_tab_bar(frame, rows[2], &tabs, active, is_focused, theme);
-    3
-  } else {
-    2
-  };
-  let content_area = rows[content_row];
+  let content_area = rows[2];
 
   let editor_active = app.notes.app.as_ref().is_some_and(|notes_app| {
     notes_app.notes_state == notes::app::NotesState::Editor
@@ -453,7 +432,7 @@ pub fn draw_notes_surface(
   }
 
   if preview_when_unfocused && !is_focused {
-    draw_note_preview(frame, app, content_area, side, &tabs, active, theme);
+    draw_note_preview(frame, app, content_area, side, theme);
     if popup_active {
       if let Some(notes_app) = app.notes.app.as_mut() {
         notes_app.draw_popup_overlay(frame, content_area);
@@ -552,54 +531,12 @@ fn draw_note_preview(
   app: &App,
   area: Rect,
   side: FocusedReader,
-  tabs: &[NotesTab],
-  active: usize,
   t: &crate::theme::Theme,
 ) {
   let selected = app
     .notes
     .instance(side)
     .and_then(|inst| inst.selected.as_deref())
-    .and_then(|id| app.notes.app.as_ref().and_then(|na| na.get_note(id)))
-    .or_else(|| {
-      tabs.get(active).and_then(|tab| {
-        app.notes.app.as_ref().and_then(|na| na.get_note(&tab.note_id))
-      })
-    });
+    .and_then(|id| app.notes.app.as_ref().and_then(|na| na.get_note(id)));
   draw_notes_browser_preview(frame, area, selected, t);
-}
-
-fn draw_notes_tab_bar(
-  frame: &mut Frame,
-  area: Rect,
-  tabs: &[NotesTab],
-  active: usize,
-  focused: bool,
-  t: &crate::theme::Theme,
-) {
-  if tabs.is_empty() {
-    return;
-  }
-  let max_title =
-    (area.width as usize).saturating_sub(4).max(8) / tabs.len().max(1);
-  let spans: Vec<Span> = tabs
-    .iter()
-    .enumerate()
-    .flat_map(|(i, tab)| {
-      let title: String =
-        tab.title.chars().take(max_title.saturating_sub(5)).collect();
-      let label = format!("[{}: {}]", i + 1, title);
-      let style = if i == active {
-        if focused {
-          Style::default().fg(t.accent).add_modifier(Modifier::BOLD)
-        } else {
-          Style::default().fg(t.text).add_modifier(Modifier::BOLD)
-        }
-      } else {
-        Style::default().fg(t.text_dim)
-      };
-      vec![Span::styled(label, style), Span::raw("  ")]
-    })
-    .collect();
-  frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }

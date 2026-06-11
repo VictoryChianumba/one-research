@@ -11,7 +11,6 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use crate::app::NotesTab;
 use crate::models::WorkflowState;
 
 /// Restrict a file to owner-read/write only (0o600). Best-effort on Unix.
@@ -221,14 +220,9 @@ pub fn save(state: &HashMap<String, WorkflowState>) {
 pub struct UiState {
   pub last_read: Option<String>,
   pub last_read_source: Option<String>,
-  #[serde(default)]
-  pub notes_tabs: Vec<NotesTab>,
-  #[serde(default)]
-  pub notes_active_tab: usize,
-  #[serde(default)]
-  pub secondary_notes_tabs: Vec<NotesTab>,
-  #[serde(default)]
-  pub secondary_notes_active_tab: usize,
+  // Notes document tabs were removed (ADR-017). Any `notes_tabs` /
+  // `*_active_tab` fields in an existing ui.json are ignored on load
+  // (serde drops unknown fields) and no longer written.
 }
 
 fn ui_path() -> Option<PathBuf> {

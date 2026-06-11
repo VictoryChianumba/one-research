@@ -2,8 +2,8 @@ use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use std::sync::mpsc;
 
 use crate::app::{
-  App, AppView, CloseTabOutcome, CustomThemeEditorMode, FeedTab, FocusedReader,
-  NavDirection, NotesMode, NotesTab, PaneId, QuitPopupKind,
+  App, AppView, CustomThemeEditorMode, FeedTab, FocusedReader,
+  NavDirection, NotesMode, PaneId, QuitPopupKind,
 };
 
 use super::{get_pane_by_number, spawn_fulltext_fetch, truncate_for_notif};
@@ -245,33 +245,8 @@ fn open_notes(app: &mut App) {
     app.notes.app = Some(na);
   }
 
-  // Drop tabs whose note no longer exists (deleted notes, stale ui.json).
-  if app.notes.app.is_some() {
-    // Build a snapshot of valid IDs first so the prune closure doesn't
-    // need to re-borrow `app.notes.app` while `app.notes.prune_tabs`
-    // holds &mut self on the pane model.
-    let valid: std::collections::HashSet<String> = app
-      .notes
-      .app
-      .as_ref()
-      .map(|na| {
-        let mut out = std::collections::HashSet::new();
-        for inst in std::iter::once(&app.notes.primary)
-          .chain(app.notes.secondary.as_ref())
-        {
-          for tab in &inst.tabs {
-            if na.get_note_title(&tab.note_id).is_some() {
-              out.insert(tab.note_id.clone());
-            }
-          }
-        }
-        out
-      })
-      .unwrap_or_default();
-    app.notes.prune_tabs(|id| valid.contains(id));
-  }
-
-  // Phase 1: find linked notes and collect titles (releases borrow before switch).
+  // Linked notes decide the opening mode: a paper with notes opens in
+  // PaperNotes, one without opens in Capture.
   let linked = app
     .notes
     .app
@@ -338,47 +313,6 @@ fn ensure_notes_browser_selection(app: &mut App, side: FocusedReader) {
   }
 }
 
-fn sync_notes_tabs_for_paper_mode(
-  app: &mut App,
-  side: FocusedReader,
-  context: &crate::app::NotesContext,
-) {
-  let linked = app
-    .notes
-    .app
-    .as_ref()
-    .map(|na| na.find_notes_for_paper(&context.paper.id))
-    .unwrap_or_default();
-
-  for note_id in &linked {
-    let exists = app
-      .notes
-      .instance(side)
-      .map(|inst| inst.tabs.iter().any(|tab| &tab.note_id == note_id))
-      .unwrap_or(false);
-    if exists {
-      continue;
-    }
-    let title = app
-      .notes
-      .app
-      .as_ref()
-      .and_then(|na| na.get_note_title(note_id))
-      .unwrap_or_default();
-    app
-      .notes
-      .instance_or_init_mut(side)
-      .tabs
-      .push(NotesTab { note_id: note_id.clone(), title });
-  }
-}
-
-fn focus_notes_tab_for_selection(app: &mut App, side: FocusedReader) {
-  if let Some(inst) = app.notes.instance_mut(side) {
-    inst.focus_tab_for_selection();
-  }
-}
-
 fn activate_notes_mode(app: &mut App, side: FocusedReader, mode: NotesMode) {
   let context = app
     .notes_context_for_side(side)
@@ -405,11 +339,7 @@ fn activate_notes_mode(app: &mut App, side: FocusedReader, mode: NotesMode) {
       ensure_notes_browser_selection(app, side);
     }
     NotesMode::PaperNotes => {
-      if let Some(context) = context.as_ref() {
-        sync_notes_tabs_for_paper_mode(app, side, context);
-      }
       ensure_notes_browser_selection(app, side);
-      focus_notes_tab_for_selection(app, side);
     }
   }
 }
@@ -445,12 +375,10 @@ fn move_notes_browser_selection(
   absolute: Option<usize>,
 ) {
   // Selection lives on the model; the backend is untouched until the
-  // editor handoff. The tab highlight follows when the selection is an
-  // open tab.
+  // editor handoff.
   let visible_ids = visible_note_ids(app, side);
   if let Some(inst) = app.notes.instance_mut(side) {
     inst.move_selection(&visible_ids, delta, page_size, absolute);
-    inst.focus_tab_for_selection();
   }
 }
 
@@ -520,11 +448,7 @@ fn mutate_note_links_for_context(
     return;
   }
 
-  if !detach {
-    sync_notes_tabs_for_paper_mode(app, side, &context);
-  }
   ensure_notes_browser_selection(app, side);
-  focus_notes_tab_for_selection(app, side);
   let action = if detach { "Detached" } else { "Attached" };
   app.set_notification(format!("{action} current paper in note."));
 }
@@ -1094,30 +1018,23 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
         trigger_fulltext_new_tab(app);
       }
     }
-    // Ldr+[ / Ldr+] — cycle tabs in focused pane
+    // Ldr+[ / Ldr+] — cycle reader tabs
     KeyCode::Char('[') => {
-      if let Some(side) =
-        focused_note_side(app).filter(|side| app.notes.is_visible(*side))
-      {
-        notes_prev_tab(app, side);
-      } else if app.reader.active {
+      if app.reader.active {
         app.reader_prev_tab();
       }
     }
     KeyCode::Char(']') => {
-      if let Some(side) =
-        focused_note_side(app).filter(|side| app.notes.is_visible(*side))
-      {
-        notes_next_tab(app, side);
-      } else if app.reader.active {
+      if app.reader.active {
         app.reader_next_tab();
       }
     }
-    // Ldr+w — close current tab (collapse pane when last tab)
+    // Ldr+w — close the focused pane
     KeyCode::Char('w') => match app.focus.focused_pane {
       PaneId::Notes | PaneId::SecondaryNotes if app.notes.any_visible() => {
         let side = focused_note_side(app).unwrap_or(FocusedReader::Primary);
-        notes_close_active_tab(app, side);
+        app.notes.set_visible(side, false);
+        app.focus.focused_pane = focus_fallback_after_notes(app, side);
       }
       PaneId::SecondaryReader => {
         let pane_empty = app.reader_secondary_close_active_tab();
@@ -1149,43 +1066,6 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
       _ => {}
     },
     _ => {}
-  }
-}
-
-// Tab-navigation orchestrators. The model owns the data move; these
-// wrappers add the backend sync (`focus_note` + drop back to List).
-
-fn notes_prev_tab(app: &mut App, side: FocusedReader) {
-  if let Some(note_id) = app.notes.prev_tab(side) {
-    select_notes_tab_note(app, side, note_id);
-  }
-}
-
-fn notes_next_tab(app: &mut App, side: FocusedReader) {
-  if let Some(note_id) = app.notes.next_tab(side) {
-    select_notes_tab_note(app, side, note_id);
-  }
-}
-
-fn notes_close_active_tab(app: &mut App, side: FocusedReader) {
-  match app.notes.close_active_tab(side) {
-    CloseTabOutcome::NoOp => {}
-    CloseTabOutcome::BecameEmpty => {
-      app.notes.set_visible(side, false);
-      app.focus.focused_pane = focus_fallback_after_notes(app, side);
-    }
-    CloseTabOutcome::Switched(note_id) => {
-      select_notes_tab_note(app, side, note_id);
-    }
-  }
-}
-
-/// Switching tabs moves the browser selection to the tab's note
-/// (ADR-016 PR3 — model-owned; the old form drove the backend's
-/// `focus_note`/`current_note_id`).
-fn select_notes_tab_note(app: &mut App, side: FocusedReader, note_id: String) {
-  if let Some(inst) = app.notes.instance_mut(side) {
-    inst.select(Some(note_id));
   }
 }
 
@@ -1338,25 +1218,16 @@ fn handle_notes_pane(key: KeyEvent, app: &mut App) -> bool {
       app.focus.focused_pane = focus_fallback_after_notes(app, side);
     }
   }
-  // Pick up a freshly created note and add its tab.
+  // Pick up a freshly created note: select it, and leave Capture for
+  // PaperNotes now that the paper has a linked note.
   if let Some(note_id) =
     app.notes.app.as_mut().and_then(|na| na.last_created_note_id.take())
   {
-    let title = app
-      .notes
-      .app
-      .as_ref()
-      .and_then(|na| na.get_note_title(&note_id))
-      .unwrap_or_default();
-    app
-      .notes
-      .add_or_focus_tab(side, NotesTab { note_id: note_id.clone(), title });
     if app.notes_mode_for_side(side) == NotesMode::Capture {
       app.set_notes_mode_for_side(side, NotesMode::PaperNotes);
     }
     if let Some(inst) = app.notes.instance_mut(side) {
       inst.select(Some(note_id));
-      inst.focus_tab_for_selection();
     }
   }
   // The backend fall-through may have changed the note set (delete,
@@ -1425,7 +1296,7 @@ mod notes_selection_tests {
   }
 
   #[test]
-  fn enter_edits_the_selected_note_not_the_active_tab() {
+  fn enter_edits_the_selected_note() {
     let mut app = library_app(&["a", "b", "c"]);
     press(&mut app, KeyCode::Char('j')); // → b
     press(&mut app, KeyCode::Char('j')); // → c
