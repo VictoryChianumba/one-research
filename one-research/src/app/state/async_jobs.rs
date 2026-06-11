@@ -72,13 +72,9 @@ pub struct AsyncJobs {
   pub repo_fetch_rx: Option<Receiver<RepoFetchResult>>,
 
   // ── Fulltext routing (reclassified from ViewFlags per ADR-009 PR 4) ──
-  /// When the tab-window prompt resolves with `[1]`/`[2]`, sets this to
-  /// `true` so the upcoming fulltext fetch opens in a new tab rather
-  /// than replacing the active one.  Reset by the fetch-resolution path
-  /// after consumption (`main.rs` ~lines 969-980).
-  pub fulltext_new_tab: bool,
-  /// Mirror routing flag — true means route the upcoming fetch to the
-  /// secondary reader pane rather than the primary.
+  /// Routing flag — true means route the upcoming fetch to the secondary
+  /// reader pane rather than the primary (set by the `[1]`/`[2]` pane
+  /// prompt in dual mode).
   pub fulltext_for_secondary: bool,
 }
 
@@ -96,7 +92,6 @@ impl Default for AsyncJobs {
       tread_fetch_rx: None,
       pending_tread_fetch: None,
       repo_fetch_rx: None,
-      fulltext_new_tab: false,
       fulltext_for_secondary: false,
     }
   }
@@ -123,7 +118,6 @@ mod tests {
     assert!(j.tread_fetch_rx.is_none());
     assert!(j.pending_tread_fetch.is_none());
     assert!(j.repo_fetch_rx.is_none());
-    assert!(!j.fulltext_new_tab);
     assert!(!j.fulltext_for_secondary);
   }
 
@@ -131,21 +125,24 @@ mod tests {
   fn job_classes_are_independent() {
     // Witness: the cluster is a grouping by lifecycle, not a single
     // shared state.  Setting fulltext_loading must not touch
-    // is_loading or fulltext_new_tab.  Bug class to avoid: a future
-    // method that "starts the next fetch" accidentally crossing job
-    // boundaries (e.g., clearing the bulk-fetch state on a fulltext
+    // is_loading or fulltext_for_secondary.  Bug class to avoid: a
+    // future method that "starts the next fetch" accidentally crossing
+    // job boundaries (e.g., clearing the bulk-fetch state on a fulltext
     // start).
     let mut j = AsyncJobs::default();
     j.is_loading = true;
     j.fulltext_loading = true;
-    j.fulltext_new_tab = true;
+    j.fulltext_for_secondary = true;
 
     j.fulltext_loading = false;
     assert!(j.is_loading, "bulk-fetch flag survives fulltext_loading flip");
-    assert!(j.fulltext_new_tab, "routing flag survives fulltext_loading flip");
+    assert!(
+      j.fulltext_for_secondary,
+      "routing flag survives fulltext_loading flip"
+    );
 
     j.is_loading = false;
-    assert!(j.fulltext_new_tab, "routing flag survives is_loading flip");
+    assert!(j.fulltext_for_secondary, "routing flag survives is_loading flip");
   }
 
   #[test]

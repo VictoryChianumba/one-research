@@ -47,8 +47,7 @@ pub fn dispatch(key: KeyEvent, app: &mut App) {
                 app.reader.dual_active = false;
                 app.reader_bottom.open = false;
                 app.reader_bottom.focused = false;
-                app.reader.secondary.tabs.clear();
-                app.reader.secondary.active_tab = 0;
+                app.reader.secondary.doc = None;
                 app.notes.set_visible(FocusedReader::Secondary, false);
               } else if app.reader.split_active {
                 app.reader.split_active = false;
@@ -103,14 +102,12 @@ pub fn dispatch(key: KeyEvent, app: &mut App) {
       KeyCode::Char('1') => {
         app.view_flags.tab_window_prompt_active = false;
         app.async_jobs.fulltext_for_secondary = false;
-        app.async_jobs.fulltext_new_tab = true;
-        trigger_fulltext_new_tab(app);
+        trigger_reader_open(app);
       }
       KeyCode::Char('2') => {
         app.view_flags.tab_window_prompt_active = false;
         app.async_jobs.fulltext_for_secondary = true;
-        app.async_jobs.fulltext_new_tab = true;
-        trigger_fulltext_new_tab(app);
+        trigger_reader_open(app);
       }
       KeyCode::Esc => {
         app.view_flags.tab_window_prompt_active = false;
@@ -608,16 +605,15 @@ pub(super) fn remember_fulltext_paper_context(
 /// fallback — because there is no rich-LaTeX equivalent for an
 /// arbitrary web page.
 ///
-/// `target` and `mode` describe where the resulting reader should
-/// land (Primary vs Secondary pane, NewTab vs ReplaceActive).  For
-/// the non-arxiv branch they're translated back into the legacy
-/// `app.async_jobs.fulltext_for_secondary` / `app.async_jobs.fulltext_new_tab` flags that
-/// main.rs's fulltext drain still consults.
+/// `target` describes which reader pane the result should land in
+/// (Primary vs Secondary).  For the non-arxiv branch it's translated
+/// back into the legacy `app.async_jobs.fulltext_for_secondary` flag
+/// that main.rs's fulltext drain still consults.  Opening always
+/// replaces the target pane's single doc (ADR-017).
 pub(super) fn spawn_paper_open(
   app: &mut App,
   item: crate::models::FeedItem,
   target: crate::action::ReaderTarget,
-  mode: crate::action::OpenMode,
 ) {
   let kitty_supported = app.kitty_supported;
   if let Some(id) = tread::extract_arxiv_id(&item.url) {
@@ -632,7 +628,6 @@ pub(super) fn spawn_paper_open(
       notes_context,
       fallback_paper: None,
       target,
-      mode,
     });
     app.async_jobs.fulltext_loading = true;
     crate::services::spawn_tread_fetch(id, kitty_supported, tx);
@@ -641,8 +636,6 @@ pub(super) fn spawn_paper_open(
     tread::bench::emit_us("one_research_click_fulltext", 0);
     app.async_jobs.fulltext_for_secondary =
       matches!(target, crate::action::ReaderTarget::Secondary);
-    app.async_jobs.fulltext_new_tab =
-      matches!(mode, crate::action::OpenMode::NewTab);
     let (tx, rx) = mpsc::channel();
     app.async_jobs.fulltext_rx = Some(rx);
     app.async_jobs.fulltext_loading = true;
@@ -850,7 +843,6 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
               app,
               item,
               crate::action::ReaderTarget::Secondary,
-              crate::action::OpenMode::ReplaceActive,
             );
           }
         }
@@ -1002,7 +994,8 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
         sync_focus_after_pane_change(app);
       }
     }
-    // Ldr+t — open selected item as a new tab
+    // Ldr+t — in dual mode, pick which reader pane to open the selected
+    // item into ([1] left / [2] right); otherwise open it in the reader.
     KeyCode::Char('t') => {
       if app.async_jobs.fulltext_loading {
         return;
@@ -1010,23 +1003,11 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
       if app.reader.dual_active {
         app.view_flags.tab_window_prompt_active = true;
         app.set_notification(
-          "Add to: [1] left  [2] right  Esc: cancel".to_string(),
+          "Open in: [1] left  [2] right  Esc: cancel".to_string(),
         );
       } else {
-        app.async_jobs.fulltext_new_tab = !app.reader.primary.tabs.is_empty();
         app.async_jobs.fulltext_for_secondary = false;
-        trigger_fulltext_new_tab(app);
-      }
-    }
-    // Ldr+[ / Ldr+] — cycle reader tabs
-    KeyCode::Char('[') => {
-      if app.reader.active {
-        app.reader_prev_tab();
-      }
-    }
-    KeyCode::Char(']') => {
-      if app.reader.active {
-        app.reader_next_tab();
+        trigger_reader_open(app);
       }
     }
     // Ldr+w — close the focused pane
@@ -1054,8 +1035,7 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
             app.reader.dual_active = false;
             app.reader_bottom.open = false;
             app.reader_bottom.focused = false;
-            app.reader.secondary.tabs.clear();
-            app.reader.secondary.active_tab = 0;
+            app.reader.secondary.doc = None;
             app.notes.set_visible(FocusedReader::Secondary, false);
           } else if app.reader.split_active {
             app.reader.split_active = false;
@@ -1069,12 +1049,13 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
   }
 }
 
-/// Trigger a paper-open in a new tab, picking target and tab-mode from
-/// the legacy `app.async_jobs.fulltext_for_secondary` / `app.async_jobs.fulltext_new_tab`
-/// flags that the caller sets just before invoking us.  Routed through
-/// `spawn_paper_open` so the arxiv-shortcut branch applies here too
-/// (`Ldr+1` / `Ldr+2` on an arxiv item now skip the fulltext stage).
-fn trigger_fulltext_new_tab(app: &mut App) {
+/// Open the selected paper in the reader, picking the target pane from
+/// the `app.async_jobs.fulltext_for_secondary` flag the caller sets just
+/// before invoking us.  Routed through `spawn_paper_open` so the
+/// arxiv-shortcut branch applies here too (`Ldr+1` / `Ldr+2` on an arxiv
+/// item now skip the fulltext stage).  Opening replaces the target
+/// pane's single doc (ADR-017).
+fn trigger_reader_open(app: &mut App) {
   if app.async_jobs.fulltext_loading {
     app.set_notification("Already fetching…".to_string());
     return;
@@ -1085,17 +1066,12 @@ fn trigger_fulltext_new_tab(app: &mut App) {
     } else {
       crate::action::ReaderTarget::Primary
     };
-    let mode = if app.async_jobs.fulltext_new_tab {
-      crate::action::OpenMode::NewTab
-    } else {
-      crate::action::OpenMode::ReplaceActive
-    };
     remember_fulltext_paper_context(app, &item);
     app.set_notification(format!(
       "Fetching: {}…",
       truncate_for_notif(&item.title, 40)
     ));
-    spawn_paper_open(app, item, target, mode);
+    spawn_paper_open(app, item, target);
   }
 }
 

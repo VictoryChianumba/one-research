@@ -177,8 +177,6 @@ fn footer_command_line(app: &App, width: u16) -> Line<'static> {
     const KEYS: &[FooterKey] = &[
       FooterKey { key: "q/Esc", label: "close" },
       FooterKey { key: "Tab", label: "switch pane" },
-      FooterKey { key: "Ldr+t", label: "new tab" },
-      FooterKey { key: "Ldr+[ / ]", label: "tabs" },
       FooterKey { key: "Ldr+n", label: "notes" },
     ];
     return responsive_footer(

@@ -153,7 +153,6 @@ pub(super) fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
                     app,
                     item,
                     target,
-                    crate::action::OpenMode::ReplaceActive,
                   );
                   app.reader_bottom.focused = false;
                   app.focus.focused_pane = PaneId::Reader;
@@ -184,7 +183,6 @@ pub(super) fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
             app,
             item,
             target,
-            crate::action::OpenMode::ReplaceActive,
           );
           app.reader_bottom.focused = false;
           app.focus.focused_pane = PaneId::Reader;
@@ -287,7 +285,7 @@ pub(super) fn handle_reader_pane(key: KeyEvent, app: &mut App) -> bool {
 
   // Tab in primary reader during State 3 → focus secondary reader.
   if app.reader.dual_active && key.code == KeyCode::Tab {
-    if !app.reader.secondary.tabs.is_empty() {
+    if app.reader.secondary.is_loaded() {
       app.focus.focused_pane = PaneId::SecondaryReader;
       app.reader.focused = FocusedReader::Secondary;
     }
@@ -318,12 +316,9 @@ pub(super) fn handle_reader_pane(key: KeyEvent, app: &mut App) -> bool {
       let pane_empty = app.reader_close_active_tab();
       if pane_empty {
         if app.reader.dual_active {
-          // Primary ran out of tabs: promote secondary tabs to primary.
-          app.reader.primary.tabs =
-            std::mem::take(&mut app.reader.secondary.tabs);
-          app.reader.primary.active_tab = app.reader.secondary.active_tab;
-          app.reader.secondary.active_tab = 0;
-          app.reader.active = !app.reader.primary.tabs.is_empty();
+          // Primary doc closed: promote the secondary doc to primary.
+          app.reader.primary.doc = app.reader.secondary.doc.take();
+          app.reader.active = app.reader.primary.is_loaded();
           app.reader.dual_active = false;
           app.reader_bottom.open = false;
           app.reader_bottom.focused = false;
@@ -375,8 +370,7 @@ pub(super) fn reader_back(app: &mut App, side: FocusedReader) -> bool {
     match side {
       FocusedReader::Secondary => {
         app.reader.dual_active = false;
-        app.reader.secondary.tabs.clear();
-        app.reader.secondary.active_tab = 0;
+        app.reader.secondary.doc = None;
         app.notes.set_visible(FocusedReader::Secondary, false);
         app.reader_bottom.open = false;
         app.reader_bottom.focused = false;
@@ -384,11 +378,8 @@ pub(super) fn reader_back(app: &mut App, side: FocusedReader) -> bool {
         app.focus.focused_pane = PaneId::Reader;
       }
       FocusedReader::Primary => {
-        app.reader.primary.tabs =
-          std::mem::take(&mut app.reader.secondary.tabs);
-        app.reader.primary.active_tab = app.reader.secondary.active_tab;
-        app.reader.secondary.active_tab = 0;
-        app.reader.active = !app.reader.primary.tabs.is_empty();
+        app.reader.primary.doc = app.reader.secondary.doc.take();
+        app.reader.active = app.reader.primary.is_loaded();
         app.reader.dual_active = false;
         app.reader_bottom.open = false;
         app.reader_bottom.focused = false;
@@ -417,10 +408,8 @@ pub(super) fn close_all_readers(app: &mut App) {
   app.reader.split_active = false;
   app.reader_bottom.open = false;
   app.reader_bottom.focused = false;
-  app.reader.primary.tabs.clear();
-  app.reader.primary.active_tab = 0;
-  app.reader.secondary.tabs.clear();
-  app.reader.secondary.active_tab = 0;
+  app.reader.primary.doc = None;
+  app.reader.secondary.doc = None;
   app.notes.hide_all();
   app.reader.focused = FocusedReader::Primary;
   app.focus.focused_pane = PaneId::Feed;

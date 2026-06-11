@@ -151,7 +151,6 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
               app,
               item,
               crate::action::ReaderTarget::Primary,
-              crate::action::OpenMode::ReplaceActive,
             );
             log::debug!(
               "feed Enter: fetch setup took {}µs",
@@ -655,7 +654,6 @@ fn handle_history_tab(key: KeyEvent, app: &mut App) -> bool {
               app,
               item,
               crate::action::ReaderTarget::Primary,
-              crate::action::OpenMode::ReplaceActive,
             );
           }
         }
@@ -777,7 +775,6 @@ fn handle_narrow_feed_state_2(key: KeyEvent, app: &mut App) {
             app,
             item,
             crate::action::ReaderTarget::Primary,
-            crate::action::OpenMode::ReplaceActive,
           );
         }
       }

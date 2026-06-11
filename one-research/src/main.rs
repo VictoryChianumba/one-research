@@ -970,13 +970,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 } else {
                   action::ReaderTarget::Primary
                 };
-                let mode = if app.async_jobs.fulltext_new_tab {
-                  action::OpenMode::NewTab
-                } else {
-                  action::OpenMode::ReplaceActive
-                };
                 app.async_jobs.fulltext_for_secondary = false;
-                app.async_jobs.fulltext_new_tab = false;
 
                 if let Some(id) = detected_arxiv_id {
                   // arxiv path: defer.  Stays in `fulltext_loading=true`
@@ -992,7 +986,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                       notes_context,
                       fallback_paper: Some(fetched_paper),
                       target,
-                      mode,
                     });
                   app.async_jobs.fulltext_loading = true;
                   app.mark_dirty();
@@ -1013,7 +1006,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 );
                 app.apply_open_in_reader(action::Action::OpenInReader {
                   target,
-                  mode,
                   title,
                   arxiv_id,
                   notes_context,
@@ -1033,7 +1025,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             app.async_jobs.fulltext_rx = None;
             app.async_jobs.fulltext_loading = false;
             app.async_jobs.fulltext_for_secondary = false;
-            app.async_jobs.fulltext_new_tab = false;
             app.async_jobs.pending_fulltext_context = None;
             app
               .set_notification("Fetch error: thread disconnected".to_string());
@@ -1113,7 +1104,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
             app.apply_open_in_reader(action::Action::OpenInReader {
               target: pending.target,
-              mode: pending.mode,
               title: pending.title,
               arxiv_id: Some(pending.arxiv_id),
               notes_context: pending.notes_context,
@@ -1144,7 +1134,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 );
                 app.apply_open_in_reader(action::Action::OpenInReader {
                   target: pending.target,
-                  mode: pending.mode,
                   title: pending.title,
                   arxiv_id: Some(pending.arxiv_id),
                   notes_context: pending.notes_context,

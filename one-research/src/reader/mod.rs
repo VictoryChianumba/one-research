@@ -11,14 +11,14 @@
 
 use crate::app::{FocusedReader, ReaderTab};
 
-/// One embedded reader instance — primary or secondary.  Owns its tabs
-/// and the active-tab index.  Each `ReaderTab` wraps a `tread::Reader`
-/// plus the per-tab image cache; this Model owns the *collection*, not
-/// the editors themselves.
+/// One embedded reader instance — primary or secondary.  Holds the
+/// single open paper.  The `ReaderTab` wraps a `tread::Reader` plus the
+/// per-document image cache.  Document tabs were removed (ADR-017): one
+/// paper at a time, opening another replaces it.
 #[derive(Default)]
 pub struct ReaderInstanceModel {
-  pub tabs: Vec<ReaderTab>,
-  pub active_tab: usize,
+  /// The open paper, or `None` when the pane holds nothing.
+  pub doc: Option<ReaderTab>,
 }
 
 impl ReaderInstanceModel {
@@ -29,42 +29,21 @@ impl ReaderInstanceModel {
     Self::default()
   }
 
-  /// Whether this instance currently holds at least one paper.
-  /// Slice 2 stub: tested in this module, not yet called from render path.
-  #[allow(dead_code)]
+  /// Whether this instance currently holds a paper.
   pub fn is_loaded(&self) -> bool {
-    !self.tabs.is_empty()
-  }
-
-  /// Advance the active tab one position, wrapping at the end.  No-op
-  /// when no tabs are open.  Side effects on the editor (stopping voice,
-  /// resetting scroll) are caller-responsibility — this is the pure
-  /// cursor move.
-  pub fn next_tab(&mut self) {
-    let n = self.tabs.len();
-    if n > 0 {
-      self.active_tab = (self.active_tab + 1) % n;
-    }
-  }
-
-  /// Walk back one tab, wrapping at zero.  Mirror of [`next_tab`].
-  pub fn prev_tab(&mut self) {
-    let n = self.tabs.len();
-    if n > 0 {
-      self.active_tab = (self.active_tab + n - 1) % n;
-    }
+    self.doc.is_some()
   }
 
   /// Layout-derived reconciliation that runs once per frame, before
   /// the render hook calls `tread::draw`.  Compares the supplied
-  /// viewport against `last_resize` on the active tab and emits the
+  /// viewport against `last_resize` on the open doc and emits the
   /// `tread::Reader::resize` call only when the size actually changed.
   ///
   /// Without this, the render path would call `resize()` every frame
   /// — `tread::Reader` doesn't guarantee its own short-circuit and
   /// the resize triggers re-flow + image re-placement, both expensive.
   pub fn pre_draw(&mut self, viewport: crate::ui::Viewport) {
-    let Some(tab) = self.tabs.get_mut(self.active_tab) else {
+    let Some(tab) = self.doc.as_mut() else {
       return;
     };
     let new_size = (viewport.cols, viewport.rows);
@@ -74,22 +53,12 @@ impl ReaderInstanceModel {
     }
   }
 
-  /// Remove the active tab.  Returns `true` if the instance is now
-  /// empty (callers may want to dismiss the pane).  Re-anchors
-  /// `active_tab` to the previous index so the cursor stays on a real
-  /// tab unless the list is now empty.
+  /// Close the open paper. Returns `true` — the pane is now empty
+  /// (callers may want to dismiss it). Kept boolean-returning to match
+  /// the dual→single collapse call sites.
   pub fn close_active_tab(&mut self) -> bool {
-    if self.tabs.is_empty() {
-      return true;
-    }
-    let idx = self.active_tab.min(self.tabs.len() - 1);
-    self.tabs.remove(idx);
-    if self.tabs.is_empty() {
-      self.active_tab = 0;
-      return true;
-    }
-    self.active_tab = idx.min(self.tabs.len() - 1);
-    false
+    self.doc = None;
+    true
   }
 }
 
@@ -107,10 +76,8 @@ pub struct ReaderPaneModel {
   pub primary: ReaderInstanceModel,
   /// Secondary reader instance.  Always present; "the secondary is
   /// active" is encoded by `split_active || dual_active`, not by
-  /// `Option`-presence.  ADR-002 originally proposed `Option<...>`
-  /// here, but PR 2 found the mechanical migration cheaper with an
-  /// always-present field — tabs being empty is the no-content signal
-  /// the layout already uses.
+  /// `Option`-presence.  A `None` `doc` is the no-content signal the
+  /// layout already uses.
   pub secondary: ReaderInstanceModel,
   /// View-state: the user is currently inside reader mode.
   pub active: bool,
@@ -141,6 +108,9 @@ impl ReaderPaneModel {
   }
 
   /// Mutable variant of [`focused_instance`].
+  /// Stub like its siblings since the tab-nav caller was removed (ADR-017);
+  /// will be used when the dual-reader gestures land.
+  #[allow(dead_code)]
   pub fn focused_instance_mut(&mut self) -> &mut ReaderInstanceModel {
     match self.focused {
       FocusedReader::Primary => &mut self.primary,
@@ -271,10 +241,11 @@ mod tests {
   }
 
   #[test]
-  fn instance_model_is_loaded_tracks_tabs() {
+  fn instance_model_default_is_unloaded() {
     let m = ReaderInstanceModel::default();
     assert!(!m.is_loaded());
-    // Adding a tab would make is_loaded() true.  ReaderTab construction
+    assert!(m.doc.is_none());
+    // Setting `doc` would make is_loaded() true. ReaderTab construction
     // requires a tread::Reader, which we don't build in unit tests
     // (per ADR-002 S5 — tests-without-tread strategy).
   }
@@ -308,11 +279,11 @@ mod tests {
   }
 
   #[test]
-  fn next_prev_tab_on_empty_is_noop() {
+  fn close_clears_the_doc_and_reports_empty() {
     let mut inst = ReaderInstanceModel::default();
-    inst.next_tab();
-    inst.prev_tab();
-    assert_eq!(inst.active_tab, 0);
+    // Already empty: closing is a no-op that reports empty.
+    assert!(inst.close_active_tab());
+    assert!(inst.doc.is_none());
   }
 
   #[test]

@@ -28,14 +28,6 @@ pub enum ReaderTarget {
   Popup,
 }
 
-/// Whether to push a new tab or replace the active tab in the target
-/// reader instance.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum OpenMode {
-  NewTab,
-  ReplaceActive,
-}
-
 pub enum Action {
   /// Top of the modal stack should be dismissed (Esc, q, etc.).
   /// Load-bearing vocabulary per CONTEXT.md / ADR-002 — settings overlay
@@ -46,15 +38,15 @@ pub enum Action {
   /// Settings on Esc/q.
   OpenSettings,
   /// Cross-pane: open a paper in one of the reader surfaces. The
-  /// payload (already-constructed `tread::Reader` plus its metadata)
-  /// is moved into the orchestrator, which calls the appropriate
-  /// `App::reader_*_push_tab` / `reader_*_replace_active_tab` method.
+  /// payload (already-constructed `tread::Reader` plus its metadata) is
+  /// moved into the orchestrator, which calls `App::reader_open` /
+  /// `reader_secondary_open`. Opening replaces the target pane's single
+  /// doc — document tabs were removed (ADR-017).
   ///
   /// Popup variant currently routes to the same path as Primary; the
   /// async-load lifecycle is still handled outside this Action (PR 5).
   OpenInReader {
     target: ReaderTarget,
-    mode: OpenMode,
     title: String,
     arxiv_id: Option<String>,
     notes_context: Option<NotesContext>,

@@ -14,18 +14,10 @@ use crate::app::{App, FeedTab, FocusedReader, ReaderTab};
 pub(super) fn chat_context_line(app: &App) -> Option<String> {
   if app.reader.active {
     let title = match app.reader.focused {
-      FocusedReader::Secondary if app.reader.dual_active => app
-        .reader
-        .secondary
-        .tabs
-        .get(app.reader.secondary.active_tab)
-        .map(|tab| tab.title.as_str()),
-      _ => app
-        .reader
-        .primary
-        .tabs
-        .get(app.reader.primary.active_tab)
-        .map(|tab| tab.title.as_str()),
+      FocusedReader::Secondary if app.reader.dual_active => {
+        app.reader.secondary.doc.as_ref().map(|tab| tab.title.as_str())
+      }
+      _ => app.reader.primary.doc.as_ref().map(|tab| tab.title.as_str()),
     };
     if let Some(title) = title.filter(|title| !title.trim().is_empty()) {
       return Some(format!("active reader · {}", truncate(title, 96)));
@@ -51,8 +43,8 @@ pub(super) fn reader_workspace_split(area: Rect) -> (Rect, Rect) {
   (rows[0], rows[1])
 }
 
-fn reader_tab_title(tabs: &[ReaderTab], active: usize) -> &str {
-  tabs.get(active).map(|tab| tab.title.as_str()).unwrap_or("no paper")
+fn reader_doc_title(doc: Option<&ReaderTab>) -> &str {
+  doc.map(|tab| tab.title.as_str()).unwrap_or("no paper")
 }
 
 pub(super) fn draw_reader_workspace_header(
@@ -69,8 +61,7 @@ pub(super) fn draw_reader_workspace_header(
     return;
   }
   let t = app.theme();
-  let primary =
-    reader_tab_title(&app.reader.primary.tabs, app.reader.primary.active_tab);
+  let primary = reader_doc_title(app.reader.primary.doc.as_ref());
   let context = primary.to_string();
   let label_style =
     Style::default().fg(t.accent).bg(t.bg_panel).add_modifier(Modifier::BOLD);
@@ -119,17 +110,14 @@ fn draw_dual_reader_workspace_header(frame: &mut Frame, app: &App, area: Rect) {
     frame,
     halves[0],
     "primary",
-    reader_tab_title(&app.reader.primary.tabs, app.reader.primary.active_tab),
+    reader_doc_title(app.reader.primary.doc.as_ref()),
     &t,
   );
   draw_reader_header_title(
     frame,
     halves[1],
     "secondary",
-    reader_tab_title(
-      &app.reader.secondary.tabs,
-      app.reader.secondary.active_tab,
-    ),
+    reader_doc_title(app.reader.secondary.doc.as_ref()),
     &t,
   );
 }
@@ -159,42 +147,6 @@ fn draw_reader_header_title(
     Paragraph::new(line).style(Style::default().bg(t.bg_panel)),
     area,
   );
-}
-
-pub(super) fn draw_reader_tab_bar(
-  frame: &mut Frame,
-  area: Rect,
-  tabs: &[ReaderTab],
-  active: usize,
-  focused: bool,
-  t: &crate::theme::Theme,
-) {
-  if tabs.is_empty() {
-    return;
-  }
-  let max_title =
-    (area.width as usize).saturating_sub(4).max(8) / tabs.len().max(1);
-  let spans: Vec<Span> = tabs
-    .iter()
-    .enumerate()
-    .flat_map(|(i, tab)| {
-      let title: String =
-        tab.title.chars().take(max_title.saturating_sub(5)).collect();
-      let label = format!("[{}: {}]", i + 1, title);
-      let style = if i == active {
-        if focused {
-          Style::default().fg(t.accent).add_modifier(Modifier::BOLD)
-        } else {
-          Style::default().fg(t.text).add_modifier(Modifier::BOLD)
-        }
-      } else {
-        Style::default().fg(t.text_dim)
-      };
-      let sep = Span::raw("  ");
-      vec![Span::styled(label, style), sep]
-    })
-    .collect();
-  frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }
 
 pub fn draw_reader_popup(frame: &mut Frame, app: &mut App, area: Rect) {

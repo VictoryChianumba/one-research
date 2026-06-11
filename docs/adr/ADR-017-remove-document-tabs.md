@@ -1,6 +1,6 @@
 # ADR-017 — Remove document tabs from reader and notes (for now)
 
-- **Status:** Accepted (2026-06-11). Notes landed first (this commit); reader follows in a sibling commit.
+- **Status:** Accepted (2026-06-11). Both commits landed: notes first, then reader.
 - **Date:** 2026-06-11
 - **Owner:** Victory Chianumba
 - **Supersedes:** none

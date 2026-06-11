@@ -10,8 +10,8 @@ use super::feed::draw_feed_pane;
 use super::filter::draw_filter_panel;
 use super::notes::{draw_note_dock, draw_notes_surface};
 use super::reader::{
-  draw_narrow_feed_details_popup, draw_reader_tab_bar,
-  draw_reader_workspace_header, reader_workspace_split,
+  draw_narrow_feed_details_popup, draw_reader_workspace_header,
+  reader_workspace_split,
 };
 use super::right_col_width;
 use super::widgets::{draw_horiz_split_box, draw_vert_split_box};
@@ -113,58 +113,36 @@ pub fn draw_main_row(
       (right_rect, None)
     };
     {
-      let rows = Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
-        .split(left_reader_rect);
-      let focused = app.reader.focused == FocusedReader::Primary;
-      draw_reader_tab_bar(
-        frame,
-        rows[0],
-        &app.reader.primary.tabs,
-        app.reader.primary.active_tab,
-        focused,
-        &t,
-      );
-      app
-        .reader
-        .primary
-        .pre_draw(crate::ui::Viewport::new(rows[1].width, rows[1].height));
+      app.reader.primary.pre_draw(crate::ui::Viewport::new(
+        left_reader_rect.width,
+        left_reader_rect.height,
+      ));
       let kitty = app.kitty_supported;
       if let Some(tab) = app.reader_active_tab_mut() {
-        tread::draw(frame, rows[1], &tab.reader, &tread_theme);
+        tread::draw(frame, left_reader_rect, &tab.reader, &tread_theme);
         let burst = tab.burst.in_burst();
         tread::after_draw_guarded(
           &tab.reader,
           &mut tab.image_state,
-          rows[1],
+          left_reader_rect,
           kitty,
           burst,
         );
       }
     }
     {
-      let rows = Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
-        .split(right_reader_rect);
-      let focused = app.reader.focused == FocusedReader::Secondary;
-      draw_reader_tab_bar(
-        frame,
-        rows[0],
-        &app.reader.secondary.tabs,
-        app.reader.secondary.active_tab,
-        focused,
-        &t,
-      );
-      app
-        .reader
-        .secondary
-        .pre_draw(crate::ui::Viewport::new(rows[1].width, rows[1].height));
+      app.reader.secondary.pre_draw(crate::ui::Viewport::new(
+        right_reader_rect.width,
+        right_reader_rect.height,
+      ));
       let kitty = app.kitty_supported;
       if let Some(tab) = app.reader_secondary_active_tab_mut() {
-        tread::draw(frame, rows[1], &tab.reader, &tread_theme);
+        tread::draw(frame, right_reader_rect, &tab.reader, &tread_theme);
         let burst = tab.burst.in_burst();
         tread::after_draw_guarded(
           &tab.reader,
           &mut tab.image_state,
-          rows[1],
+          right_reader_rect,
           kitty,
           burst,
         );
@@ -174,7 +152,7 @@ pub fn draw_main_row(
         )
         .alignment(Alignment::Center)
         .style(Style::default().fg(t.text_dim));
-        frame.render_widget(hint, rows[1]);
+        frame.render_widget(hint, right_reader_rect);
       }
     }
     if let Some(notes_rect) = left_notes_rect {
@@ -205,28 +183,18 @@ pub fn draw_main_row(
       draw_horiz_split_box(frame, body_area, reader_w, "", "", &t);
     dispatch_feed_pane(frame, app, feed_rect);
     {
-      let rows = Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
-        .split(reader_rect);
-      draw_reader_tab_bar(
-        frame,
-        rows[0],
-        &app.reader.primary.tabs,
-        app.reader.primary.active_tab,
-        true,
-        &t,
-      );
-      app
-        .reader
-        .primary
-        .pre_draw(crate::ui::Viewport::new(rows[1].width, rows[1].height));
+      app.reader.primary.pre_draw(crate::ui::Viewport::new(
+        reader_rect.width,
+        reader_rect.height,
+      ));
       let kitty = app.kitty_supported;
       if let Some(tab) = app.reader_active_tab_mut() {
-        tread::draw(frame, rows[1], &tab.reader, &tread_theme);
+        tread::draw(frame, reader_rect, &tab.reader, &tread_theme);
         let burst = tab.burst.in_burst();
         tread::after_draw_guarded(
           &tab.reader,
           &mut tab.image_state,
-          rows[1],
+          reader_rect,
           kitty,
           burst,
         );
@@ -249,29 +217,19 @@ pub fn draw_main_row(
   if app.reader.active && !app.notes.primary_visible {
     let (workspace_area, body_area) = reader_workspace_split(area);
     draw_reader_workspace_header(frame, app, workspace_area, "Reader");
-    let rows = Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
-      .split(body_area);
-    draw_reader_tab_bar(
-      frame,
-      rows[0],
-      &app.reader.primary.tabs,
-      app.reader.primary.active_tab,
-      true,
-      &t,
-    );
     app
       .reader
       .primary
-      .pre_draw(crate::ui::Viewport::new(rows[1].width, rows[1].height));
+      .pre_draw(crate::ui::Viewport::new(body_area.width, body_area.height));
     let kitty = app.kitty_supported;
     if let Some(tab) = app.reader_active_tab_mut() {
       let elapsed = std::time::Instant::now();
-      tread::draw(frame, rows[1], &tab.reader, &tread_theme);
+      tread::draw(frame, body_area, &tab.reader, &tread_theme);
       let burst = tab.burst.in_burst();
       tread::after_draw_guarded(
         &tab.reader,
         &mut tab.image_state,
-        rows[1],
+        body_area,
         kitty,
         burst,
       );
@@ -295,29 +253,19 @@ pub fn draw_main_row(
     draw_reader_workspace_header(frame, app, workspace_area, "Reader + Notes");
     let (reader_rect, notes_rect) = split_reader_note_dock(body_area);
     {
-      let rows = Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
-        .split(reader_rect);
-      draw_reader_tab_bar(
-        frame,
-        rows[0],
-        &app.reader.primary.tabs,
-        app.reader.primary.active_tab,
-        true,
-        &t,
-      );
-      app
-        .reader
-        .primary
-        .pre_draw(crate::ui::Viewport::new(rows[1].width, rows[1].height));
+      app.reader.primary.pre_draw(crate::ui::Viewport::new(
+        reader_rect.width,
+        reader_rect.height,
+      ));
       let kitty = app.kitty_supported;
       if let Some(tab) = app.reader_active_tab_mut() {
         let elapsed = std::time::Instant::now();
-        tread::draw(frame, rows[1], &tab.reader, &tread_theme);
+        tread::draw(frame, reader_rect, &tab.reader, &tread_theme);
         let burst = tab.burst.in_burst();
         tread::after_draw_guarded(
           &tab.reader,
           &mut tab.image_state,
-          rows[1],
+          reader_rect,
           kitty,
           burst,
         );

@@ -201,7 +201,6 @@ pub struct PendingTreadFetch {
   /// to retry.
   pub fallback_paper: Option<tread::PaperData>,
   pub target: crate::action::ReaderTarget,
-  pub mode: crate::action::OpenMode,
 }
 
 impl App {
