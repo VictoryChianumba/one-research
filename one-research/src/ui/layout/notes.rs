@@ -16,6 +16,17 @@ pub(super) fn note_pane_for_side(side: FocusedReader) -> PaneId {
   }
 }
 
+/// Shrink a rect by per-edge padding (CSS order: top, right, bottom, left),
+/// saturating so an over-tight rect collapses to zero rather than underflowing.
+fn pad(area: Rect, top: u16, right: u16, bottom: u16, left: u16) -> Rect {
+  Rect {
+    x: area.x.saturating_add(left),
+    y: area.y.saturating_add(top),
+    width: area.width.saturating_sub(left.saturating_add(right)),
+    height: area.height.saturating_sub(top.saturating_add(bottom)),
+  }
+}
+
 fn notes_browser_visible<'a>(
   app: &'a App,
   side: FocusedReader,
@@ -212,18 +223,6 @@ fn draw_notes_empty_state(
   );
 }
 
-fn note_list_meta_summary(note: &notes::Note) -> String {
-  let mut parts = Vec::new();
-  if !note.tags.is_empty() {
-    let noun = if note.tags.len() == 1 { "tag" } else { "tags" };
-    parts.push(format!("{} {noun}", note.tags.len()));
-  }
-  let noun = if note.linked_papers.len() == 1 { "paper" } else { "papers" };
-  parts.push(format!("{} {noun}", note.linked_papers.len()));
-  parts.push(note.updated_at.format("%Y-%m-%d").to_string());
-  parts.join("  ·  ")
-}
-
 fn note_preview_meta_summary(note: &notes::Note) -> String {
   let mut parts = Vec::new();
   let noun = if note.linked_papers.len() == 1 { "paper" } else { "papers" };
@@ -252,7 +251,7 @@ fn draw_notes_browser_list(
     return;
   }
 
-  let slots = (area.height as usize / 2).max(1);
+  let slots = (area.height as usize).max(1);
   let selected = selected_idx.unwrap_or(0).min(notes.len().saturating_sub(1));
   let start =
     selected.saturating_sub(slots / 2).min(notes.len().saturating_sub(slots));
@@ -266,59 +265,34 @@ fn draw_notes_browser_list(
   let mut y = area.y;
   for (idx, note) in notes[start..end].iter().enumerate() {
     let note_index = start + idx;
-    let row_area = Rect {
-      x: area.x,
-      y,
-      width: area.width,
-      height: 2.min(area.y + area.height - y),
-    };
+    let row_area = Rect { x: area.x, y, width: area.width, height: 1 };
     let is_selected = note_index == selected;
     let title = truncate(&note.title, area.width.saturating_sub(3) as usize);
-    let meta = truncate(
-      &note_list_meta_summary(note),
-      area.width.saturating_sub(3) as usize,
-    );
-    let lines = vec![
-      Line::from(vec![
-        Span::styled(
-          if is_selected { "› " } else { "  " },
-          if is_selected {
-            selection_style
-          } else {
-            Style::default().fg(t.text_dim)
-          },
-        ),
-        Span::styled(
-          title,
-          if is_selected {
-            selection_style.add_modifier(Modifier::BOLD)
-          } else {
-            Style::default().fg(t.text)
-          },
-        ),
-      ]),
-      Line::from(vec![
-        Span::styled(
-          "  ",
-          if is_selected { selection_style } else { Style::default() },
-        ),
-        Span::styled(
-          meta,
-          if is_selected {
-            selection_style.remove_modifier(Modifier::BOLD)
-          } else {
-            Style::default().fg(t.text_dim)
-          },
-        ),
-      ]),
-    ];
+    let line = Line::from(vec![
+      Span::styled(
+        if is_selected { "› " } else { "  " },
+        if is_selected {
+          selection_style
+        } else {
+          Style::default().fg(t.text_dim)
+        },
+      ),
+      Span::styled(
+        title,
+        if is_selected {
+          selection_style.add_modifier(Modifier::BOLD)
+        } else {
+          Style::default().fg(t.text)
+        },
+      ),
+    ]);
     frame.render_widget(
-      Paragraph::new(lines)
+      Paragraph::new(line)
         .style(if is_selected { selection_style } else { Style::default() })
         .wrap(Wrap { trim: false }),
       row_area,
     );
-    y = y.saturating_add(2);
+    y = y.saturating_add(1);
     if y >= area.y + area.height {
       break;
     }
@@ -331,30 +305,24 @@ fn draw_notes_browser_preview(
   note: Option<&notes::Note>,
   t: &crate::theme::Theme,
 ) {
-  let inner = Rect {
-    x: area.x.saturating_add(1),
-    y: area.y,
-    width: area.width.saturating_sub(1),
-    height: area.height,
-  };
   let Some(note) = note else {
     frame.render_widget(
       Paragraph::new("No note selected")
         .style(Style::default().fg(t.text_dim))
         .alignment(Alignment::Center),
-      inner,
+      area,
     );
     return;
   };
   let mut lines = vec![
     Line::from(""),
     Line::from(Span::styled(
-      truncate(&note.title, inner.width as usize),
+      truncate(&note.title, area.width as usize),
       Style::default().fg(t.text).add_modifier(Modifier::BOLD),
     )),
   ];
   lines.push(Line::from(Span::styled(
-    truncate(&note_preview_meta_summary(note), inner.width as usize),
+    truncate(&note_preview_meta_summary(note), area.width as usize),
     Style::default().fg(t.text_dim),
   )));
   lines.push(Line::from(""));
@@ -371,7 +339,7 @@ fn draw_notes_browser_preview(
       )));
     }
   }
-  frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
+  frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
 }
 
 pub fn draw_notes_surface(
@@ -392,25 +360,30 @@ pub fn draw_notes_surface(
   if app.notes.instance(side).is_none() {
     return;
   }
-  let rows = Layout::vertical([
-    Constraint::Length(1),
-    Constraint::Length(1),
-    Constraint::Min(0),
-  ])
-  .split(area);
-  draw_notes_mode_switcher(
-    frame,
-    rows[0],
-    app.notes_mode_for_side(side),
-    is_focused,
-    theme,
-  );
-  frame.render_widget(
-    Paragraph::new(build_notes_summary_line(app, side, rows[1].width, theme))
-      .wrap(Wrap { trim: false }),
-    rows[1],
-  );
-  let content_area = rows[2];
+  // Library shows per-note metadata in the detail panel, so the summary row
+  // is redundant there — we drop it and reclaim the row for content. Paper
+  // Notes and Capture keep it: it names the paper currently in context.
+  let mode = app.notes_mode_for_side(side);
+  let content_area = if mode == NotesMode::Library {
+    let rows =
+      Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(area);
+    draw_notes_mode_switcher(frame, rows[0], mode, is_focused, theme);
+    rows[1]
+  } else {
+    let rows = Layout::vertical([
+      Constraint::Length(1),
+      Constraint::Length(1),
+      Constraint::Min(0),
+    ])
+    .split(area);
+    draw_notes_mode_switcher(frame, rows[0], mode, is_focused, theme);
+    frame.render_widget(
+      Paragraph::new(build_notes_summary_line(app, side, rows[1].width, theme))
+        .wrap(Wrap { trim: false }),
+      rows[1],
+    );
+    rows[2]
+  };
 
   let editor_active = app.notes.app.as_ref().is_some_and(|notes_app| {
     notes_app.notes_state == notes::app::NotesState::Editor
@@ -463,7 +436,7 @@ pub fn draw_notes_surface(
         .split(content_area);
         draw_notes_browser_list(
           frame,
-          chunks[0],
+          pad(chunks[0], 1, 1, 0, 1),
           &visible,
           notes_browser_selected_index(app, side, &visible),
           is_focused,
@@ -475,7 +448,7 @@ pub fn draw_notes_surface(
         );
         draw_notes_browser_preview(
           frame,
-          chunks[2],
+          pad(chunks[2], 0, 1, 0, 2),
           notes_browser_selected_note(app, side, &visible),
           theme,
         );
@@ -488,7 +461,7 @@ pub fn draw_notes_surface(
         .split(content_area);
         draw_notes_browser_list(
           frame,
-          chunks[0],
+          pad(chunks[0], 1, 1, 0, 1),
           &visible,
           notes_browser_selected_index(app, side, &visible),
           is_focused,
@@ -501,7 +474,7 @@ pub fn draw_notes_surface(
         );
         draw_notes_browser_preview(
           frame,
-          chunks[2],
+          pad(chunks[2], 0, 1, 0, 1),
           notes_browser_selected_note(app, side, &visible),
           theme,
         );
@@ -538,5 +511,5 @@ fn draw_note_preview(
     .instance(side)
     .and_then(|inst| inst.selected.as_deref())
     .and_then(|id| app.notes.app.as_ref().and_then(|na| na.get_note(id)));
-  draw_notes_browser_preview(frame, area, selected, t);
+  draw_notes_browser_preview(frame, pad(area, 0, 1, 0, 1), selected, t);
 }
