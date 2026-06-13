@@ -577,7 +577,6 @@ fn notes_context_from_item(
 ) -> crate::app::NotesContext {
   crate::app::NotesContext {
     paper: paper_ref_from_item(item),
-    source_label: source_label_for_item(item),
   }
 }
 
@@ -689,7 +688,6 @@ fn notes_context_from_history_entry(
         title: entry.title.clone(),
         url: entry.key.clone(),
       },
-      source_label: entry.source.clone(),
     });
   }
   Some(crate::app::NotesContext {
@@ -698,7 +696,6 @@ fn notes_context_from_history_entry(
       title: entry.title.clone(),
       url: entry.key.clone(),
     },
-    source_label: entry.source.clone(),
   })
 }
 
