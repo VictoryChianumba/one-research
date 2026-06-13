@@ -8,7 +8,6 @@ pub enum NotesMode {
 #[derive(Clone, Debug)]
 pub struct NotesContext {
   pub paper: notes::PaperRef,
-  pub source_label: String,
 }
 
 impl NotesMode {

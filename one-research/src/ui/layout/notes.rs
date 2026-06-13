@@ -77,6 +77,7 @@ fn draw_notes_mode_switcher(
   area: Rect,
   mode: NotesMode,
   focused: bool,
+  paper_title: Option<&str>,
   t: &crate::theme::Theme,
 ) {
   // Bold carries the hierarchy: the whole switcher reads as the pane header by
@@ -107,70 +108,36 @@ fn draw_notes_mode_switcher(
       if candidate == mode { active } else { inactive },
     ));
   }
+  // The paper in context rides at the right edge as a dim breadcrumb. Dim
+  // weight plus far-right placement keep it from reading as a fourth mode; it
+  // is dropped whole when the pane is too narrow to seat it without crowding.
+  if let Some(title) = paper_title {
+    let switcher_w: usize =
+      spans.iter().map(|s| s.content.chars().count()).sum();
+    let total = area.width as usize;
+    const GAP: usize = 3;
+    const MIN_CRUMB: usize = 12;
+    const RIGHT_MARGIN: usize = 1;
+    let avail = total.saturating_sub(switcher_w + GAP + RIGHT_MARGIN);
+    if avail >= MIN_CRUMB {
+      let crumb = truncate(title, avail);
+      let filler =
+        total.saturating_sub(switcher_w + crumb.chars().count() + RIGHT_MARGIN);
+      spans.push(Span::raw(" ".repeat(filler)));
+      spans.push(Span::styled(crumb, Style::default().fg(t.text_dim)));
+    }
+  }
   frame.render_widget(
     Paragraph::new(Line::from(spans)).style(Style::default().fg(t.text_dim)),
     area,
   );
 }
 
-fn build_notes_summary_line(
-  app: &App,
-  side: FocusedReader,
-  width: u16,
-  t: &crate::theme::Theme,
-) -> Line<'static> {
-  let mode = app.notes_mode_for_side(side);
-  let context = app.notes_context_for_side(side);
-  // Compute visible once; previously notes_browser_visible ran twice here.
-  let visible = notes_browser_visible(app, side);
-  let visible_count = visible.len();
-  let selected_note = notes_browser_selected_note(app, side, &visible);
-  let summary = match mode {
-    NotesMode::Library => {
-      if let Some(note) = selected_note {
-        format!(
-          "{} notes  ·  selected {}",
-          visible_count,
-          truncate(&note.title, width.saturating_sub(24) as usize)
-        )
-      } else {
-        format!("{visible_count} notes in library")
-      }
-    }
-    NotesMode::PaperNotes => {
-      if let Some(ctx) = context {
-        format!(
-          "{}  ·  {}  ·  {} linked",
-          truncate(&ctx.paper.title, width.saturating_sub(28) as usize),
-          ctx.source_label,
-          visible_count
-        )
-      } else {
-        "No paper context".to_string()
-      }
-    }
-    NotesMode::Capture => {
-      if let Some(ctx) = context {
-        format!(
-          "{}  ·  {}  ·  ready to capture",
-          truncate(&ctx.paper.title, width.saturating_sub(36) as usize),
-          ctx.source_label
-        )
-      } else {
-        "No paper context".to_string()
-      }
-    }
-  };
-  Line::from(Span::styled(
-    truncate(&summary, width as usize),
-    Style::default().fg(t.text_dim),
-  ))
-}
-
 fn draw_notes_empty_state(
   frame: &mut Frame,
   area: Rect,
   mode: NotesMode,
+  paper_title: Option<&str>,
   t: &crate::theme::Theme,
 ) {
   let lines = match mode {
@@ -198,12 +165,18 @@ fn draw_notes_empty_state(
     ],
     NotesMode::Capture => vec![
       Line::from(Span::styled(
-        "Capture a linked note.",
+        // Only claim "this paper" when a paper is actually in context; the
+        // breadcrumb names it, so the prompt stays generic otherwise.
+        if paper_title.is_some() {
+          "Capture a note linked to this paper."
+        } else {
+          "Capture a linked note."
+        },
         Style::default().fg(t.text).add_modifier(Modifier::BOLD),
       )),
       Line::from(""),
       Line::from(Span::styled(
-        "Press n or Enter to open the prefilled composer.",
+        "Press n or Enter to begin.",
         Style::default().fg(t.text_dim),
       )),
     ],
@@ -247,7 +220,7 @@ fn draw_notes_browser_list(
     return;
   }
   if notes.is_empty() {
-    draw_notes_empty_state(frame, area, NotesMode::Library, t);
+    draw_notes_empty_state(frame, area, NotesMode::Library, None, t);
     return;
   }
 
@@ -360,30 +333,27 @@ pub fn draw_notes_surface(
   if app.notes.instance(side).is_none() {
     return;
   }
-  // Library shows per-note metadata in the detail panel, so the summary row
-  // is redundant there — we drop it and reclaim the row for content. Paper
-  // Notes and Capture keep it: it names the paper currently in context.
+  // Every mode shares one header row; the paper in context (Paper Notes and
+  // Capture only — Library is the unfiltered library) rides it as a right-
+  // aligned breadcrumb, so all three modes start their content at the same row.
   let mode = app.notes_mode_for_side(side);
-  let content_area = if mode == NotesMode::Library {
-    let rows =
-      Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(area);
-    draw_notes_mode_switcher(frame, rows[0], mode, is_focused, theme);
-    rows[1]
-  } else {
-    let rows = Layout::vertical([
-      Constraint::Length(1),
-      Constraint::Length(1),
-      Constraint::Min(0),
-    ])
-    .split(area);
-    draw_notes_mode_switcher(frame, rows[0], mode, is_focused, theme);
-    frame.render_widget(
-      Paragraph::new(build_notes_summary_line(app, side, rows[1].width, theme))
-        .wrap(Wrap { trim: false }),
-      rows[1],
-    );
-    rows[2]
+  let paper_title = match mode {
+    NotesMode::PaperNotes | NotesMode::Capture => {
+      app.notes_context_for_side(side).map(|ctx| ctx.paper.title.clone())
+    }
+    NotesMode::Library => None,
   };
+  let rows =
+    Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).split(area);
+  draw_notes_mode_switcher(
+    frame,
+    rows[0],
+    mode,
+    is_focused,
+    paper_title.as_deref(),
+    theme,
+  );
+  let content_area = rows[1];
 
   let editor_active = app.notes.app.as_ref().is_some_and(|notes_app| {
     notes_app.notes_state == notes::app::NotesState::Editor
@@ -416,7 +386,13 @@ pub fn draw_notes_surface(
 
   match app.notes_mode_for_side(side) {
     NotesMode::Capture => {
-      draw_notes_empty_state(frame, content_area, NotesMode::Capture, theme);
+      draw_notes_empty_state(
+        frame,
+        content_area,
+        NotesMode::Capture,
+        paper_title.as_deref(),
+        theme,
+      );
     }
     NotesMode::PaperNotes | NotesMode::Library => {
       let visible = notes_browser_visible(app, side);
@@ -425,6 +401,7 @@ pub fn draw_notes_surface(
           frame,
           content_area,
           app.notes_mode_for_side(side),
+          paper_title.as_deref(),
           theme,
         );
       } else if content_area.width >= 72 {
