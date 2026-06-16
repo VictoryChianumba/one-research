@@ -7,6 +7,7 @@ use ratatui::{
   prelude::Margin,
   style::{Modifier, Style},
   symbols,
+  text::{Line, Span},
   widgets::{
     Block, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
   },
@@ -378,30 +379,19 @@ impl<'a> NoteEditor<'a> {
   // ── Rendering ────────────────────────────────────────────────────────────
 
   pub fn render_widget(&mut self, frame: &mut Frame, area: Rect) {
-    // Split: 1 row for mode indicator, rest for text area.
+    // Inset for breathing room, then let the text fill everything above a
+    // blank spacer row and a calm status footer pinned to the bottom.
+    let area = area.inner(Margin { horizontal: 1, vertical: 0 });
     let rows = Layout::default()
       .direction(Direction::Vertical)
-      .constraints([Constraint::Length(1), Constraint::Min(0)])
+      .constraints([
+        Constraint::Min(0),
+        Constraint::Length(1),
+        Constraint::Length(1),
+      ])
       .split(area);
-    let indicator_area = rows[0];
-    let text_rect = rows[1];
-
-    // Mode indicator line.
-    let (mode_label, mode_color) = if self.is_active {
-      match self.mode {
-        EditorMode::Normal => ("-- NORMAL --", theme::current().text_dim),
-        EditorMode::Insert => ("-- INSERT --", theme::current().warning),
-        EditorMode::Visual => ("-- VISUAL --", theme::current().success),
-      }
-    } else {
-      ("", theme::current().text_dim)
-    };
-    let unsaved = if self.has_unsaved { "  [+]" } else { "" };
-    frame.render_widget(
-      Paragraph::new(format!("{mode_label}{unsaved}"))
-        .style(Style::default().fg(mode_color)),
-      indicator_area,
-    );
+    let text_rect = rows[0];
+    let footer_area = rows[2];
 
     // Text area — no block border.
     self.text_area.set_block(Block::default());
@@ -430,6 +420,50 @@ impl<'a> NoteEditor<'a> {
 
     self.render_vertical_scrollbar(frame, text_rect);
     self.render_horizontal_scrollbar(frame, text_rect);
+
+    self.render_footer(frame, footer_area);
+  }
+
+  /// Calm status footer: note title on the left, editor mode and an unsaved
+  /// dot on the right. Pinned to the bottom of the surface and dim — its
+  /// weight and position set it apart, so it needs no divider rule.
+  fn render_footer(&self, frame: &mut Frame, area: Rect) {
+    if area.width == 0 || area.height == 0 {
+      return;
+    }
+    let t = theme::current();
+    let width = area.width as usize;
+
+    // Right cluster: the mode word (only while editing) then an unsaved dot.
+    let mut right = String::new();
+    if self.is_active {
+      right.push_str(match self.mode {
+        EditorMode::Normal => "normal",
+        EditorMode::Insert => "insert",
+        EditorMode::Visual => "visual",
+      });
+    }
+    if self.has_unsaved {
+      if !right.is_empty() {
+        right.push_str(" · ");
+      }
+      right.push('●');
+    }
+    let right_w = right.chars().count();
+
+    // Left: note title, truncated so it never collides with the right cluster.
+    let raw_title =
+      if self.title.is_empty() { "Untitled" } else { self.title.as_str() };
+    const GAP: usize = 2;
+    let title = truncate(raw_title, width.saturating_sub(right_w + GAP));
+    let filler = width.saturating_sub(title.chars().count() + right_w);
+
+    let line = Line::from(vec![
+      Span::styled(title, Style::default().fg(t.header)),
+      Span::raw(" ".repeat(filler)),
+      Span::styled(right, Style::default().fg(t.text_dim)),
+    ]);
+    frame.render_widget(Paragraph::new(line), area);
   }
 
   pub fn render_vertical_scrollbar(&mut self, frame: &mut Frame, area: Rect) {
@@ -445,14 +479,12 @@ impl<'a> NoteEditor<'a> {
       ScrollbarState::default().content_length(lines_count).position(row);
 
     let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
-      .begin_symbol(Some("▲"))
-      .end_symbol(Some("▼"))
+      .begin_symbol(None)
+      .end_symbol(None)
       .track_symbol(Some(symbols::line::VERTICAL))
       .thumb_symbol(symbols::block::FULL);
 
-    let scroll_area = area.inner(Margin { horizontal: 0, vertical: 1 });
-
-    frame.render_stateful_widget(scrollbar, scroll_area, &mut state);
+    frame.render_stateful_widget(scrollbar, area, &mut state);
   }
 
   pub fn render_horizontal_scrollbar(&mut self, frame: &mut Frame, area: Rect) {
@@ -474,14 +506,12 @@ impl<'a> NoteEditor<'a> {
       ScrollbarState::default().content_length(max_width).position(col);
 
     let scrollbar = Scrollbar::new(ScrollbarOrientation::HorizontalBottom)
-      .begin_symbol(Some("◄"))
-      .end_symbol(Some("►"))
+      .begin_symbol(None)
+      .end_symbol(None)
       .track_symbol(Some(symbols::line::HORIZONTAL))
-      .thumb_symbol("🬋");
+      .thumb_symbol(symbols::block::FULL);
 
-    let scroll_area = area.inner(Margin { horizontal: 1, vertical: 0 });
-
-    frame.render_stateful_widget(scrollbar, scroll_area, &mut state);
+    frame.render_stateful_widget(scrollbar, area, &mut state);
   }
 
   // ── Clipboard ────────────────────────────────────────────────────────────
@@ -544,6 +574,19 @@ fn is_default_navigation(key: KeyEvent) -> bool {
     KeyCode::Char('v') if has_ctrl || has_alt => true,
     _ => false,
   }
+}
+
+/// Truncate to `max` columns, replacing the tail with an ellipsis.
+fn truncate(s: &str, max: usize) -> String {
+  if s.chars().count() <= max {
+    return s.to_string();
+  }
+  if max == 0 {
+    return String::new();
+  }
+  let mut out: String = s.chars().take(max - 1).collect();
+  out.push('…');
+  out
 }
 
 fn map_clipboard_error(err: arboard::Error) -> anyhow::Error {
