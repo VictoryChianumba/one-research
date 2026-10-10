@@ -82,7 +82,10 @@ impl NotesInstanceModel {
   /// the orchestrator and passed in; the backend never enters here. This
   /// replaces `ensure_notes_browser_selection` (`keys/mod.rs:332`) when
   /// the dock is wired over in PR 2.
-  pub fn reconcile_selection(&mut self, visible_ids: &[String]) -> Option<&str> {
+  pub fn reconcile_selection(
+    &mut self,
+    visible_ids: &[String],
+  ) -> Option<&str> {
     if visible_ids.is_empty() {
       self.selected = None;
     } else if !self

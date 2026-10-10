@@ -2,8 +2,8 @@ use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use std::sync::mpsc;
 
 use crate::app::{
-  App, AppView, CustomThemeEditorMode, FeedTab, FocusedReader,
-  NavDirection, NotesMode, PaneId, QuitPopupKind,
+  App, AppView, CustomThemeEditorMode, FeedTab, FocusedReader, NavDirection,
+  NotesMode, PaneId, QuitPopupKind,
 };
 
 use super::{get_pane_by_number, spawn_fulltext_fetch, truncate_for_notif};
@@ -386,7 +386,8 @@ fn move_notes_browser_selection(
 /// reset (`sync_notes_app_to_side`) that conflated selection with the
 /// active tab. Called just before any browser-key fall-through.
 fn seed_backend_from_selection(app: &mut App, side: FocusedReader) {
-  let selected = app.notes.instance(side).and_then(|inst| inst.selected.clone());
+  let selected =
+    app.notes.instance(side).and_then(|inst| inst.selected.clone());
   if let Some(notes_app) = app.notes.app.as_mut() {
     if notes_app.current_note_id != selected {
       notes_app.set_current_note(selected);
@@ -575,9 +576,7 @@ fn source_label_for_item(item: &crate::models::FeedItem) -> String {
 fn notes_context_from_item(
   item: &crate::models::FeedItem,
 ) -> crate::app::NotesContext {
-  crate::app::NotesContext {
-    paper: paper_ref_from_item(item),
-  }
+  crate::app::NotesContext { paper: paper_ref_from_item(item) }
 }
 
 pub(super) fn remember_fulltext_paper_context(
@@ -836,11 +835,7 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
               "Loading: {}…",
               truncate_for_notif(&item.title, 40)
             ));
-            spawn_paper_open(
-              app,
-              item,
-              crate::action::ReaderTarget::Secondary,
-            );
+            spawn_paper_open(app, item, crate::action::ReaderTarget::Secondary);
           }
         }
         app.focus.focused_pane = PaneId::Reader;
