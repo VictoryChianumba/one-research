@@ -1,0 +1,176 @@
+# Release: on a version tag, build the binary for four targets, verify
+# each one, and attach them with SHA-256 checksums to a GitHub Release.
+#
+#   git tag v0.1.20 && git push origin v0.1.20     # tag must match Cargo.toml
+#
+# A tag with a pre-release suffix (v0.1.20-rc.1) builds the same way and
+# is published as a GitHub pre-release.
+#
+# Targets:
+#   x86_64-unknown-linux-gnu   ubuntu-22.04      native
+#   aarch64-unknown-linux-gnu  ubuntu-22.04-arm  native (ARM runner; avoids
+#                                                an ALSA/OpenSSL cross sysroot)
+#   aarch64-apple-darwin       macos-15          native
+#   x86_64-apple-darwin        macos-15          cross-compiled
+# Linux builds use Ubuntu 22.04 so the binaries need only glibc >= 2.35.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_TERM_COLOR: never
+
+jobs:
+  version:
+    name: tag matches Cargo.toml
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      prerelease: ${{ steps.check.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: check
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          version="$(sed -n '/^\[workspace.package\]/,/^\[/ s/^version = "\(.*\)"/\1/p' Cargo.toml)"
+          base="${tag#v}"; base="${base%%-*}"
+          if [ "$base" != "$version" ]; then
+            echo "::error::tag $tag does not match workspace version $version"
+            exit 1
+          fi
+          case "$tag" in *-*) pre=true ;; *) pre=false ;; esac
+          echo "prerelease=$pre" >> "$GITHUB_OUTPUT"
+          echo "tag $tag -> version $version (prerelease: $pre)"
+
+  build:
+    name: build ${{ matrix.target }}
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-22.04-arm
+          - target: aarch64-apple-darwin
+            os: macos-15
+          - target: x86_64-apple-darwin
+            os: macos-15
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install system libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -q && sudo apt-get install -y -q pkg-config libasound2-dev libssl-dev
+
+      # The toolchain itself comes from rust-toolchain.toml.
+      - name: Add Rust target
+        run: rustup target add ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: ${{ matrix.target }}
+
+      - run: echo "::add-matcher::.github/matchers/rust.json"
+
+      # Release profile (.cargo/config.toml) sets lto, codegen-units=1 and
+      # strip = true.
+      - name: Build
+        run: cargo build --release --locked -p one-research --target ${{ matrix.target }}
+
+      - name: Verify binary
+        shell: bash
+        run: |
+          bin="target/${{ matrix.target }}/release/one-research"
+          desc="$(file -b "$bin")"
+          echo "::notice title=${{ matrix.target }}::$desc"
+          case "${{ matrix.target }}" in
+            x86_64-*) want_arch='x86[-_]64' ;;
+            aarch64-*) want_arch='aarch64|arm64' ;;
+          esac
+          echo "$desc" | grep -Eq "$want_arch" || { echo "::error::wrong architecture: $desc"; exit 1; }
+          if [ "$RUNNER_OS" = Linux ]; then
+            echo "$desc" | grep -q ', stripped' || { echo "::error::binary is not stripped: $desc"; exit 1; }
+            glibc="$(objdump -T "$bin" | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1)"
+            echo "::notice title=${{ matrix.target }} glibc floor::$glibc"
+          else
+            # Mach-O: `file` doesn't report stripping; count local symbols.
+            locals="$(nm "$bin" 2>/dev/null | grep -c ' [tdbs] ' || true)"
+            echo "::notice title=${{ matrix.target }} local symbols::$locals"
+          fi
+
+      # Exercise the real render path headlessly (no TTY needed).
+      - name: Run it
+        shell: bash
+        run: |
+          bin="target/${{ matrix.target }}/release/one-research"
+          run=("$bin")
+          if [ "${{ matrix.target }}" = x86_64-apple-darwin ]; then
+            if arch -x86_64 /usr/bin/true 2>/dev/null; then
+              run=(arch -x86_64 "$bin")
+            else
+              echo "::warning title=${{ matrix.target }}::Rosetta unavailable on this runner; cross-built binary was not executed"
+              exit 0
+            fi
+          fi
+          HOME="$(mktemp -d)" "${run[@]}" --bench-render --frames 20 --width 120 --height 40
+
+      - name: Package
+        shell: bash
+        run: |
+          name="one-research-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          mkdir -p "dist/$name"
+          cp "target/${{ matrix.target }}/release/one-research" LICENSE README.md "dist/$name/"
+          tar -C dist -czf "dist/$name.tar.gz" "$name"
+          (cd dist && shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256")
+          cat "dist/$name.tar.gz.sha256"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ matrix.target }}
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: publish GitHub Release
+    needs: [version, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Verify checksums and combine
+        working-directory: dist
+        run: |
+          sha256sum -c ./*.sha256
+          cat ./*.sha256 | sort -k2 > SHA256SUMS
+          cat SHA256SUMS
+          count="$(wc -l < SHA256SUMS)"
+          [ "$count" -eq 4 ] || { echo "::error::expected 4 archives, got $count"; exit 1; }
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PRERELEASE: ${{ needs.version.outputs.prerelease }}
+        run: |
+          flags=(--title "One-Research ${GITHUB_REF_NAME}" --generate-notes --verify-tag)
+          [ "$PRERELEASE" = true ] && flags+=(--prerelease)
+          gh release create "$GITHUB_REF_NAME" "${flags[@]}" dist/*.tar.gz dist/*.sha256 dist/SHA256SUMS
