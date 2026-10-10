@@ -87,8 +87,13 @@ fn fetch_venue(invitation: &str) -> Result<Vec<FeedItem>, String> {
     .map_err(|e| format!("HTTP failed: {e}"))?;
   let body =
     crate::http::read_body(resp).map_err(|e| format!("read failed: {e}"))?;
+  parse_response(&body)
+}
 
-  let parsed: OrResponse = serde_json::from_str(&body)
+/// Parse an OpenReview v2 `/notes` response body. Split out of
+/// `fetch_venue` so it can be tested against recorded responses.
+fn parse_response(body: &str) -> Result<Vec<FeedItem>, String> {
+  let parsed: OrResponse = serde_json::from_str(body)
     .map_err(|e| format!("JSON parse failed: {e}"))?;
 
   let mut items = Vec::new();
@@ -206,4 +211,79 @@ struct OrNote {
   #[serde(default)]
   cdate: Option<i64>,
   content: Option<Value>,
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  // NOTE: hand-written bodies in the documented v2 shape, not recordings —
+  // OpenReview answers datacenter IPs (incl. GitHub's runners) with a 403
+  // bot challenge, so a real fixture has to be recorded locally with
+  // scripts/record-fixtures.sh. These pin the mapping logic in
+  // `note_to_item`; replace or supplement with a recorded response.
+  const V2_BODY: &str = r#"{"notes": [
+    {"id": "abc123", "cdate": 1727740800000, "content": {
+      "title": {"value": "  Sparse   Probing  "},
+      "abstract": {"value": "We study probes."},
+      "authors": {"value": ["Ada Lovelace", "Alan Turing"]}}},
+    {"id": "def456", "cdate": 1727740800000, "content": {
+      "title": "Plain String Fields",
+      "arxiv": "2410.00001",
+      "authors": ["Grace Hopper"]}},
+    {"id": "notitle", "content": {"abstract": {"value": "orphan"}}}
+  ], "count": 3}"#;
+
+  #[test]
+  fn parse_response_maps_v2_and_plain_shapes_and_skips_untitled() {
+    let items = parse_response(V2_BODY).expect("parse ok");
+    // The untitled note is dropped, not emitted with an empty title.
+    assert_eq!(items.len(), 2);
+
+    let a = &items[0];
+    assert_eq!(a.title, "Sparse Probing");
+    assert_eq!(a.url, "https://openreview.net/forum?id=abc123");
+    assert_eq!(a.authors, ["Ada Lovelace", "Alan Turing"]);
+    assert_eq!(a.published_at, "2024-10-01", "cdate is epoch millis");
+    assert_eq!(a.summary_short, "We study probes.");
+
+    // An arXiv id wins over the forum URL so the item dedups against the
+    // arXiv source.
+    let b = &items[1];
+    assert_eq!(b.url, "https://arxiv.org/abs/2410.00001");
+    assert_eq!(b.id, b.url);
+    assert_eq!(b.authors, ["Grace Hopper"]);
+  }
+
+  #[test]
+  fn parse_response_rejects_non_json() {
+    assert!(parse_response("<html>502</html>").is_err());
+  }
+
+  // Known bug: `fetch_venue` does not check the HTTP status, and `notes`
+  // is `#[serde(default)]`, so OpenReview's 403 bot-challenge body (real
+  // shape below, as returned to a GitHub runner on 2026-10-10) parses as
+  // Ok with zero papers — the source silently goes empty instead of
+  // reporting an error. arxiv.rs guards against exactly this failure class.
+  #[test]
+  #[ignore = "known bug: an OpenReview 403 challenge body parses as Ok(empty)"]
+  fn parse_response_treats_challenge_body_as_error() {
+    let body = r#"{"name":"ChallengeRequiredError","message":"Challenge verification required","status":403,"details":{"challengeUrl":"https://openreview.net/challenge"}}"#;
+    assert!(parse_response(body).is_err());
+  }
+
+  // ── Live integration tests ────────────────────────────────────────────
+  // Hit the real API. Never run by default: `#[ignore]` plus the test
+  // build's deny-network guard. Run them with
+  //   ONE_RESEARCH_ALLOW_NETWORK=1 scripts/test.sh -- --ignored live_
+  // or the manual "Live integration" workflow.
+  // Expected to fail from GitHub-hosted runners: OpenReview serves them a
+  // 403 bot challenge (and, per the known bug above, that currently
+  // surfaces as an empty Ok rather than an error).
+  #[test]
+  #[ignore = "live: real OpenReview API"]
+  fn live_openreview_fetch_venue_returns_papers() {
+    let items = fetch_venue(DEFAULT_VENUES[0]).expect("OpenReview fetch");
+    assert!(!items.is_empty(), "OpenReview returned zero papers");
+  }
 }

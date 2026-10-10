@@ -1,0 +1,58 @@
+# Live integration tests against the real arXiv, Hugging Face, OpenReview
+# and CORE APIs. Manual only: these depend on third-party uptime, rate
+# limits and bot protection, so they must never gate a PR. The regular CI
+# runs offline against recorded fixtures (see record-fixtures.yml).
+#
+# Each API is its own step so one failing upstream does not hide the
+# others; the job fails if any of them fails.
+#
+# Known: OpenReview serves GitHub-hosted runners a 403 bot challenge, so
+# its step is expected to fail here.
+name: Live integration
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  ONE_RESEARCH_ALLOW_NETWORK: "1"
+
+jobs:
+  live:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CORE_API_KEY: ${{ secrets.CORE_API_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install system libraries
+        run: sudo apt-get update -q && sudo apt-get install -y -q libasound2-dev
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      - name: Build tests
+        run: cargo test --workspace --locked --no-run
+
+      - name: arXiv
+        if: ${{ !cancelled() }}
+        run: scripts/test.sh -p one-research -- --ignored --exact ingestion::arxiv::tests::live_arxiv_fetch_page_returns_recent_cs_lg_papers
+
+      - name: Hugging Face
+        if: ${{ !cancelled() }}
+        run: scripts/test.sh -p one-research -- --ignored --exact ingestion::huggingface::tests::live_hf_papers_page_parses_to_papers
+
+      - name: OpenReview
+        if: ${{ !cancelled() }}
+        run: scripts/test.sh -p one-research -- --ignored --exact ingestion::openreview::tests::live_openreview_fetch_venue_returns_papers
+
+      - name: CORE
+        if: ${{ !cancelled() && env.CORE_API_KEY != '' }}
+        run: scripts/test.sh -p one-research -- --ignored --exact ingestion::core::tests::live_core_fetch_returns_papers
+
+      - name: CORE (skipped)
+        if: ${{ env.CORE_API_KEY == '' }}
+        run: echo "::warning title=CORE not tested::CORE_API_KEY secret is not set, so the live CORE test did not run."

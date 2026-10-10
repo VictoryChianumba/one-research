@@ -13,4 +13,5 @@ log = "0.4"
 # closed local port, so a test can never reach the real network (arXiv,
 # OpenReview, ...). Enabled through one-research's [dev-dependencies]
 # only; with resolver 2 it is never active in `cargo build`/`install`.
+# The live integration tests bypass it with ONE_RESEARCH_ALLOW_NETWORK=1.
 deny-network = []

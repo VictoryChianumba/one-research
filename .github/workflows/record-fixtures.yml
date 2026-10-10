@@ -1,0 +1,51 @@
+# Re-record the API fixtures used by the offline parser tests.
+#
+# Manual only. Fetches real responses from arXiv, Hugging Face, OpenReview
+# and CORE (needs the CORE_API_KEY secret), then pushes them to a new
+# branch `fixtures/refresh-<run id>` for review as a normal PR. Never
+# writes to the branch it was run from.
+#
+# Known: OpenReview returns a 403 bot challenge to GitHub-hosted runners,
+# so that fixture must be recorded locally (see scripts/record-fixtures.sh).
+name: Record API fixtures
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: record-fixtures
+  cancel-in-progress: false
+
+jobs:
+  record:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Record fixtures
+        env:
+          CORE_API_KEY: ${{ secrets.CORE_API_KEY }}
+        run: scripts/record-fixtures.sh one-research/tests/fixtures
+
+      # Runs even if some sources failed, so partial results can be
+      # reviewed; the job itself still fails and the annotations say why.
+      - name: Push to a review branch
+        if: ${{ !cancelled() }}
+        env:
+          BRANCH: fixtures/refresh-${{ github.run_id }}
+        run: |
+          if git diff --quiet && [ -z "$(git ls-files --others --exclude-standard one-research/tests/fixtures)" ]; then
+            echo "Fixtures unchanged."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$BRANCH"
+          git add one-research/tests/fixtures
+          git commit -m "Re-record API fixtures (run ${{ github.run_id }})"
+          git push origin "$BRANCH"
+          echo "Pushed $BRANCH — open a PR from it to review the new fixtures." >> "$GITHUB_STEP_SUMMARY"

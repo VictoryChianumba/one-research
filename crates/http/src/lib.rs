@@ -92,8 +92,13 @@ pub fn client() -> &'static reqwest::blocking::Client {
       .timeout(REQUEST_TIMEOUT)
       .redirect(reqwest::redirect::Policy::limited(2))
       .user_agent(concat!("one-research/", env!("CARGO_PKG_VERSION")));
+    // Live integration tests opt back in explicitly (see README).
     #[cfg(feature = "deny-network")]
-    let builder = builder.proxy(deny_network_proxy());
+    let builder = if std::env::var_os("ONE_RESEARCH_ALLOW_NETWORK").is_some() {
+      builder
+    } else {
+      builder.proxy(deny_network_proxy())
+    };
     builder.build().expect("failed to build HTTP client")
   })
 }
@@ -101,7 +106,9 @@ pub fn client() -> &'static reqwest::blocking::Client {
 /// Test builds only (`deny-network` feature): send every request that is
 /// not to a loopback host through a proxy on a closed port, so it fails
 /// immediately with "connection refused" instead of reaching the internet.
-/// Loopback stays direct so stub-server tests keep working.
+/// Loopback stays direct so stub-server tests keep working. Setting
+/// `ONE_RESEARCH_ALLOW_NETWORK=1` disables it for the live integration
+/// tests (`cargo test -- --ignored live_`).
 #[cfg(feature = "deny-network")]
 fn deny_network_proxy() -> reqwest::Proxy {
   reqwest::Proxy::custom(|url| match url.host_str() {
@@ -285,6 +292,11 @@ mod tests {
   #[cfg(feature = "deny-network")]
   #[test]
   fn deny_network_blocks_non_loopback_hosts() {
+    assert!(
+      std::env::var_os("ONE_RESEARCH_ALLOW_NETWORK").is_none(),
+      "ONE_RESEARCH_ALLOW_NETWORK is set, so the guard is off and this \
+       test cannot check it; run only the live tests with it (`-- --ignored live_`)"
+    );
     let started = std::time::Instant::now();
     let err = client()
       .get("https://export.arxiv.org/api/query?search_query=all:x")

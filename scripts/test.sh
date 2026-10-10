@@ -19,4 +19,13 @@ unset XDG_CONFIG_HOME XDG_DATA_HOME XDG_CACHE_HOME XDG_STATE_HOME
 tmp_home="$(mktemp -d)"
 trap 'rm -rf "$tmp_home"' EXIT
 
-HOME="$tmp_home" cargo test --workspace --locked "$@"
+# Whole workspace unless a package was named (-p/--package).
+scope=(--workspace)
+for arg in "$@"; do
+  case "$arg" in
+    -p|--package|--package=*) scope=() ;;
+    --) break ;;
+  esac
+done
+
+HOME="$tmp_home" cargo test ${scope[@]+"${scope[@]}"} --locked "$@"

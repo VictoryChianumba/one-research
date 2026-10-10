@@ -1,0 +1,23 @@
+[
+  {
+    "file": "arxiv_cs_lg.atom.xml",
+    "source_url": "https://export.arxiv.org/api/query?search_query=cat:cs.LG&sortBy=submittedDate&sortOrder=descending&start=0&max_results=5",
+    "recorded_at": "2026-10-10T23:34:40Z",
+    "sha256": "ad04b2d35db8a61658c1220f6f3c4828d5b8c7f5e232d7042153960912867126",
+    "bytes": 13015
+  },
+  {
+    "file": "arxiv_id_list.atom.xml",
+    "source_url": "https://export.arxiv.org/api/query?id_list=1706.03762,2005.14165,2312.00752&max_results=3",
+    "recorded_at": "2026-10-10T23:34:40Z",
+    "sha256": "33a000ab2b303992b6212bea49906440bb753e480f894f75af7404f00a7b20a7",
+    "bytes": 9676
+  },
+  {
+    "file": "huggingface_papers.html",
+    "source_url": "https://huggingface.co/papers",
+    "recorded_at": "2026-10-10T23:34:40Z",
+    "sha256": "a1916ab99a62860e498f70a785bb9f92ff0d599817cbb627f81e7b2773b16c46",
+    "bytes": 1020487
+  }
+]

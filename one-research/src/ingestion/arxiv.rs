@@ -724,4 +724,58 @@ mod tests {
       items[0].summary_short
     );
   }
+
+  // ── Recorded-fixture tests ────────────────────────────────────────────
+  // Real export.arxiv.org responses, recorded by
+  // scripts/record-fixtures.sh (source URL + date in
+  // tests/fixtures/manifest.json). WHY: the hand-written XML above pins
+  // edge cases; these pin that the parser still understands what arXiv
+  // actually serves today, without a network call in CI.
+  const FIXTURE_CS_LG: &str =
+    include_str!("../../tests/fixtures/arxiv_cs_lg.atom.xml");
+
+  #[test]
+  fn recorded_listing_parses_every_entry_completely() {
+    let items = parse_atom(FIXTURE_CS_LG).expect("recorded feed must parse");
+    // The recorder asked for max_results=5.
+    assert_eq!(items.len(), 5);
+    for it in &items {
+      assert!(!it.title.is_empty() && !it.title.contains('\n'), "{it:?}");
+      assert!(it.url.starts_with("http://arxiv.org/abs/"), "{}", it.url);
+      assert_eq!(it.id, it.url, "id is the abs URL (dedup key)");
+      assert!(
+        normalize_arxiv_id(&it.url).is_some(),
+        "abs URL must yield an arXiv id: {}",
+        it.url
+      );
+      let d = it.published_at.as_bytes();
+      assert!(
+        d.len() == 10 && d[4] == b'-' && d[7] == b'-',
+        "published_at must be YYYY-MM-DD, got {:?}",
+        it.published_at
+      );
+      assert!(!it.authors.is_empty(), "no authors: {}", it.title);
+      assert!(!it.summary_short.is_empty(), "no abstract: {}", it.title);
+      // The request was `cat:cs.LG`, so every result must carry that code
+      // (the subject-follow predicate depends on raw codes surviving).
+      assert!(
+        it.domain_tags.iter().any(|t| t == "cs.LG"),
+        "missing cs.LG in {:?}",
+        it.domain_tags
+      );
+    }
+  }
+
+  // ── Live integration tests ────────────────────────────────────────────
+  // Hit the real API. Never run by default: `#[ignore]` plus the test
+  // build's deny-network guard. Run them with
+  //   ONE_RESEARCH_ALLOW_NETWORK=1 scripts/test.sh -- --ignored live_
+  // or the manual "Live integration" workflow.
+  #[test]
+  #[ignore = "live: real arXiv API"]
+  fn live_arxiv_fetch_page_returns_recent_cs_lg_papers() {
+    let items = fetch_page(&["cs.LG".to_string()], 0, 3).expect("arXiv fetch");
+    assert_eq!(items.len(), 3);
+    assert!(items.iter().all(|i| i.domain_tags.iter().any(|t| t == "cs.LG")));
+  }
 }

@@ -902,4 +902,117 @@ mod tests {
       Some("Diffusion & flow models beat <baselines>.")
     );
   }
+
+  // ── Recorded-fixture tests ────────────────────────────────────────────
+  // Real responses recorded by scripts/record-fixtures.sh (see
+  // tests/fixtures/manifest.json).
+  const FIXTURE_ID_LIST: &str =
+    include_str!("../../tests/fixtures/arxiv_id_list.atom.xml");
+  const FIXTURE_HF_PAGE: &str =
+    include_str!("../../tests/fixtures/huggingface_papers.html");
+  const FIXTURE_HF_DATE: &str = "2026-10-10";
+
+  #[test]
+  fn recorded_id_list_yields_one_abstract_per_requested_id() {
+    // The recorder requested exactly these three ids.
+    let map = parse_abstracts(FIXTURE_ID_LIST);
+    let mut keys: Vec<_> = map.keys().cloned().collect();
+    keys.sort();
+    assert_eq!(keys, ["1706.03762", "2005.14165", "2312.00752"]);
+    assert!(
+      map["1706.03762"]
+        .starts_with("The dominant sequence transduction models"),
+      "Attention Is All You Need abstract, got: {}",
+      &map["1706.03762"][..60]
+    );
+    assert!(map.values().all(|v| !v.contains('\n')));
+  }
+
+  /// Independent oracle: the HF page embeds its paper list as JSON in the
+  /// `DailyPapers` component's `data-props` attribute. `parse_papers`
+  /// scrapes the HTML around it, so comparing against this JSON checks
+  /// the scraper against the page's own data rather than against itself.
+  fn hf_page_truth() -> Vec<serde_json::Value> {
+    let marker = r#"data-target="DailyPapers" data-props=""#;
+    let start =
+      FIXTURE_HF_PAGE.find(marker).expect("DailyPapers props") + marker.len();
+    let end = start + FIXTURE_HF_PAGE[start..].find('"').unwrap();
+    // Only &quot; and &amp; occur in the recorded page.
+    let json =
+      FIXTURE_HF_PAGE[start..end].replace("&quot;", "\"").replace("&amp;", "&");
+    let v: serde_json::Value = serde_json::from_str(&json).expect("props JSON");
+    v["dailyPapers"].as_array().unwrap().clone()
+  }
+
+  #[test]
+  fn recorded_page_yields_every_paper_with_matching_ids_and_titles() {
+    let items = parse_papers(FIXTURE_HF_PAGE, FIXTURE_HF_DATE);
+    let truth = hf_page_truth();
+    assert_eq!(items.len(), truth.len(), "one item per daily paper");
+    for (it, t) in items.iter().zip(&truth) {
+      let id = t["paper"]["id"].as_str().unwrap();
+      assert_eq!(it.id, id);
+      assert_eq!(it.url, format!("https://huggingface.co/papers/{id}"));
+      let title = t["paper"]["title"].as_str().unwrap();
+      assert_eq!(
+        it.title,
+        title.split_whitespace().collect::<Vec<_>>().join(" ")
+      );
+      assert!(!it.authors.is_empty(), "{id}: no authors");
+    }
+  }
+
+  // Known bug, found by the recorded fixture: 13 of 72 papers parse with 0
+  // upvotes, including the three most-upvoted ones on the page (145, 131,
+  // 123). Upvotes feed `compute_signal()`, so this skews ranking. Ignored
+  // rather than deleted so the bug stays visible in every test run; remove
+  // the #[ignore] when `extract_upvotes` is fixed.
+  #[test]
+  #[ignore = "known bug: HF upvotes parse as 0 for 13/72 recorded papers"]
+  fn recorded_page_upvotes_match_page_data() {
+    let items = parse_papers(FIXTURE_HF_PAGE, FIXTURE_HF_DATE);
+    let wrong: Vec<_> = items
+      .iter()
+      .zip(hf_page_truth())
+      .filter(|(it, t)| {
+        Some(it.upvote_count as u64) != t["paper"]["upvotes"].as_u64()
+      })
+      .map(|(it, t)| {
+        format!("{}: {} vs {}", it.id, it.upvote_count, t["paper"]["upvotes"])
+      })
+      .collect();
+    assert!(wrong.is_empty(), "parsed vs page upvotes:\n{}", wrong.join("\n"));
+  }
+
+  // Known bug, found by the recorded fixture: 68 of 72 papers get extra
+  // "authors" — the HF *usernames* of authors who have claimed the paper
+  // (e.g. "liushiliushi", "zz1358m") are listed alongside the real names.
+  #[test]
+  #[ignore = "known bug: HF usernames counted as extra authors (68/72 papers)"]
+  fn recorded_page_authors_match_page_data() {
+    let items = parse_papers(FIXTURE_HF_PAGE, FIXTURE_HF_DATE);
+    for (it, t) in items.iter().zip(hf_page_truth()) {
+      let expected: Vec<String> = t["paper"]["authors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|a| a["name"].as_str().unwrap().to_string())
+        .collect();
+      assert_eq!(it.authors, expected, "{}", it.id);
+    }
+  }
+
+  // ── Live integration tests ────────────────────────────────────────────
+  // Hit the real API. Never run by default: `#[ignore]` plus the test
+  // build's deny-network guard. Run them with
+  //   ONE_RESEARCH_ALLOW_NETWORK=1 scripts/test.sh -- --ignored live_
+  // or the manual "Live integration" workflow.
+  #[test]
+  #[ignore = "live: real Hugging Face papers page"]
+  fn live_hf_papers_page_parses_to_papers() {
+    let html = get_text(HF_PAPERS_URL).expect("HF fetch");
+    let items = parse_papers(&html, &today_date());
+    assert!(!items.is_empty(), "HF page parsed to zero papers");
+    assert!(items.iter().all(|i| !i.title.is_empty() && !i.id.is_empty()));
+  }
 }
