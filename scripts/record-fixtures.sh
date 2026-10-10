@@ -19,21 +19,32 @@ recorded_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 manifest_entries=()
 failed=0
 
+# Print a failure; in GitHub Actions also emit it as an annotation so it
+# shows on the run summary / PR without opening the log.
+fail() {
+  echo "FAIL $*" >&2
+  if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+    local msg="${*//'%'/'%25'}"; msg="${msg//$'\n'/'%0A'}"
+    echo "::error title=record-fixtures::${msg}"
+  fi
+  failed=1
+}
+
 # fetch NAME URL SHAPE_REGEX [extra curl args...]
 fetch() {
   local name="$1" url="$2" shape="$3"
   shift 3
   local tmp status
   tmp="$(mktemp)"
-  status="$(curl -sS -L --max-time 60 -A "$ua" -o "$tmp" -w '%{http_code}' "$@" "$url" || echo 000)"
+  # curl prints 000 itself when the request fails outright.
+  status="$(curl -sS -L --max-time 60 -A "$ua" -o "$tmp" -w '%{http_code}' "$@" "$url" 2>/dev/null)" || true
   if [[ "$status" != "200" ]]; then
-    echo "FAIL $name: HTTP $status from $url" >&2
-    failed=1; rm -f "$tmp"; return
+    fail "$name: HTTP $status from $url"$'\n'"$(head -c 300 "$tmp")"
+    rm -f "$tmp"; return
   fi
   if ! grep -Eq "$shape" "$tmp"; then
-    echo "FAIL $name: response does not look right (expected /$shape/)" >&2
-    head -c 300 "$tmp" >&2; echo >&2
-    failed=1; rm -f "$tmp"; return
+    fail "$name: response does not look right (expected /$shape/)"$'\n'"$(head -c 300 "$tmp")"
+    rm -f "$tmp"; return
   fi
   mv "$tmp" "$out/$name"
   local size sha
@@ -72,6 +83,9 @@ if [[ -n "${CORE_API_KEY:-}" ]]; then
     -H "Authorization: Bearer ${CORE_API_KEY}"
 else
   echo "SKIP core_search.json: CORE_API_KEY not set" >&2
+  if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+    echo "::warning title=record-fixtures::CORE skipped: CORE_API_KEY secret not set"
+  fi
 fi
 
 # Merge into the manifest, keeping entries for files not re-recorded
