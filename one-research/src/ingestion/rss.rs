@@ -468,8 +468,9 @@ mod tests {
     </item>
   </channel>
 </rss>"#;
-    let items = parse_feed(xml, SourcePlatform::Blog, ContentType::Article, "t")
-      .expect("parse ok");
+    let items =
+      parse_feed(xml, SourcePlatform::Blog, ContentType::Article, "t")
+        .expect("parse ok");
     assert_eq!(items.len(), 2);
     assert_eq!(items[0].title, "Q&A with R&D");
     assert_eq!(items[0].url, "https://example.org/a?x=1&y=2");
@@ -489,8 +490,9 @@ mod tests {
     <summary>s</summary>
   </entry>
 </feed>"#;
-    let items = parse_feed(xml, SourcePlatform::Blog, ContentType::Article, "t")
-      .expect("parse ok");
+    let items =
+      parse_feed(xml, SourcePlatform::Blog, ContentType::Article, "t")
+        .expect("parse ok");
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].title, "Atom & Eve");
     assert_eq!(items[0].url, "https://example.org/p?a=1&amp;b=2");

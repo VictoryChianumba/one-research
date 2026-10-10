@@ -690,7 +690,8 @@ mod tests {
     let it = &items[0];
     assert_eq!(it.title, "Attention & Memory: Q < K — Résumé");
     assert!(
-      it.summary_short.contains("\"quoted\"") && it.summary_short.contains("'s"),
+      it.summary_short.contains("\"quoted\"")
+        && it.summary_short.contains("'s"),
       "entities in summary must resolve, got: {:?}",
       it.summary_short
     );
