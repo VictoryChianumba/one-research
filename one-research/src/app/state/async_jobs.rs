@@ -42,6 +42,7 @@ use crate::ingestion::message::FetchMessage;
 use super::{NotesContext, RepoFetchResult};
 
 /// See module-level docs.
+#[derive(Default)]
 pub struct AsyncJobs {
   // ── Bulk fetch (arxiv + huggingface + rss + …) ────────────────────────
   pub fetch_rx: Option<Receiver<FetchMessage>>,
@@ -78,25 +79,6 @@ pub struct AsyncJobs {
   pub fulltext_for_secondary: bool,
 }
 
-impl Default for AsyncJobs {
-  fn default() -> Self {
-    Self {
-      fetch_rx: None,
-      is_loading: false,
-      loading_sources: Vec::new(),
-      loaded_sources: Vec::new(),
-      spinner_frame: 0,
-      fulltext_rx: None,
-      fulltext_loading: false,
-      pending_fulltext_context: None,
-      tread_fetch_rx: None,
-      pending_tread_fetch: None,
-      repo_fetch_rx: None,
-      fulltext_for_secondary: false,
-    }
-  }
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -129,10 +111,12 @@ mod tests {
     // future method that "starts the next fetch" accidentally crossing
     // job boundaries (e.g., clearing the bulk-fetch state on a fulltext
     // start).
-    let mut j = AsyncJobs::default();
-    j.is_loading = true;
-    j.fulltext_loading = true;
-    j.fulltext_for_secondary = true;
+    let mut j = AsyncJobs {
+      is_loading: true,
+      fulltext_loading: true,
+      fulltext_for_secondary: true,
+      ..AsyncJobs::default()
+    };
 
     j.fulltext_loading = false;
     assert!(j.is_loading, "bulk-fetch flag survives fulltext_loading flip");

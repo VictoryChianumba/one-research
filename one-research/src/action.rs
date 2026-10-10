@@ -28,6 +28,9 @@ pub enum ReaderTarget {
   Popup,
 }
 
+// One short-lived value per input event; boxing the large variant would
+// touch every construction and match site for no measurable gain.
+#[allow(clippy::large_enum_variant)]
 pub enum Action {
   /// Top of the modal stack should be dismissed (Esc, q, etc.).
   /// Load-bearing vocabulary per CONTEXT.md / ADR-002 — settings overlay

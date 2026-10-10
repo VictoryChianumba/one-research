@@ -106,7 +106,7 @@ fn draw_main(frame: &mut Frame, app: &mut App, area: Rect, t: &Theme) {
     return;
   }
 
-  let tree_w = (area.width / 3).max(26).min(52);
+  let tree_w = (area.width / 3).clamp(26, 52);
   let tree_title = if ctx.tree_path.is_empty() {
     "Tree · /".to_string()
   } else {
@@ -233,16 +233,16 @@ fn draw_file_pane(
   }
 
   if ctx.file_lines.is_empty() {
-    if let Some(status) = ctx.status_message.as_deref() {
-      if status.starts_with("Error:") || status.contains("Loading") {
-        let title = if status.starts_with("Error:") {
-          "Could not load file"
-        } else {
-          "Loading file"
-        };
-        render_center_state(frame, area, title, &[status], t);
-        return;
-      }
+    if let Some(status) = ctx.status_message.as_deref()
+      && (status.starts_with("Error:") || status.contains("Loading"))
+    {
+      let title = if status.starts_with("Error:") {
+        "Could not load file"
+      } else {
+        "Loading file"
+      };
+      render_center_state(frame, area, title, &[status], t);
+      return;
     }
 
     render_center_state(
@@ -357,6 +357,7 @@ fn draw_file_pane(
   }
 }
 
+#[allow(clippy::too_many_arguments)] // render helper; grouping args is a refactor
 fn draw_repo_split_box(
   frame: &mut Frame,
   area: Rect,
@@ -674,6 +675,9 @@ fn truncate(s: &str, max_chars: usize) -> String {
   let mut chars = s.chars();
   let mut out = String::new();
   let mut count = 0;
+  // Manual counter: the body calls `chars.next()`, which `enumerate()`
+  // would hold borrowed.
+  #[allow(clippy::explicit_counter_loop)]
   for c in &mut chars {
     if count >= max_chars {
       if chars.next().is_some() {

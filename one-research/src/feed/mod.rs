@@ -554,18 +554,16 @@ pub fn visible_indices_for(
           return false;
         }
       }
-      FeedTab::Library => {
-        if !feed.library_filter.matches(item.workflow_state) {
-          return false;
-        }
+      FeedTab::Library if !feed.library_filter.matches(item.workflow_state) => {
+        return false;
       }
       // Browse, Discoveries, History: no workflow-state pre-filter.
       _ => {}
     }
-    if let Some(scope) = &subject_scope {
-      if !scope.matches(item) {
-        return false;
-      }
+    if let Some(scope) = &subject_scope
+      && !scope.matches(item)
+    {
+      return false;
     }
     let key =
       if item.source_platform == crate::models::SourcePlatform::HuggingFace {
@@ -573,10 +571,10 @@ pub fn visible_indices_for(
       } else {
         &item.source_name
       };
-    if let Some(&enabled) = config.sources.enabled_sources.get(key) {
-      if !enabled {
-        return false;
-      }
+    if let Some(&enabled) = config.sources.enabled_sources.get(key)
+      && !enabled
+    {
+      return false;
     }
     if !feed.active_filters.tags.is_empty() {
       let item_tags = crate::tags::for_url(&workspace.item_tags, &item.url);
@@ -690,10 +688,10 @@ fn subject_follow_scope(browse: &crate::app::BrowseModel) -> SubjectScope {
   // depth 1 = at Archives level, cursor on one Archive
   // depth 2 = at Categories level, cursor on one Category
   // (depth 0 short-circuited by visible_indices_for before reaching here)
-  if browse.rail_path.len() == 1 {
-    if let Some(a) = browse.rail_selected_archive() {
-      return SubjectScope::Archive(a.id);
-    }
+  if browse.rail_path.len() == 1
+    && let Some(a) = browse.rail_selected_archive()
+  {
+    return SubjectScope::Archive(a.id);
   }
   if let Some(c) = browse.rail_selected_category() {
     return SubjectScope::Category(c.code);
@@ -966,9 +964,11 @@ mod tests {
   #[test]
   fn exit_search_preserves_query_text() {
     // Exiting search mode is a focus change, not a clear.
-    let mut m = FeedModel::default();
-    m.search_query = "transformers".to_string();
-    m.search_query_lower = "transformers".to_string();
+    let mut m = FeedModel {
+      search_query: "transformers".to_string(),
+      search_query_lower: "transformers".to_string(),
+      ..FeedModel::default()
+    };
     m.enter_search();
     m.exit_search();
     assert_eq!(m.search_query, "transformers");
@@ -1298,8 +1298,8 @@ mod tests {
   #[test]
   fn pre_draw_narrow_feed_dispatches_by_feed_tab() {
     // Library tab is active — library_list should be touched.
-    let mut m = FeedModel::default();
-    m.feed_tab = FeedTab::Library;
+    let mut m =
+      FeedModel { feed_tab: FeedTab::Library, ..FeedModel::default() };
     m.library_list.set_count(50);
     m.library_list.set_viewport(8);
     m.library_list.set_offset(0);

@@ -136,7 +136,7 @@ pub fn fetch_file(
     ));
   }
 
-  let clean = resp.content.replace('\n', "").replace('\r', "");
+  let clean = resp.content.replace(['\n', '\r'], "");
   let bytes = base64_decode(&clean)?;
   String::from_utf8(bytes)
     .map_err(|_| "Binary file — cannot display".to_string())

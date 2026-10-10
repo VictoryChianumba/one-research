@@ -27,6 +27,12 @@ pub struct EntriesList {
   pub selected_notes: HashSet<String>,
 }
 
+impl Default for EntriesList {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
 impl EntriesList {
   pub fn new() -> Self {
     Self {

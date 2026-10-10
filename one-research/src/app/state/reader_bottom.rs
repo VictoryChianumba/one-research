@@ -70,6 +70,8 @@ mod tests {
   }
 
   #[test]
+  // Field-by-field mutation after default() is the behaviour under test.
+  #[allow(clippy::field_reassign_with_default)]
   fn fields_are_independently_mutable() {
     // Witness: the cluster is just a grouping, not a state machine.
     // Each field is settable independently — no surprise coupling

@@ -114,10 +114,10 @@ impl App {
     count
   }
 
-  /// Set a single item's workflow_state (in items or discovery_items by URL),
-  /// update the persisted-state override, and invalidate the caches that
-  /// depend on workflow_state. Does NOT save persisted_states to disk —
-  /// caller batches the save.
+  // Set a single item's workflow_state (in items or discovery_items by URL),
+  // update the persisted-state override, and invalidate the caches that
+  // depend on workflow_state. Does NOT save persisted_states to disk —
+  // caller batches the save.
 
   /// Open the tag picker for a list of target URLs (single item or multi-select).
   pub fn open_tag_picker(&mut self, target_urls: Vec<String>) {
@@ -220,10 +220,10 @@ impl App {
     computed
   }
 
-  /// Mutator chokepoint for `active_filters`. Invalidates every cache that
-  /// depends on the filter set: render_caches.visible (filtered items), filter_summary
-  /// (the rendered summary line), render_caches.filtered_history (filter affects
-  /// history view too).
+  // Mutator chokepoint for `active_filters`. Invalidates every cache that
+  // depends on the filter set: render_caches.visible (filtered items), filter_summary
+  // (the rendered summary line), render_caches.filtered_history (filter affects
+  // history view too).
 
   pub fn toggle_filter_at_cursor(&mut self) {
     let source_names = self.filter_source_names();

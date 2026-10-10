@@ -25,29 +25,24 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
   }
 
   // Discoveries tab — any printable char focuses the search bar.
-  if app.feed.feed_tab == FeedTab::Discoveries {
-    if let KeyCode::Char(c) = key.code {
-      if c != 'q' {
-        app.discovery.search_focused = true;
-        app.discovery.push_char(c);
-        return;
-      }
-    }
+  if app.feed.feed_tab == FeedTab::Discoveries
+    && let KeyCode::Char(c) = key.code
+    && c != 'q'
+  {
+    app.discovery.search_focused = true;
+    app.discovery.push_char(c);
+    return;
   }
 
   // History tab — handle filter cycling, navigation, reopen, delete.
-  if app.feed.feed_tab == FeedTab::History {
-    if handle_history_tab(key, app) {
-      return;
-    }
+  if app.feed.feed_tab == FeedTab::History && handle_history_tab(key, app) {
+    return;
   }
 
   // Library tab — handle workflow-state filter cycling. Other keys (j/k, Enter,
   // i/r/w/x, etc.) fall through to the generic feed handler below.
-  if app.feed.feed_tab == FeedTab::Library {
-    if handle_library_tab(key, app) {
-      return;
-    }
+  if app.feed.feed_tab == FeedTab::Library && handle_library_tab(key, app) {
+    return;
   }
 
   // Browse tab — owns its local subject rail vs feed focus when no
@@ -56,10 +51,9 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
   if app.feed.feed_tab == FeedTab::Browse
     && !app.feed.search_active
     && !app.feed.filter_focus
+    && handle_browse_tab(key, app)
   {
-    if handle_browse_tab(key, app) {
-      return;
-    }
+    return;
   }
 
   if app.feed.search_active {
@@ -138,25 +132,25 @@ pub(super) fn handle_feed_view(key: KeyEvent, app: &mut App) {
         }
       }
       KeyCode::Enter => {
-        if !app.async_jobs.fulltext_loading {
-          if let Some(item) = app.selected_item().cloned() {
-            remember_fulltext_paper_context(app, &item);
-            log::debug!("feed Enter: spawning fetch for url={}", item.url);
-            let t = std::time::Instant::now();
-            app.set_notification(format!(
-              "Fetching: {}…",
-              truncate_for_notif(&item.title, 40)
-            ));
-            super::spawn_paper_open(
-              app,
-              item,
-              crate::action::ReaderTarget::Primary,
-            );
-            log::debug!(
-              "feed Enter: fetch setup took {}µs",
-              t.elapsed().as_micros()
-            );
-          }
+        if !app.async_jobs.fulltext_loading
+          && let Some(item) = app.selected_item().cloned()
+        {
+          remember_fulltext_paper_context(app, &item);
+          log::debug!("feed Enter: spawning fetch for url={}", item.url);
+          let t = std::time::Instant::now();
+          app.set_notification(format!(
+            "Fetching: {}…",
+            truncate_for_notif(&item.title, 40)
+          ));
+          super::spawn_paper_open(
+            app,
+            item,
+            crate::action::ReaderTarget::Primary,
+          );
+          log::debug!(
+            "feed Enter: fetch setup took {}µs",
+            t.elapsed().as_micros()
+          );
         }
       }
       KeyCode::Char('/') => {
@@ -719,10 +713,8 @@ fn handle_narrow_feed_state_2(key: KeyEvent, app: &mut App) {
           app.move_down();
         }
       }
-      KeyCode::Char('k') | KeyCode::Up => {
-        if kbd_scroll_ok(app) {
-          app.move_up();
-        }
+      KeyCode::Char('k') | KeyCode::Up if kbd_scroll_ok(app) => {
+        app.move_up();
       }
       _ => {}
     }
@@ -762,21 +754,21 @@ fn handle_narrow_feed_state_2(key: KeyEvent, app: &mut App) {
       }
     }
     KeyCode::Enter => {
-      if !app.async_jobs.fulltext_loading {
-        if let Some(item) = app.selected_item().cloned() {
-          app.view_flags.narrow_feed_details_open = false;
-          remember_fulltext_paper_context(app, &item);
-          app.set_notification(format!(
-            "Fetching: {}…",
-            truncate_for_notif(&item.title, 40)
-          ));
-          app.focus.focused_pane = PaneId::Reader;
-          super::spawn_paper_open(
-            app,
-            item,
-            crate::action::ReaderTarget::Primary,
-          );
-        }
+      if !app.async_jobs.fulltext_loading
+        && let Some(item) = app.selected_item().cloned()
+      {
+        app.view_flags.narrow_feed_details_open = false;
+        remember_fulltext_paper_context(app, &item);
+        app.set_notification(format!(
+          "Fetching: {}…",
+          truncate_for_notif(&item.title, 40)
+        ));
+        app.focus.focused_pane = PaneId::Reader;
+        super::spawn_paper_open(
+          app,
+          item,
+          crate::action::ReaderTarget::Primary,
+        );
       }
     }
     _ => {}

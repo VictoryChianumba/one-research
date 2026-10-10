@@ -6,7 +6,7 @@ pub fn load() -> Vec<HistoryEntry> {
   let Some(path) = path() else { return Vec::new() };
   let mut entries: Vec<HistoryEntry> =
     super::load_json(&path, "one-research/history");
-  entries.sort_by(|a, b| b.opened_at.cmp(&a.opened_at));
+  entries.sort_by_key(|e| std::cmp::Reverse(e.opened_at));
   entries.truncate(HISTORY_CAP);
   // title_lower is `#[serde(skip)]` — backfill so the search filter doesn't
   // see empty strings on entries persisted from prior sessions.

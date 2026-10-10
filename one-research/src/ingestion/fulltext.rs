@@ -21,14 +21,11 @@ use crate::models::FeedItem;
 pub fn fetch(item: &FeedItem) -> Result<tread::PaperData, String> {
   // Step 1: cached full_content from RSS.  content:encoded usually
   // ships HTML — keep the structure rather than stripping it.
-  if let Some(ref content) = item.full_content {
-    if !content.is_empty() {
-      log::debug!(
-        "fulltext: step=cached_full_content ({} chars)",
-        content.len()
-      );
-      return Ok(tread::PaperData::from_html(content));
-    }
+  if let Some(ref content) = item.full_content
+    && !content.is_empty()
+  {
+    log::debug!("fulltext: step=cached_full_content ({} chars)", content.len());
+    return Ok(tread::PaperData::from_html(content));
   }
 
   // Step 2: arXiv HTML.  arxiv.org/html/<id> is the rendered version
@@ -118,33 +115,6 @@ fn get_text(url: &str) -> Result<String, String> {
   crate::http::read_body(resp).map_err(|e| format!("Body read error: {e}"))
 }
 
-// ---------------------------------------------------------------------------
-// arXiv ID extraction — used to pick step 2 over step 3.
-// ---------------------------------------------------------------------------
-
-#[cfg(test)]
-mod tests {
-  use super::fetch_with_readability;
-
-  #[test]
-  fn rejects_file_scheme() {
-    let err = fetch_with_readability("file:///etc/passwd").unwrap_err();
-    assert!(
-      err.starts_with("unsafe scheme"),
-      "expected scheme error, got {err}"
-    );
-  }
-
-  #[test]
-  fn rejects_javascript_scheme() {
-    let err = fetch_with_readability("javascript:alert(1)").unwrap_err();
-    assert!(
-      err.starts_with("unsafe scheme"),
-      "expected scheme error, got {err}"
-    );
-  }
-}
-
 fn extract_arxiv_id(url: &str) -> Option<&str> {
   // Validate against the shared arxiv-id pattern before returning. Without
   // this, a hostile feed URL like `https://attacker/abs/../../admin` would
@@ -172,4 +142,31 @@ fn extract_arxiv_id(url: &str) -> Option<&str> {
     found
   };
   candidate.filter(|id| !id.is_empty() && crate::models::is_arxiv_id(id))
+}
+
+// ---------------------------------------------------------------------------
+// arXiv ID extraction — used to pick step 2 over step 3.
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+  use super::fetch_with_readability;
+
+  #[test]
+  fn rejects_file_scheme() {
+    let err = fetch_with_readability("file:///etc/passwd").unwrap_err();
+    assert!(
+      err.starts_with("unsafe scheme"),
+      "expected scheme error, got {err}"
+    );
+  }
+
+  #[test]
+  fn rejects_javascript_scheme() {
+    let err = fetch_with_readability("javascript:alert(1)").unwrap_err();
+    assert!(
+      err.starts_with("unsafe scheme"),
+      "expected scheme error, got {err}"
+    );
+  }
 }

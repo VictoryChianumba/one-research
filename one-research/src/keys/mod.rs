@@ -2,8 +2,8 @@ use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use std::sync::mpsc;
 
 use crate::app::{
-  App, AppView, CustomThemeEditorMode, FeedTab, FocusedReader,
-  NavDirection, NotesMode, PaneId, QuitPopupKind,
+  App, AppView, CustomThemeEditorMode, FeedTab, FocusedReader, NavDirection,
+  NotesMode, PaneId, QuitPopupKind,
 };
 
 use super::{get_pane_by_number, spawn_fulltext_fetch, truncate_for_notif};
@@ -386,7 +386,8 @@ fn move_notes_browser_selection(
 /// reset (`sync_notes_app_to_side`) that conflated selection with the
 /// active tab. Called just before any browser-key fall-through.
 fn seed_backend_from_selection(app: &mut App, side: FocusedReader) {
-  let selected = app.notes.instance(side).and_then(|inst| inst.selected.clone());
+  let selected =
+    app.notes.instance(side).and_then(|inst| inst.selected.clone());
   if let Some(notes_app) = app.notes.app.as_mut() {
     if notes_app.current_note_id != selected {
       notes_app.set_current_note(selected);
@@ -575,9 +576,7 @@ fn source_label_for_item(item: &crate::models::FeedItem) -> String {
 fn notes_context_from_item(
   item: &crate::models::FeedItem,
 ) -> crate::app::NotesContext {
-  crate::app::NotesContext {
-    paper: paper_ref_from_item(item),
-  }
+  crate::app::NotesContext { paper: paper_ref_from_item(item) }
 }
 
 pub(super) fn remember_fulltext_paper_context(
@@ -792,18 +791,19 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
     }
     // A1 — floating reader popup
     KeyCode::Enter => {
-      if !app.async_jobs.fulltext_loading && !app.reader_popup.active {
-        if let Some(item) = app.selected_item().cloned() {
-          let (tx, rx) = mpsc::channel();
-          app.reader_popup.rx = Some(rx);
-          app.async_jobs.fulltext_loading = true;
-          remember_fulltext_paper_context(app, &item);
-          app.set_notification(format!(
-            "Fetching: {}…",
-            truncate_for_notif(&item.title, 40)
-          ));
-          spawn_fulltext_fetch(item, tx);
-        }
+      if !app.async_jobs.fulltext_loading
+        && !app.reader_popup.active
+        && let Some(item) = app.selected_item().cloned()
+      {
+        let (tx, rx) = mpsc::channel();
+        app.reader_popup.rx = Some(rx);
+        app.async_jobs.fulltext_loading = true;
+        remember_fulltext_paper_context(app, &item);
+        app.set_notification(format!(
+          "Fetching: {}…",
+          truncate_for_notif(&item.title, 40)
+        ));
+        spawn_fulltext_fetch(item, tx);
       }
     }
     // A2 — three-state reader/feed cycle.
@@ -829,19 +829,15 @@ fn handle_leader(key: KeyEvent, app: &mut App) {
         app.reader_bottom.focused = false;
         app.reader_bottom.details = false;
         app.reader_bottom.scroll.reset();
-        if !app.async_jobs.fulltext_loading {
-          if let Some(item) = app.selected_item().cloned() {
-            remember_fulltext_paper_context(app, &item);
-            app.set_notification(format!(
-              "Loading: {}…",
-              truncate_for_notif(&item.title, 40)
-            ));
-            spawn_paper_open(
-              app,
-              item,
-              crate::action::ReaderTarget::Secondary,
-            );
-          }
+        if !app.async_jobs.fulltext_loading
+          && let Some(item) = app.selected_item().cloned()
+        {
+          remember_fulltext_paper_context(app, &item);
+          app.set_notification(format!(
+            "Loading: {}…",
+            truncate_for_notif(&item.title, 40)
+          ));
+          spawn_paper_open(app, item, crate::action::ReaderTarget::Secondary);
         }
         app.focus.focused_pane = PaneId::Reader;
       } else if app.reader.active {
@@ -1182,14 +1178,14 @@ fn handle_notes_pane(key: KeyEvent, app: &mut App) -> bool {
     // operation targets it, then let the backend handle the key.
     seed_backend_from_selection(app, side);
   }
-  if let Some(notes_app) = app.notes.app.as_mut() {
-    if notes::handle_key(key, notes_app) {
-      if let Err(e) = notes_app.persist_state() {
-        log::error!("notes: failed to persist state: {e}");
-      }
-      app.notes.set_visible(side, false);
-      app.focus.focused_pane = focus_fallback_after_notes(app, side);
+  if let Some(notes_app) = app.notes.app.as_mut()
+    && notes::handle_key(key, notes_app)
+  {
+    if let Err(e) = notes_app.persist_state() {
+      log::error!("notes: failed to persist state: {e}");
     }
+    app.notes.set_visible(side, false);
+    app.focus.focused_pane = focus_fallback_after_notes(app, side);
   }
   // Pick up a freshly created note: select it, and leave Capture for
   // PaperNotes now that the paper has a linked note.

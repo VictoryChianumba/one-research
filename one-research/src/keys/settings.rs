@@ -206,11 +206,10 @@ fn theme_picker_row_count(app: &App) -> usize {
 
 fn theme_picker_active_row(app: &App) -> usize {
   let presets = ThemeId::all();
-  if let Some(id) = &app.active_custom_theme_id {
-    if let Some(idx) = app.config.custom_themes.iter().position(|t| &t.id == id)
-    {
-      return presets.len() + idx;
-    }
+  if let Some(id) = &app.active_custom_theme_id
+    && let Some(idx) = app.config.custom_themes.iter().position(|t| &t.id == id)
+  {
+    return presets.len() + idx;
   }
   presets.iter().position(|id| *id == app.active_theme).unwrap_or(0)
 }
@@ -382,10 +381,10 @@ fn handle_custom_theme_hex_editor(key: KeyEvent, app: &mut App) {
       }
     }
     KeyCode::Char(c) => {
-      if let Some(editor) = app.theme_picker.custom_editor.as_mut() {
-        if c == '#' && editor.edit_buf.is_empty() || c.is_ascii_hexdigit() {
-          editor.edit_buf.push(c);
-        }
+      if let Some(editor) = app.theme_picker.custom_editor.as_mut()
+        && (c == '#' && editor.edit_buf.is_empty() || c.is_ascii_hexdigit())
+      {
+        editor.edit_buf.push(c);
       }
     }
     _ => {}
@@ -448,10 +447,10 @@ fn handle_custom_theme_palette_editor(key: KeyEvent, app: &mut App) {
       }
     }
     KeyCode::Char('d') => {
-      if let Some(editor) = app.theme_picker.custom_editor.as_mut() {
-        if !editor.is_new {
-          editor.mode = CustomThemeEditorMode::DeleteConfirm;
-        }
+      if let Some(editor) = app.theme_picker.custom_editor.as_mut()
+        && !editor.is_new
+      {
+        editor.mode = CustomThemeEditorMode::DeleteConfirm;
       }
     }
     KeyCode::Char('r') => {

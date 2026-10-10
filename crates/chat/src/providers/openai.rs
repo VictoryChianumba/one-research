@@ -140,30 +140,30 @@ impl ChatProvider for OpenAiProvider {
 }
 
 fn friendly_error(status: u16, body: &str) -> String {
-  if let Ok(v) = serde_json::from_str::<Value>(body) {
-    if let Some(err_type) = v["error"]["type"].as_str() {
-      return match err_type {
-        "invalid_api_key" | "invalid_request_error" if status == 401 => {
-          "invalid API key — check settings".to_string()
-        }
-        t if t.contains("rate_limit") => {
-          "rate limit exceeded — try again shortly".to_string()
-        }
-        t if t.contains("quota") || t.contains("billing") => {
-          "quota exceeded — check billing".to_string()
-        }
-        _ => {
-          let msg = v["error"]["message"].as_str().unwrap_or("unknown error");
-          // Char-aware truncation guards the byte boundary; sanitize then
-          // strips any terminal-escape bytes the upstream API embedded in
-          // the error message before it reaches log lines or the chat
-          // surface.
-          let short = crate::sanitize::truncate_chars(msg, 80);
-          let short = crate::sanitize::sanitize_terminal_text(&short);
-          format!("API error — {short}")
-        }
-      };
-    }
+  if let Ok(v) = serde_json::from_str::<Value>(body)
+    && let Some(err_type) = v["error"]["type"].as_str()
+  {
+    return match err_type {
+      "invalid_api_key" | "invalid_request_error" if status == 401 => {
+        "invalid API key — check settings".to_string()
+      }
+      t if t.contains("rate_limit") => {
+        "rate limit exceeded — try again shortly".to_string()
+      }
+      t if t.contains("quota") || t.contains("billing") => {
+        "quota exceeded — check billing".to_string()
+      }
+      _ => {
+        let msg = v["error"]["message"].as_str().unwrap_or("unknown error");
+        // Char-aware truncation guards the byte boundary; sanitize then
+        // strips any terminal-escape bytes the upstream API embedded in
+        // the error message before it reaches log lines or the chat
+        // surface.
+        let short = crate::sanitize::truncate_chars(msg, 80);
+        let short = crate::sanitize::sanitize_terminal_text(&short);
+        format!("API error — {short}")
+      }
+    };
   }
   format!("API error {status}")
 }

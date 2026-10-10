@@ -67,7 +67,9 @@ pub enum NotesState {
 }
 
 /// Which popup (if any) is currently shown.
+#[derive(Default)]
 pub enum ActivePopup {
+  #[default]
   None,
   CreateNote(Box<NotePopup<'static>>),
   EditNote(Box<NotePopup<'static>>),
@@ -77,12 +79,6 @@ pub enum ActivePopup {
   FuzzyFind(Box<FuzzFindPopup<'static>>),
   Export(Box<ExportPopup<'static>>),
   MsgBox(MsgBox),
-}
-
-impl Default for ActivePopup {
-  fn default() -> Self {
-    ActivePopup::None
-  }
 }
 
 impl ActivePopup {

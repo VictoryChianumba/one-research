@@ -72,10 +72,7 @@ mod tests {
     // check more than logic — guards against accidental Copy/Clone
     // breakage if the struct grows non-trivial fields.
     let r = Rect { x: 1, y: 2, width: 80, height: 24 };
-    let l = FrameLayout {
-      reader_bottom_feed_list: Some(r),
-      ..FrameLayout::default()
-    };
+    let l = FrameLayout { reader_bottom_feed_list: Some(r) };
     assert_eq!(l.reader_bottom_feed_list.map(|r| r.height), Some(24));
   }
 

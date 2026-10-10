@@ -149,11 +149,7 @@ pub(super) fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
                     "Fetching: {}…",
                     truncate_for_notif(&item.title, 40)
                   ));
-                  super::spawn_paper_open(
-                    app,
-                    item,
-                    target,
-                  );
+                  super::spawn_paper_open(app, item, target);
                   app.reader_bottom.focused = false;
                   app.focus.focused_pane = PaneId::Reader;
                 }
@@ -179,11 +175,7 @@ pub(super) fn handle_reader_bottom_pane(key: KeyEvent, app: &mut App) {
             "Fetching: {}…",
             truncate_for_notif(&item.title, 40)
           ));
-          super::spawn_paper_open(
-            app,
-            item,
-            target,
-          );
+          super::spawn_paper_open(app, item, target);
           app.reader_bottom.focused = false;
           app.focus.focused_pane = PaneId::Reader;
         }
@@ -396,7 +388,6 @@ pub(super) fn reader_back(app: &mut App, side: FocusedReader) -> bool {
 }
 
 /// Close all reader state and return focus to the feed.
-
 pub(super) fn close_all_readers(app: &mut App) {
   // Stop voice + clear pixel placements before tabs drop — voice
   // shouldn't continue once we leave the reader entirely, and

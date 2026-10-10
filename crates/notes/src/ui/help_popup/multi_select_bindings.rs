@@ -8,6 +8,12 @@ pub struct MultiSelectBindings {
   rows: Vec<CommandRow>,
 }
 
+impl Default for MultiSelectBindings {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
 impl MultiSelectBindings {
   pub fn new() -> Self {
     Self { state: TableState::default(), rows: Vec::new() }

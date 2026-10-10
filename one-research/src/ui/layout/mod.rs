@@ -111,7 +111,7 @@ fn draw_feed(frame: &mut Frame, app: &mut App) {
   // Only allocate a dedicated panel row when the chat conversation is open.
   // Session-list and new-session overlays float over the main layout instead.
   let chat_needs_panel =
-    app.chat.active && app.chat.ui.as_ref().map_or(true, |c| c.needs_panel());
+    app.chat.active && app.chat.ui.as_ref().is_none_or(|c| c.needs_panel());
 
   let (main_h, chat_h) = if chat_needs_panel {
     let ch = (available / 2).max(15).min(available.saturating_sub(10));
@@ -198,17 +198,15 @@ fn draw_feed(frame: &mut Frame, app: &mut App) {
     log::debug!("draw_main_row: {}ms", t.elapsed().as_millis());
 
     let chat_rect = if chat_needs_panel { Some(rows[3]) } else { None };
-    if chat_needs_panel {
-      if let Some(chat_ui) = app.chat.ui.as_mut() {
-        let t = std::time::Instant::now();
-        chat_ui.draw_with_context(
-          frame,
-          rows[3],
-          &theme,
-          chat_context.as_deref(),
-        );
-        log::debug!("chat_ui.draw (bottom): {}ms", t.elapsed().as_millis());
-      }
+    if chat_needs_panel && let Some(chat_ui) = app.chat.ui.as_mut() {
+      let t = std::time::Instant::now();
+      chat_ui.draw_with_context(
+        frame,
+        rows[3],
+        &theme,
+        chat_context.as_deref(),
+      );
+      log::debug!("chat_ui.draw (bottom): {}ms", t.elapsed().as_millis());
     }
     app.focus.update_pane_rects(
       mr.feed,
@@ -226,10 +224,11 @@ fn draw_feed(frame: &mut Frame, app: &mut App) {
   }
 
   // Session-list / new-session overlay: rendered last so it floats on top.
-  if app.chat.active && !chat_needs_panel {
-    if let Some(chat_ui) = app.chat.ui.as_mut() {
-      chat_ui.draw_overlay(frame, area, &theme);
-    }
+  if app.chat.active
+    && !chat_needs_panel
+    && let Some(chat_ui) = app.chat.ui.as_mut()
+  {
+    chat_ui.draw_overlay(frame, area, &theme);
   }
 
   // A1 — floating reader popup (Ldr+Enter).

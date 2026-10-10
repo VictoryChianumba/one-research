@@ -259,12 +259,11 @@ impl App {
   }
 
   pub fn theme(&self) -> ui_theme::Theme {
-    if let Some(id) = &self.active_custom_theme_id {
-      if let Some(custom) =
+    if let Some(id) = &self.active_custom_theme_id
+      && let Some(custom) =
         self.config.custom_themes.iter().find(|t| &t.id == id)
-      {
-        return custom.to_theme();
-      }
+    {
+      return custom.to_theme();
     }
     self.active_theme.theme()
   }
@@ -316,12 +315,11 @@ impl App {
   }
 
   pub fn active_theme_name(&self) -> String {
-    if let Some(id) = &self.active_custom_theme_id {
-      if let Some(custom) =
+    if let Some(id) = &self.active_custom_theme_id
+      && let Some(custom) =
         self.config.custom_themes.iter().find(|t| &t.id == id)
-      {
-        return custom.name.clone();
-      }
+    {
+      return custom.name.clone();
     }
     self.active_theme.info().name.to_string()
   }
@@ -332,11 +330,11 @@ impl App {
   }
 
   pub fn reconcile_custom_theme_selection(&mut self) {
-    if let Some(id) = &self.active_custom_theme_id {
-      if !self.config.custom_themes.iter().any(|t| &t.id == id) {
-        self.active_custom_theme_id = None;
-        self.config.active_custom_theme_id = None;
-      }
+    if let Some(id) = &self.active_custom_theme_id
+      && !self.config.custom_themes.iter().any(|t| &t.id == id)
+    {
+      self.active_custom_theme_id = None;
+      self.config.active_custom_theme_id = None;
     }
   }
 
@@ -414,10 +412,10 @@ impl App {
   pub fn visible_count(&self) -> usize {
     {
       let cache = self.render_caches.visible.borrow();
-      if let Some((tab, ref indices)) = *cache {
-        if tab == self.feed.feed_tab {
-          return indices.len();
-        }
+      if let Some((tab, ref indices)) = *cache
+        && tab == self.feed.feed_tab
+      {
+        return indices.len();
       }
     }
     // Cache miss: fall through and use visible_items to populate it.
@@ -433,12 +431,12 @@ impl App {
     // Try the warm-cache fast path first.
     {
       let cache = self.render_caches.visible.borrow();
-      if let Some((tab, indices)) = cache.as_ref() {
-        if *tab == self.feed.feed_tab {
-          let item_idx = *indices.get(idx)?;
-          let items = self.items_for_tab();
-          return items.get(item_idx);
-        }
+      if let Some((tab, indices)) = cache.as_ref()
+        && *tab == self.feed.feed_tab
+      {
+        let item_idx = *indices.get(idx)?;
+        let items = self.items_for_tab();
+        return items.get(item_idx);
       }
     }
     // Cold cache: populate via visible_items, then retry. visible_items
@@ -452,11 +450,11 @@ impl App {
   pub fn visible_items(&self) -> Vec<&FeedItem> {
     {
       let cache = self.render_caches.visible.borrow();
-      if let Some((tab, ref indices)) = *cache {
-        if tab == self.feed.feed_tab {
-          let items = self.items_for_tab();
-          return indices.iter().map(|&i| &items[i]).collect();
-        }
+      if let Some((tab, ref indices)) = *cache
+        && tab == self.feed.feed_tab
+      {
+        let items = self.items_for_tab();
+        return indices.iter().map(|&i| &items[i]).collect();
       }
     }
     let items = self.items_for_tab();
@@ -480,13 +478,13 @@ impl App {
   pub fn visible_window(&self, start: usize, end: usize) -> Vec<&FeedItem> {
     {
       let cache = self.render_caches.visible.borrow();
-      if let Some((tab, indices)) = cache.as_ref() {
-        if *tab == self.feed.feed_tab {
-          let items = self.items_for_tab();
-          let start = start.min(indices.len());
-          let end = end.min(indices.len());
-          return indices[start..end].iter().map(|&i| &items[i]).collect();
-        }
+      if let Some((tab, indices)) = cache.as_ref()
+        && *tab == self.feed.feed_tab
+      {
+        let items = self.items_for_tab();
+        let start = start.min(indices.len());
+        let end = end.min(indices.len());
+        return indices[start..end].iter().map(|&i| &items[i]).collect();
       }
     }
     let visible = self.visible_items();
@@ -689,20 +687,20 @@ impl App {
     self.clear_notification();
   }
 
-  /// Mutator chokepoint for `search_query`. Invokes `f` on the query, then
-  /// auto-syncs `search_query_lower` and invalidates every cache that depends
-  /// on the query (`render_caches.visible`, `render_caches.filtered_history`). All search
-  /// query mutations must go through here so the lowercased mirror and the
-  /// memoized visible/filtered-history results stay in sync.
+  // Mutator chokepoint for `search_query`. Invokes `f` on the query, then
+  // auto-syncs `search_query_lower` and invalidates every cache that depends
+  // on the query (`render_caches.visible`, `render_caches.filtered_history`). All search
+  // query mutations must go through here so the lowercased mirror and the
+  // memoized visible/filtered-history results stay in sync.
 
   pub fn selected_item(&self) -> Option<&FeedItem> {
     self.visible_get(self.active_selected_index())
   }
 
-  /// Update library_selected_urls from anchor/cursor positions in the visible
-  /// item list. Always covers the contiguous range from anchor to cursor.
-  /// Used on entry to visual mode (full populate); cursor moves go through
-  /// `library_extend_selection` for incremental update.
+  // Update library_selected_urls from anchor/cursor positions in the visible
+  // item list. Always covers the contiguous range from anchor to cursor.
+  // Used on entry to visual mode (full populate); cursor moves go through
+  // `library_extend_selection` for incremental update.
 
   pub fn show_quit_popup(&mut self) {
     let kind =
@@ -711,7 +709,7 @@ impl App {
       } else if self.discovery.loading || self.async_jobs.is_loading {
         QuitPopupKind::QuitWithProgress
       } else if self.chat.active
-        && self.chat.ui.as_ref().map_or(false, |c| !c.input.trim().is_empty())
+        && self.chat.ui.as_ref().is_some_and(|c| !c.input.trim().is_empty())
       {
         QuitPopupKind::QuitWithChat
       } else {
@@ -727,48 +725,48 @@ impl App {
   }
 
   pub fn push_chat_assistant_message(&mut self, content: String) {
-    if let Some(chat_ui) = self.chat.ui.as_mut() {
-      if let Some(session) = chat_ui.active_session.as_mut() {
-        session.messages.push(chat::ChatMessage {
-          role: chat::Role::Assistant,
-          content,
-          timestamp: Utc::now(),
-        });
-        session.updated_at = Utc::now();
-        let _ = chat::save_session(session);
-        let meta = chat::storage::session_to_meta(session);
-        let id = meta.id.clone();
-        if let Some(pos) = chat_ui.sessions.iter().position(|s| s.id == id) {
-          chat_ui.sessions[pos] = meta;
-        }
-        let index = chat::ChatIndex {
-          sessions: chat_ui.sessions.clone(),
-          default_provider: chat_ui.default_provider.clone(),
-        };
-        let _ = chat::save_index(&index);
-        chat_ui.scroll_offset = usize::MAX;
+    if let Some(chat_ui) = self.chat.ui.as_mut()
+      && let Some(session) = chat_ui.active_session.as_mut()
+    {
+      session.messages.push(chat::ChatMessage {
+        role: chat::Role::Assistant,
+        content,
+        timestamp: Utc::now(),
+      });
+      session.updated_at = Utc::now();
+      let _ = chat::save_session(session);
+      let meta = chat::storage::session_to_meta(session);
+      let id = meta.id.clone();
+      if let Some(pos) = chat_ui.sessions.iter().position(|s| s.id == id) {
+        chat_ui.sessions[pos] = meta;
       }
+      let index = chat::ChatIndex {
+        sessions: chat_ui.sessions.clone(),
+        default_provider: chat_ui.default_provider.clone(),
+      };
+      let _ = chat::save_index(&index);
+      chat_ui.scroll_offset = usize::MAX;
     }
   }
 
   pub fn clear_chat_messages(&mut self) {
-    if let Some(chat_ui) = self.chat.ui.as_mut() {
-      if let Some(session) = chat_ui.active_session.as_mut() {
-        session.messages.clear();
-        session.updated_at = Utc::now();
-        let _ = chat::save_session(session);
-        let meta = chat::storage::session_to_meta(session);
-        let id = meta.id.clone();
-        if let Some(pos) = chat_ui.sessions.iter().position(|s| s.id == id) {
-          chat_ui.sessions[pos] = meta;
-        }
-        let index = chat::ChatIndex {
-          sessions: chat_ui.sessions.clone(),
-          default_provider: chat_ui.default_provider.clone(),
-        };
-        let _ = chat::save_index(&index);
-        chat_ui.scroll_offset = 0;
+    if let Some(chat_ui) = self.chat.ui.as_mut()
+      && let Some(session) = chat_ui.active_session.as_mut()
+    {
+      session.messages.clear();
+      session.updated_at = Utc::now();
+      let _ = chat::save_session(session);
+      let meta = chat::storage::session_to_meta(session);
+      let id = meta.id.clone();
+      if let Some(pos) = chat_ui.sessions.iter().position(|s| s.id == id) {
+        chat_ui.sessions[pos] = meta;
       }
+      let index = chat::ChatIndex {
+        sessions: chat_ui.sessions.clone(),
+        default_provider: chat_ui.default_provider.clone(),
+      };
+      let _ = chat::save_index(&index);
+      chat_ui.scroll_offset = 0;
     }
   }
 
@@ -828,6 +826,36 @@ pub(super) fn validate_download_name(name: &str) -> Result<(), String> {
   match p.file_name().and_then(|n| n.to_str()) {
     Some(n) if n == name => Ok(()),
     _ => Err(format!("path separator or traversal segment: {name:?}")),
+  }
+}
+
+// ── Reader tab accessors ──────────────────────────────────────────────────────
+
+/// Classify a repo file AND produce its syntect-highlighted lines in a
+/// single pass. Previously two separate calls: `classify_repo_file_kind`
+/// internally called `highlight_file` to decide Code vs PlainText, then
+/// the caller called `highlight_file` AGAIN to get the highlighted
+/// result — double work on the UI thread. This version highlights once
+/// and returns both the kind and the highlighted output.
+///
+/// Returned `file_highlighted` is empty for non-Code kinds.
+#[allow(clippy::type_complexity)] // same shape as syntax::highlight_file
+pub(crate) fn classify_and_highlight_repo_file(
+  name: &str,
+  content: &str,
+) -> (RepoFileKind, Vec<Vec<(u8, u8, u8, String)>>) {
+  let lower = name.to_ascii_lowercase();
+  if lower.ends_with(".md")
+    || lower.ends_with(".markdown")
+    || lower == "readme"
+    || lower.starts_with("readme.")
+  {
+    return (RepoFileKind::Markdown, Vec::new());
+  }
+
+  match crate::syntax::highlight_file(content, name) {
+    Some(h) => (RepoFileKind::Code, h),
+    None => (RepoFileKind::PlainText, Vec::new()),
   }
 }
 
@@ -1483,34 +1511,5 @@ mod tests {
         authors_lower: Vec::new(),
       },
     ]
-  }
-}
-
-// ── Reader tab accessors ──────────────────────────────────────────────────────
-
-/// Classify a repo file AND produce its syntect-highlighted lines in a
-/// single pass. Previously two separate calls: `classify_repo_file_kind`
-/// internally called `highlight_file` to decide Code vs PlainText, then
-/// the caller called `highlight_file` AGAIN to get the highlighted
-/// result — double work on the UI thread. This version highlights once
-/// and returns both the kind and the highlighted output.
-///
-/// Returned `file_highlighted` is empty for non-Code kinds.
-pub(crate) fn classify_and_highlight_repo_file(
-  name: &str,
-  content: &str,
-) -> (RepoFileKind, Vec<Vec<(u8, u8, u8, String)>>) {
-  let lower = name.to_ascii_lowercase();
-  if lower.ends_with(".md")
-    || lower.ends_with(".markdown")
-    || lower == "readme"
-    || lower.starts_with("readme.")
-  {
-    return (RepoFileKind::Markdown, Vec::new());
-  }
-
-  match crate::syntax::highlight_file(content, name) {
-    Some(h) => (RepoFileKind::Code, h),
-    None => (RepoFileKind::PlainText, Vec::new()),
   }
 }

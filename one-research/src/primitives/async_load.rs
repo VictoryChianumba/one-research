@@ -18,19 +18,15 @@
 use std::sync::mpsc;
 
 /// Async load state machine. Default is `Idle`.
+#[derive(Default)]
 pub enum AsyncLoadState<T> {
+  #[default]
   Idle,
   Loading(mpsc::Receiver<T>),
   Ready(T),
   /// The worker dropped its sender without producing a value. Consumer
   /// must explicitly `reset()` to return to Idle.
   Disconnected,
-}
-
-impl<T> Default for AsyncLoadState<T> {
-  fn default() -> Self {
-    Self::Idle
-  }
 }
 
 impl<T> AsyncLoadState<T> {

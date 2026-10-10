@@ -205,10 +205,10 @@ impl ChatUi {
           self.sync_index();
         }
       } else if let Some(word) = self.streaming_words.pop_front() {
-        if let Some(session) = self.active_session.as_mut() {
-          if let Some(last_msg) = session.messages.last_mut() {
-            append_stream_chunk(&mut last_msg.content, &word);
-          }
+        if let Some(session) = self.active_session.as_mut()
+          && let Some(last_msg) = session.messages.last_mut()
+        {
+          append_stream_chunk(&mut last_msg.content, &word);
         }
         if self.follow_tail {
           self.scroll_offset = usize::MAX;
@@ -373,7 +373,7 @@ impl ChatUi {
   fn draw_session_list(&mut self, frame: &mut Frame, area: Rect, t: &Theme) {
     let popup_w = (area.width as u32 * 60 / 100).max(30) as u16;
     // spec: min(session_count + 4, 12)
-    let popup_h = ((self.sessions.len() as u16 + 4).min(12)).max(3);
+    let popup_h = (self.sessions.len() as u16 + 4).clamp(3, 12);
     // Centered horizontally; bottom-anchored above footer (3 rows) with 2
     // rows of clearance: y = terminal_height - popup_height - footer_height - 2
     let footer_h: u16 = 3;
@@ -442,35 +442,35 @@ impl ChatUi {
       }
 
       KeyCode::Enter => {
-        if let Some(idx) = self.session_list_state.selected() {
-          if let Some(meta) = self.sessions.get(idx) {
-            let id = meta.id.clone();
-            if let Some(session) = load_session(&id) {
-              self.active_session = Some(session);
-              self.follow_tail = true;
-              self.scroll_offset = usize::MAX;
-              self.input_mode = ChatInputMode::Insert;
-              self.state = ChatUiState::Chat;
-            }
+        if let Some(idx) = self.session_list_state.selected()
+          && let Some(meta) = self.sessions.get(idx)
+        {
+          let id = meta.id.clone();
+          if let Some(session) = load_session(&id) {
+            self.active_session = Some(session);
+            self.follow_tail = true;
+            self.scroll_offset = usize::MAX;
+            self.input_mode = ChatInputMode::Insert;
+            self.state = ChatUiState::Chat;
           }
         }
         ChatAction::None
       }
 
       KeyCode::Char('d') => {
-        if let Some(idx) = self.session_list_state.selected() {
-          if idx < self.sessions.len() {
-            let id = self.sessions[idx].id.clone();
-            let _ = delete_session(&id);
-            self.sessions.remove(idx);
-            self.sync_index();
-            let new_sel = if self.sessions.is_empty() {
-              None
-            } else {
-              Some(idx.min(self.sessions.len() - 1))
-            };
-            self.session_list_state.select(new_sel);
-          }
+        if let Some(idx) = self.session_list_state.selected()
+          && idx < self.sessions.len()
+        {
+          let id = self.sessions[idx].id.clone();
+          let _ = delete_session(&id);
+          self.sessions.remove(idx);
+          self.sync_index();
+          let new_sel = if self.sessions.is_empty() {
+            None
+          } else {
+            Some(idx.min(self.sessions.len() - 1))
+          };
+          self.session_list_state.select(new_sel);
         }
         ChatAction::None
       }

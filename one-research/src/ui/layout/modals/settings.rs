@@ -171,8 +171,8 @@ pub fn draw_settings(frame: &mut Frame, app: &App) {
     Line::from(Span::styled(content, style))
   };
 
-  let hint = |field: usize, text: &str| -> Line<'static> {
-    let prefix = if app.settings.field == field { "   " } else { "   " };
+  let hint = |_field: usize, text: &str| -> Line<'static> {
+    let prefix = "   ";
     Line::from(Span::styled(
       format!("{prefix}{}", truncate(text, row_width.saturating_sub(3))),
       dim_style,

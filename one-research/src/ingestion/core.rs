@@ -91,10 +91,7 @@ fn work_to_item(work: CoreWork) -> Option<FeedItem> {
   let best_url = arxiv_url.clone().or_else(|| {
     work.links.into_iter().find(|l| l.url.starts_with("http")).map(|l| l.url)
   });
-  let url = match best_url {
-    Some(u) => u,
-    None => return None,
-  };
+  let url = best_url?;
 
   let domain_tags: Vec<String> =
     detect_subtopics(&title, &summary).iter().map(|s| s.to_string()).collect();
