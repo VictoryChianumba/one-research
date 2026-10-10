@@ -430,3 +430,63 @@ fn normalise_date(raw: &str) -> String {
   let year = parts[2];
   format!("{year}-{month}-{day_n:02}")
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  // Pins quick-xml text-node semantics across the 0.36 → 0.42 upgrade.
+  // WHY: 0.38+ delivers `&amp;` as its own event, and RSS titles are full
+  // of them ("Q&amp;A", "R&amp;D"). Also pins that CDATA is taken
+  // verbatim and that attribute values (Atom `href`) stay raw — 0.36 never
+  // unescaped them, so `&amp;` survives in the stored URL.
+  #[test]
+  fn parse_feed_rss_entities_cdata_and_whitespace() {
+    let xml = r#"<?xml version="1.0"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>Blog</title>
+    <item>
+      <title>  Q&amp;A with   R&amp;D  </title>
+      <link>https://example.org/a?x=1&amp;y=2</link>
+      <pubDate>Tue, 07 Apr 2026 10:00:00 GMT</pubDate>
+      <description>Fish &amp; chips &#8212; tasty</description>
+      <dc:creator>Ann &amp; Ben</dc:creator>
+    </item>
+    <item>
+      <title><![CDATA[Raw <b>&amp;</b> title]]></title>
+      <link>https://example.org/b</link>
+      <pubDate>Wed, 08 Apr 2026 10:00:00 GMT</pubDate>
+      <description>second</description>
+    </item>
+  </channel>
+</rss>"#;
+    let items = parse_feed(xml, SourcePlatform::Blog, ContentType::Article, "t")
+      .expect("parse ok");
+    assert_eq!(items.len(), 2);
+    assert_eq!(items[0].title, "Q&A with R&D");
+    assert_eq!(items[0].url, "https://example.org/a?x=1&y=2");
+    assert!(items[0].summary_short.contains("Fish & chips — tasty"));
+    assert_eq!(items[0].authors, vec!["Ann & Ben".to_string()]);
+    assert_eq!(items[1].title, "Raw <b>&amp;</b> title");
+  }
+
+  #[test]
+  fn parse_feed_atom_link_href_attribute_stays_raw() {
+    let xml = r#"<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <title>Atom &amp; Eve</title>
+    <link rel="alternate" href="https://example.org/p?a=1&amp;b=2"/>
+    <published>2026-04-07T10:00:00Z</published>
+    <author><name>Eve</name></author>
+    <summary>s</summary>
+  </entry>
+</feed>"#;
+    let items = parse_feed(xml, SourcePlatform::Blog, ContentType::Article, "t")
+      .expect("parse ok");
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].title, "Atom & Eve");
+    assert_eq!(items[0].url, "https://example.org/p?a=1&amp;b=2");
+    assert_eq!(items[0].authors, vec!["Eve".to_string()]);
+  }
+}

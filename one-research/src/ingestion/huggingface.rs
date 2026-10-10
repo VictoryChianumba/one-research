@@ -871,4 +871,24 @@ mod tests {
     // Garbage in both fields.
     assert_eq!(extract_paper_arxiv_id(&item("nope", "also nope")), None);
   }
+
+  // Pins quick-xml text-node semantics across the 0.36 → 0.42 upgrade
+  // (see the matching tests in arxiv.rs for why).
+  #[test]
+  fn parse_abstracts_preserves_entities_and_whitespace() {
+    let xml = r#"<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>http://arxiv.org/abs/2312.12345v1</id>
+    <summary>
+      Diffusion &amp; flow   models
+      beat &lt;baselines&gt;.
+    </summary>
+  </entry>
+</feed>"#;
+    let map = parse_abstracts(xml);
+    assert_eq!(
+      map.get("2312.12345").map(String::as_str),
+      Some("Diffusion & flow models beat <baselines>.")
+    );
+  }
 }
