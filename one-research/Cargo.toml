@@ -24,12 +24,13 @@ chrono = { version = "0.4", features = ["serde"] }
 notes = { path = "../crates/notes" }
 chat = { path = "../crates/chat" }
 one-research-http = { path = "../crates/http" }
-# Tread — v1 arXiv reader, embedded as a library.  Path dep so
-# updates in the tread repo flow into one-research's next build
-# automatically.  Replaced cli-text-reader during the migration
-# (S4–S9); cli-text-reader and its 6 sibling crates were removed
-# in S9 once tread proved out in normal use.
-tread = { path = "../../tread/crates/tread" }
+# Tread — v1 arXiv reader, embedded as a library.  Pinned to an exact
+# commit so a fresh clone (CI, Docker, `cargo install --git`) builds
+# reproducibly.  To build against a local tread checkout instead, add a
+# `[patch."https://github.com/VictoryChianumba/tread"]` entry to your
+# own ~/.cargo/config.toml — see README "Development".  Replaced
+# cli-text-reader during the migration (S4–S9).
+tread = { git = "https://github.com/VictoryChianumba/tread", rev = "6710030d1b3df35df007fc0995de61bffe49f2ba" }
 ui-theme = { path = "../crates/ui-theme" }
 syntect = "5"
 readability = "0.3"
