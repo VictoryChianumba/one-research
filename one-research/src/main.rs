@@ -248,6 +248,9 @@ pub(crate) fn truncate_for_notif(s: &str, max: usize) -> String {
   let mut chars = s.chars();
   let mut out = String::new();
   let mut n = 0;
+  // Manual counter: the body calls `chars.next()`, which `enumerate()`
+  // would hold borrowed.
+  #[allow(clippy::explicit_counter_loop)]
   for c in &mut chars {
     if n >= max {
       if chars.next().is_some() {
@@ -357,10 +360,10 @@ fn handle_mouse(
         match hovered {
           Some(PaneId::Details) => {}
           Some(PaneId::Notes) => {
-            if let Some(note_id) = app.notes.primary.selected.clone() {
-              if let Some(notes_app) = app.notes.app.as_mut() {
-                notes_app.focus_note(&note_id);
-              }
+            if let Some(note_id) = app.notes.primary.selected.clone()
+              && let Some(notes_app) = app.notes.app.as_mut()
+            {
+              notes_app.focus_note(&note_id);
             }
             if let Some(notes_app) = app.notes.app.as_mut() {
               notes_app.select_next_note();
@@ -369,10 +372,9 @@ fn handle_mouse(
           Some(PaneId::SecondaryNotes) => {
             if let Some(note_id) =
               app.notes.secondary.as_ref().and_then(|s| s.selected.clone())
+              && let Some(notes_app) = app.notes.app.as_mut()
             {
-              if let Some(notes_app) = app.notes.app.as_mut() {
-                notes_app.focus_note(&note_id);
-              }
+              notes_app.focus_note(&note_id);
             }
             if let Some(notes_app) = app.notes.app.as_mut() {
               notes_app.select_next_note();
@@ -398,10 +400,10 @@ fn handle_mouse(
         match hovered {
           Some(PaneId::Details) => {}
           Some(PaneId::Notes) => {
-            if let Some(note_id) = app.notes.primary.selected.clone() {
-              if let Some(notes_app) = app.notes.app.as_mut() {
-                notes_app.focus_note(&note_id);
-              }
+            if let Some(note_id) = app.notes.primary.selected.clone()
+              && let Some(notes_app) = app.notes.app.as_mut()
+            {
+              notes_app.focus_note(&note_id);
             }
             if let Some(notes_app) = app.notes.app.as_mut() {
               notes_app.select_prev_note();
@@ -410,10 +412,9 @@ fn handle_mouse(
           Some(PaneId::SecondaryNotes) => {
             if let Some(note_id) =
               app.notes.secondary.as_ref().and_then(|s| s.selected.clone())
+              && let Some(notes_app) = app.notes.app.as_mut()
             {
-              if let Some(notes_app) = app.notes.app.as_mut() {
-                notes_app.focus_note(&note_id);
-              }
+              notes_app.focus_note(&note_id);
             }
             if let Some(notes_app) = app.notes.app.as_mut() {
               notes_app.select_prev_note();
@@ -459,24 +460,21 @@ fn handle_mouse(
         match pane {
           PaneId::Reader | PaneId::Notes => {
             app.reader.focused = FocusedReader::Primary;
-            if pane == PaneId::Notes {
-              if let Some(note_id) = app.notes.primary.selected.clone() {
-                if let Some(notes_app) = app.notes.app.as_mut() {
-                  notes_app.focus_note(&note_id);
-                }
-              }
+            if pane == PaneId::Notes
+              && let Some(note_id) = app.notes.primary.selected.clone()
+              && let Some(notes_app) = app.notes.app.as_mut()
+            {
+              notes_app.focus_note(&note_id);
             }
           }
           PaneId::SecondaryReader | PaneId::SecondaryNotes => {
             app.reader.focused = FocusedReader::Secondary;
-            if pane == PaneId::SecondaryNotes {
-              if let Some(note_id) =
+            if pane == PaneId::SecondaryNotes
+              && let Some(note_id) =
                 app.notes.secondary.as_ref().and_then(|s| s.selected.clone())
-              {
-                if let Some(notes_app) = app.notes.app.as_mut() {
-                  notes_app.focus_note(&note_id);
-                }
-              }
+              && let Some(notes_app) = app.notes.app.as_mut()
+            {
+              notes_app.focus_note(&note_id);
             }
           }
           _ => {}
@@ -894,20 +892,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
       // reading) animates without waiting for a key event.  tread::tick
       // returns true when user-visible state changed; we OR that into
       // one-research's dirty flag so the next frame redraws.
-      if let Some(editor) = app.reader_editor_mut() {
-        if editor.tick() {
-          app.mark_dirty();
-        }
+      if let Some(editor) = app.reader_editor_mut()
+        && editor.tick()
+      {
+        app.mark_dirty();
       }
-      if let Some(editor) = app.reader_secondary_editor_mut() {
-        if editor.tick() {
-          app.mark_dirty();
-        }
+      if let Some(editor) = app.reader_secondary_editor_mut()
+        && editor.tick()
+      {
+        app.mark_dirty();
       }
-      if let Some(editor) = app.reader_popup.editor.as_mut() {
-        if editor.tick() {
-          app.mark_dirty();
-        }
+      if let Some(editor) = app.reader_popup.editor.as_mut()
+        && editor.tick()
+      {
+        app.mark_dirty();
       }
 
       // Tick chat UI each frame (spinner + pending response channel + word-by-
@@ -1401,10 +1399,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     DisableMouseCapture,
     DisableFocusChange,
   );
-  if bench_startup {
-    if let Some(elapsed) = first_frame_at {
-      println!("first_frame_ready_ms={}", elapsed.as_millis());
-    }
+  if bench_startup && let Some(elapsed) = first_frame_at {
+    println!("first_frame_ready_ms={}", elapsed.as_millis());
   }
   run_result.map_err(Into::into)
 }

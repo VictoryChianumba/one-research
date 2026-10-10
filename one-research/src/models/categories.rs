@@ -63,7 +63,7 @@ pub fn detect_subtopics(title: &str, summary: &str) -> Vec<&'static str> {
   let combined = format!("{title} {summary}").to_lowercase();
   let mut topics: Vec<&'static str> = Vec::new();
   for &(keyword, label) in SUBTOPIC_KEYWORDS {
-    if combined.contains(keyword) && !topics.iter().any(|&t| t == label) {
+    if combined.contains(keyword) && !topics.contains(&label) {
       topics.push(label);
     }
   }

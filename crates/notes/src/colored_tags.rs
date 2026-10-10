@@ -25,6 +25,12 @@ pub struct ColoredTagsManager {
   available_colors: Vec<TagColors>,
 }
 
+impl Default for ColoredTagsManager {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
 impl ColoredTagsManager {
   pub fn new() -> Self {
     let available_colors = TAG_COLORS.to_vec();

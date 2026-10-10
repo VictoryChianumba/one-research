@@ -49,10 +49,10 @@ pub fn parse_bench_args() -> Option<BenchOptions> {
   let args: Vec<String> = std::env::args().collect();
   let pos = args.iter().position(|a| a == "--bench-render")?;
   let mut opts = BenchOptions::default();
-  if let Some(s) = args.get(pos + 1) {
-    if !s.starts_with("--") {
-      opts.scenario = s.clone();
-    }
+  if let Some(s) = args.get(pos + 1)
+    && !s.starts_with("--")
+  {
+    opts.scenario = s.clone();
   }
   let take_u = |flag: &str| -> Option<usize> {
     args

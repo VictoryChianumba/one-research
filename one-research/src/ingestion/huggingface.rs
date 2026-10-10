@@ -514,18 +514,18 @@ fn enrich_with_repos_using_cache(
       Some((i, id, item.upvote_count))
     })
     .collect();
-  candidates.sort_by(|a, b| b.2.cmp(&a.2));
+  candidates.sort_by_key(|c| std::cmp::Reverse(c.2));
 
   for (idx, arxiv_id, _) in candidates {
     // Cache hit — apply without a network call.
-    if let Some(entry) = cache.get(&arxiv_id) {
-      if !hf_cache_stale(entry) {
-        if let Some(ref repo) = entry.github_repo.clone() {
-          apply_repo(items, idx, repo);
-          enriched += 1;
-        }
-        continue;
+    if let Some(entry) = cache.get(&arxiv_id)
+      && !hf_cache_stale(entry)
+    {
+      if let Some(ref repo) = entry.github_repo.clone() {
+        apply_repo(items, idx, repo);
+        enriched += 1;
       }
+      continue;
     }
 
     if request_count >= MAX_ENRICH_REQUESTS {

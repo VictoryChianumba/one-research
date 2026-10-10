@@ -405,8 +405,6 @@ fn filter_row_text(
     Line::from(Span::styled(text, hl))
   } else if active {
     Line::from(Span::styled(text, Style::default().fg(t.text)))
-  } else if matches!(kind, FilterRowKind::Action) {
-    Line::from(Span::styled(text, Style::default().fg(t.text_dim)))
   } else {
     Line::from(Span::styled(text, Style::default().fg(t.text_dim)))
   }

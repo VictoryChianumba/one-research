@@ -291,8 +291,7 @@ mod tests {
     // is_open() must answer "yes" if EITHER the user-visible flag or
     // the load-in-flight state is true. The invariant (PR 5) ties
     // them together; here we just check the derivation logic.
-    let mut m = ReaderPopupModel::default();
-    m.active = true;
+    let m = ReaderPopupModel { active: true, ..ReaderPopupModel::default() };
     assert!(m.is_open());
   }
 }

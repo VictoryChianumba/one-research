@@ -53,8 +53,8 @@ impl App {
     crate::store::history::save(&self.workspace.history);
   }
 
-  /// Mutator chokepoint for `history`. Invokes `f`, then invalidates the
-  /// render_caches.filtered_history so subsequent reads see the updated data.
+  // Mutator chokepoint for `history`. Invokes `f`, then invalidates the
+  // render_caches.filtered_history so subsequent reads see the updated data.
 
   /// Pre-draw update: hoists state mutations that were previously
   /// performed inline during render (refactor B — render purification).

@@ -388,7 +388,6 @@ pub(super) fn reader_back(app: &mut App, side: FocusedReader) -> bool {
 }
 
 /// Close all reader state and return focus to the feed.
-
 pub(super) fn close_all_readers(app: &mut App) {
   // Stop voice + clear pixel placements before tabs drop — voice
   // shouldn't continue once we leave the reader entirely, and

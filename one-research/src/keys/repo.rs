@@ -45,33 +45,33 @@ pub(super) fn handle_repo_viewer(key: KeyEvent, app: &mut App) -> bool {
         "repo Enter: repo_fetch_rx active={}",
         app.async_jobs.repo_fetch_rx.is_some()
       );
-      if app.async_jobs.repo_fetch_rx.is_none() {
-        if let Some(target) = app.repo_enter_target() {
-          let token = app.github_token.clone().unwrap_or_default();
-          match target {
-            crate::app::RepoEnterTarget::Dir(path) => {
-              if let Some(ctx) = &app.repo_context {
-                let (owner, repo, branch) = (
-                  ctx.owner.clone(),
-                  ctx.repo_name.clone(),
-                  ctx.default_branch.clone(),
-                );
-                log::debug!("repo Enter: spawning dir fetch path={:?}", path);
-                app.set_repo_status("Loading…");
-                let (tx, rx) = mpsc::channel();
-                app.async_jobs.repo_fetch_rx = Some(rx);
-                spawn_repo_dir(owner, repo, branch, path, token, tx);
-              }
+      if app.async_jobs.repo_fetch_rx.is_none()
+        && let Some(target) = app.repo_enter_target()
+      {
+        let token = app.github_token.clone().unwrap_or_default();
+        match target {
+          crate::app::RepoEnterTarget::Dir(path) => {
+            if let Some(ctx) = &app.repo_context {
+              let (owner, repo, branch) = (
+                ctx.owner.clone(),
+                ctx.repo_name.clone(),
+                ctx.default_branch.clone(),
+              );
+              log::debug!("repo Enter: spawning dir fetch path={:?}", path);
+              app.set_repo_status("Loading…");
+              let (tx, rx) = mpsc::channel();
+              app.async_jobs.repo_fetch_rx = Some(rx);
+              spawn_repo_dir(owner, repo, branch, path, token, tx);
             }
-            crate::app::RepoEnterTarget::File(path, name) => {
-              if let Some(ctx) = &app.repo_context {
-                let (owner, repo) = (ctx.owner.clone(), ctx.repo_name.clone());
-                log::debug!("repo Enter: spawning file fetch path={:?}", path);
-                app.set_repo_status("Loading…");
-                let (tx, rx) = mpsc::channel();
-                app.async_jobs.repo_fetch_rx = Some(rx);
-                spawn_repo_file(owner, repo, path, name, token, tx);
-              }
+          }
+          crate::app::RepoEnterTarget::File(path, name) => {
+            if let Some(ctx) = &app.repo_context {
+              let (owner, repo) = (ctx.owner.clone(), ctx.repo_name.clone());
+              log::debug!("repo Enter: spawning file fetch path={:?}", path);
+              app.set_repo_status("Loading…");
+              let (tx, rx) = mpsc::channel();
+              app.async_jobs.repo_fetch_rx = Some(rx);
+              spawn_repo_file(owner, repo, path, name, token, tx);
             }
           }
         }
@@ -82,21 +82,20 @@ pub(super) fn handle_repo_viewer(key: KeyEvent, app: &mut App) -> bool {
         && app.repo_context.as_ref().is_some_and(|c| !c.no_token)
       {
         app.set_repo_status("Already at root");
-      } else if let Some(parent) = app.repo_back_target() {
-        if app.async_jobs.repo_fetch_rx.is_none() {
-          if let Some(ctx) = &app.repo_context {
-            let (owner, repo, branch) = (
-              ctx.owner.clone(),
-              ctx.repo_name.clone(),
-              ctx.default_branch.clone(),
-            );
-            let token = app.github_token.clone().unwrap_or_default();
-            app.set_repo_status("Loading…");
-            let (tx, rx) = mpsc::channel();
-            app.async_jobs.repo_fetch_rx = Some(rx);
-            spawn_repo_dir(owner, repo, branch, parent, token, tx);
-          }
-        }
+      } else if let Some(parent) = app.repo_back_target()
+        && app.async_jobs.repo_fetch_rx.is_none()
+        && let Some(ctx) = &app.repo_context
+      {
+        let (owner, repo, branch) = (
+          ctx.owner.clone(),
+          ctx.repo_name.clone(),
+          ctx.default_branch.clone(),
+        );
+        let token = app.github_token.clone().unwrap_or_default();
+        app.set_repo_status("Loading…");
+        let (tx, rx) = mpsc::channel();
+        app.async_jobs.repo_fetch_rx = Some(rx);
+        spawn_repo_dir(owner, repo, branch, parent, token, tx);
       }
     }
     _ => {}

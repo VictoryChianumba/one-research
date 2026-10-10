@@ -27,10 +27,7 @@ fn pad(area: Rect, top: u16, right: u16, bottom: u16, left: u16) -> Rect {
   }
 }
 
-fn notes_browser_visible<'a>(
-  app: &'a App,
-  side: FocusedReader,
-) -> Vec<&'a notes::Note> {
+fn notes_browser_visible(app: &App, side: FocusedReader) -> Vec<&notes::Note> {
   let Some(notes_app) = app.notes.app.as_ref() else {
     return Vec::new();
   };
@@ -376,10 +373,8 @@ pub fn draw_notes_surface(
 
   if preview_when_unfocused && !is_focused {
     draw_note_preview(frame, app, content_area, side, theme);
-    if popup_active {
-      if let Some(notes_app) = app.notes.app.as_mut() {
-        notes_app.draw_popup_overlay(frame, content_area);
-      }
+    if popup_active && let Some(notes_app) = app.notes.app.as_mut() {
+      notes_app.draw_popup_overlay(frame, content_area);
     }
     return;
   }
@@ -459,10 +454,8 @@ pub fn draw_notes_surface(
     }
   }
 
-  if popup_active {
-    if let Some(notes_app) = app.notes.app.as_mut() {
-      notes_app.draw_popup_overlay(frame, content_area);
-    }
+  if popup_active && let Some(notes_app) = app.notes.app.as_mut() {
+    notes_app.draw_popup_overlay(frame, content_area);
   }
 }
 

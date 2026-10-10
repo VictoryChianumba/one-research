@@ -54,6 +54,8 @@ mod tests {
   }
 
   #[test]
+  // Field-by-field mutation after default() is the behaviour under test.
+  #[allow(clippy::field_reassign_with_default)]
   fn flags_are_independent() {
     // Witness: each popup opens and closes without touching its
     // siblings — the cluster is just a grouping.  Bug class to avoid:

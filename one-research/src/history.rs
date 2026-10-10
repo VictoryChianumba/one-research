@@ -155,17 +155,16 @@ pub fn record_query(
   intent_label: &str,
 ) {
   let now = Utc::now();
-  if let Some(head) = history.first_mut() {
-    if head.kind == HistoryKind::Query
-      && head.key == topic
-      && now.signed_duration_since(head.opened_at).num_seconds()
-        < REFINEMENT_DEDUP_WINDOW_SECS
-    {
-      head.opened_at = now;
-      head.visit_count = head.visit_count.saturating_add(1);
-      head.source = intent_label.to_string();
-      return;
-    }
+  if let Some(head) = history.first_mut()
+    && head.kind == HistoryKind::Query
+    && head.key == topic
+    && now.signed_duration_since(head.opened_at).num_seconds()
+      < REFINEMENT_DEDUP_WINDOW_SECS
+  {
+    head.opened_at = now;
+    head.visit_count = head.visit_count.saturating_add(1);
+    head.source = intent_label.to_string();
+    return;
   }
   if let Some(pos) =
     history.iter().position(|e| e.kind == HistoryKind::Query && e.key == topic)

@@ -233,17 +233,16 @@ fn break_inline_markdown_markers(line: &str) -> String {
   while let Some((i, ch)) = iter.next() {
     let rest = &line[i..];
 
-    if ch == ' ' || ch == '\t' {
-      if let Some(marker_len) = inline_marker_len(rest) {
-        if has_visible_text(&out) {
-          out.push('\n');
-          out.push_str(rest[..marker_len].trim_start());
-          for _ in 0..marker_len.saturating_sub(1) {
-            iter.next();
-          }
-          continue;
-        }
+    if (ch == ' ' || ch == '\t')
+      && let Some(marker_len) = inline_marker_len(rest)
+      && has_visible_text(&out)
+    {
+      out.push('\n');
+      out.push_str(rest[..marker_len].trim_start());
+      for _ in 0..marker_len.saturating_sub(1) {
+        iter.next();
       }
+      continue;
     }
 
     out.push(ch);
@@ -256,10 +255,10 @@ fn inline_marker_len(rest: &str) -> Option<usize> {
   let marker = rest.trim_start();
   let trimmed = rest.len().saturating_sub(marker.len());
 
-  if let Some(after) = marker.strip_prefix("- ") {
-    if starts_structural_text(after) {
-      return Some(trimmed + 2);
-    }
+  if let Some(after) = marker.strip_prefix("- ")
+    && starts_structural_text(after)
+  {
+    return Some(trimmed + 2);
   }
 
   if let Some(len) = numbered_marker_len(marker) {
@@ -520,7 +519,7 @@ fn normalize_markdown(content: &str) -> String {
   while let Some((i, ch)) = iter.next() {
     let rest = &content[i..];
     let prev_is_space =
-      out.chars().last().map_or(false, |c| c == ' ' || c == '\t');
+      out.chars().last().is_some_and(|c| c == ' ' || c == '\t');
 
     if prev_is_space {
       if rest.starts_with("### ") && starts_numbered_heading(&rest[4..]) {
@@ -533,21 +532,17 @@ fn normalize_markdown(content: &str) -> String {
         }
         continue;
       }
-      if let Some(after) = rest.strip_prefix("## ") {
-        if after
-          .chars()
-          .next()
-          .map_or(false, |c| c.is_alphanumeric() || c == '*')
-        {
-          if out.ends_with(' ') {
-            out.pop();
-          }
-          out.push_str("\n\n## ");
-          for _ in 0..2 {
-            iter.next();
-          }
-          continue;
+      if let Some(after) = rest.strip_prefix("## ")
+        && after.chars().next().is_some_and(|c| c.is_alphanumeric() || c == '*')
+      {
+        if out.ends_with(' ') {
+          out.pop();
         }
+        out.push_str("\n\n## ");
+        for _ in 0..2 {
+          iter.next();
+        }
+        continue;
       }
       if let Some(consumed) = match_numbered_bold(rest) {
         if out.ends_with(' ') {

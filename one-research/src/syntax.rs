@@ -17,6 +17,7 @@ fn ts() -> &'static ThemeSet {
 /// Highlight `content` using the file extension from `filename`.
 /// Returns a Vec of lines, each line a Vec of (r, g, b, text) spans.
 /// Returns `None` for plain-text / unknown file types.
+#[allow(clippy::type_complexity)] // per line: (r, g, b, text) spans
 pub fn highlight_file(
   content: &str,
   filename: &str,

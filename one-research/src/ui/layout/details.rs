@@ -568,6 +568,7 @@ fn detail_title_lines<'a>(
     .collect()
 }
 
+#[allow(clippy::too_many_arguments)] // render helper; grouping args is a refactor
 fn push_summary_and_actions<'a>(
   lines: &mut Vec<Line<'a>>,
   summary: &str,
@@ -708,12 +709,10 @@ fn wrap_limited_ellipsis<'a>(
   }
   let overflowed = wrapped.len() > max_lines;
   let mut lines: Vec<String> = wrapped.into_iter().take(max_lines).collect();
-  if overflowed {
-    if let Some(last) = lines.last_mut() {
-      let keep = width.saturating_sub(1);
-      let trimmed = safe_truncate_chars(last.trim_end(), keep);
-      *last = format!("{trimmed}…");
-    }
+  if overflowed && let Some(last) = lines.last_mut() {
+    let keep = width.saturating_sub(1);
+    let trimmed = safe_truncate_chars(last.trim_end(), keep);
+    *last = format!("{trimmed}…");
   }
   lines.into_iter().map(|line| Line::from(Span::styled(line, style))).collect()
 }

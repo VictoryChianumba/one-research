@@ -2,24 +2,13 @@ use std::collections::HashSet;
 
 use crate::models::{ContentType, FeedItem, SignalLevel, WorkflowState};
 
+#[derive(Default)]
 pub struct FilterState {
   pub sources: HashSet<String>,
   pub signals: HashSet<SignalLevel>,
   pub content_types: HashSet<ContentType>,
   pub workflow_states: HashSet<WorkflowState>,
   pub tags: HashSet<String>,
-}
-
-impl Default for FilterState {
-  fn default() -> Self {
-    Self {
-      sources: HashSet::new(),
-      signals: HashSet::new(),
-      content_types: HashSet::new(),
-      workflow_states: HashSet::new(),
-      tags: HashSet::new(),
-    }
-  }
 }
 
 impl FilterState {

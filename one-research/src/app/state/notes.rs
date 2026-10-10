@@ -1,6 +1,7 @@
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum NotesMode {
   PaperNotes,
+  #[default]
   Library,
   Capture,
 }
@@ -26,12 +27,6 @@ impl NotesMode {
   }
 }
 
-impl Default for NotesMode {
-  fn default() -> Self {
-    Self::Library
-  }
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Slice 3 — composition-root models (ADR-003)
 //
@@ -40,8 +35,8 @@ impl Default for NotesMode {
 // the empty defaults + the Option<secondary> invariant; gesture tests
 // arrive with PR 3 when the methods exist.
 
-/// One notes context (primary or secondary). Owns mode + paper anchoring
-/// + the browser selection. Pure content — visibility is a pane-level
+/// One notes context (primary or secondary). Owns mode, paper anchoring
+/// and the browser selection. Pure content — visibility is a pane-level
 /// concern and lives on [`NotesPaneModel`].
 ///
 /// Per-instance: primary and secondary can be in different modes and
@@ -131,7 +126,7 @@ impl NotesInstanceModel {
         .unwrap_or(0);
       if delta == 0 {
         current
-      } else if delta > 1 || delta < -1 {
+      } else if !(-1..=1).contains(&delta) {
         (current as isize + delta * page as isize).clamp(0, last as isize)
           as usize
       } else {
@@ -435,8 +430,10 @@ mod tests {
 
   #[test]
   fn instance_mode_can_diverge_from_default() {
-    let mut m = NotesInstanceModel::default();
-    m.mode = NotesMode::Capture;
+    let m = NotesInstanceModel {
+      mode: NotesMode::Capture,
+      ..NotesInstanceModel::default()
+    };
     // Per-instance mode: tests that different instances can hold
     // different modes (the property that justifies S4 in ADR-003).
     let other = NotesInstanceModel::default();
@@ -520,8 +517,10 @@ mod tests {
     let mut p = NotesPaneModel::default();
     p.primary.select(Some("old".into()));
     p.primary_visible = false;
-    let mut sec = NotesInstanceModel::default();
-    sec.mode = NotesMode::PaperNotes;
+    let mut sec = NotesInstanceModel {
+      mode: NotesMode::PaperNotes,
+      ..NotesInstanceModel::default()
+    };
     sec.select(Some("new".into()));
     p.secondary = Some(sec);
     p.secondary_visible = true;

@@ -133,6 +133,9 @@ pub(super) fn truncate(s: &str, max_chars: usize) -> String {
   let mut chars = s.chars();
   let mut out = String::new();
   let mut count = 0;
+  // Manual counter: the body calls `chars.next()`, which `enumerate()`
+  // would hold borrowed.
+  #[allow(clippy::explicit_counter_loop)]
   for c in &mut chars {
     if count >= max_chars {
       if chars.next().is_some() {

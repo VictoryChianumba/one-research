@@ -359,7 +359,7 @@ fn draw_history_tab(
     .iter()
     .map(|entry| {
       let mut raw_lines = textwrap::wrap(&entry.title, title_wrap_w);
-      let row_height = raw_lines.len().min(2).max(1) as u16;
+      let row_height = raw_lines.len().clamp(1, 2) as u16;
       if raw_lines.len() > 2 {
         raw_lines.truncate(2);
         if let Some(last) = raw_lines.last_mut() {
@@ -786,7 +786,7 @@ pub fn draw_item_table(
     .iter()
     .map(|item| {
       let mut raw_lines = textwrap::wrap(&item.title, title_wrap_w);
-      let row_height = raw_lines.len().min(2).max(1) as u16;
+      let row_height = raw_lines.len().clamp(1, 2) as u16;
       if raw_lines.len() > 2 {
         raw_lines.truncate(2);
         if let Some(last) = raw_lines.last_mut() {

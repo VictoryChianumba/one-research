@@ -128,11 +128,11 @@ fn note_to_item(note: OrNote) -> Option<FeedItem> {
     .cdate
     .map(|ms| {
       let secs = ms / 1000;
-      let dt = chrono::DateTime::from_timestamp(secs, 0)
+
+      chrono::DateTime::from_timestamp(secs, 0)
         .unwrap_or_default()
         .format("%Y-%m-%d")
-        .to_string();
-      dt
+        .to_string()
     })
     .unwrap_or_default();
 

@@ -77,26 +77,24 @@ fn discover_feed(url: &str) -> DiscoverResult {
   let base_url = url.trim_end_matches('/').to_string();
 
   // Step 4: Fetch page and scan <head> for RSS link element.
-  if let Ok(resp) = client.get(url).send() {
-    if resp.status().is_success() {
-      if let Ok(body) = resp.text() {
-        if let Some(feed_url) = extract_rss_link(&body, &base_url) {
-          let name = domain_name(url);
-          return DiscoverResult::RssFeed { url: feed_url, name };
-        }
-      }
-    }
+  if let Ok(resp) = client.get(url).send()
+    && resp.status().is_success()
+    && let Ok(body) = resp.text()
+    && let Some(feed_url) = extract_rss_link(&body, &base_url)
+  {
+    let name = domain_name(url);
+    return DiscoverResult::RssFeed { url: feed_url, name };
   }
 
   // Step 5: Try common feed paths.
   let suffixes = ["/feed", "/rss", "/atom.xml", "/feed.xml", "/rss.xml"];
   for suffix in suffixes {
     let candidate = format!("{base_url}{suffix}");
-    if let Ok(resp) = client.head(&candidate).send() {
-      if resp.status().is_success() {
-        let name = domain_name(&candidate);
-        return DiscoverResult::RssFeed { url: candidate, name };
-      }
+    if let Ok(resp) = client.head(&candidate).send()
+      && resp.status().is_success()
+    {
+      let name = domain_name(&candidate);
+      return DiscoverResult::RssFeed { url: candidate, name };
     }
   }
 
@@ -122,7 +120,7 @@ fn extract_rss_link(html: &str, base_url: &str) -> Option<String> {
       // any joining with base_url. Anything with a `:` before the first
       // path/query/fragment delimiter is a scheme: javascript:, file:,
       // data:, mailto:, etc.
-      let scheme_end = href.find(|c: char| c == '/' || c == '?' || c == '#');
+      let scheme_end = href.find(['/', '?', '#']);
       let pre = scheme_end.map(|i| &href[..i]).unwrap_or(&href[..]);
       if pre.contains(':') && !is_safe_url_scheme(&href) {
         search = &search[pos + needle.len()..];
@@ -150,12 +148,12 @@ fn attr_value(tag: &str, attr: &str) -> Option<String> {
   let needle = format!("{attr}=");
   let pos = tag.find(&needle)?;
   let rest = &tag[pos + needle.len()..];
-  if rest.starts_with('"') {
-    let end = rest[1..].find('"')?;
-    Some(rest[1..end + 1].to_string())
-  } else if rest.starts_with('\'') {
-    let end = rest[1..].find('\'')?;
-    Some(rest[1..end + 1].to_string())
+  if let Some(quoted) = rest.strip_prefix('"') {
+    let end = quoted.find('"')?;
+    Some(quoted[..end].to_string())
+  } else if let Some(quoted) = rest.strip_prefix('\'') {
+    let end = quoted.find('\'')?;
+    Some(quoted[..end].to_string())
   } else {
     let end =
       rest.find(|c: char| c.is_whitespace() || c == '>').unwrap_or(rest.len());

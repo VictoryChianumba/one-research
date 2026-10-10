@@ -363,10 +363,10 @@ impl App {
         _ => {}
       },
       UICommand::DeleteCurrentNote => {
-        if result == MsgBoxResult::Yes {
-          if let Err(e) = self.delete_current_note() {
-            self.show_err_msg(format!("Failed to delete: {e}"));
-          }
+        if result == MsgBoxResult::Yes
+          && let Err(e) = self.delete_current_note()
+        {
+          self.show_err_msg(format!("Failed to delete: {e}"));
         }
       }
       UICommand::MulSelDeleteNotes => {

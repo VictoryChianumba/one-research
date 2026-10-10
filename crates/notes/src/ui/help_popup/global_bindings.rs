@@ -8,6 +8,12 @@ pub struct GlobalBindings {
   rows: Vec<CommandRow>,
 }
 
+impl Default for GlobalBindings {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
 impl GlobalBindings {
   pub fn new() -> Self {
     Self { state: TableState::default(), rows: Vec::new() }

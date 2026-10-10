@@ -40,22 +40,21 @@ impl App {
       self.workspace.items_store.replace_at(pos, item);
       return ItemMergeOutcome::Updated;
     }
-    if let Some(aid) = arxiv_id_from_url(&item.url) {
-      if let Some(pos) = self.workspace.items_store.find_index_by_arxiv_id(aid)
-      {
-        if item.source_platform == SourcePlatform::ArXiv {
-          let ws = self
-            .workspace
-            .items_store
-            .get(pos)
-            .expect("index points into items_store")
-            .workflow_state;
-          item.workflow_state = ws;
-          self.workspace.items_store.replace_at(pos, item);
-          return ItemMergeOutcome::Updated;
-        }
-        return ItemMergeOutcome::DroppedDuplicate;
+    if let Some(aid) = arxiv_id_from_url(&item.url)
+      && let Some(pos) = self.workspace.items_store.find_index_by_arxiv_id(aid)
+    {
+      if item.source_platform == SourcePlatform::ArXiv {
+        let ws = self
+          .workspace
+          .items_store
+          .get(pos)
+          .expect("index points into items_store")
+          .workflow_state;
+        item.workflow_state = ws;
+        self.workspace.items_store.replace_at(pos, item);
+        return ItemMergeOutcome::Updated;
       }
+      return ItemMergeOutcome::DroppedDuplicate;
     }
     self.workspace.items_store.push(item);
     ItemMergeOutcome::NewPushed
@@ -77,11 +76,11 @@ impl App {
     self.process_incoming_browse();
 
     // Clear "Saved." confirmation after 2 seconds.
-    if let Some(t) = self.settings.save_time {
-      if t.elapsed().as_secs() >= 2 {
-        self.settings.save_time = None;
-        self.mark_dirty();
-      }
+    if let Some(t) = self.settings.save_time
+      && t.elapsed().as_secs() >= 2
+    {
+      self.settings.save_time = None;
+      self.mark_dirty();
     }
 
     if self.async_jobs.fetch_rx.is_none() {
@@ -154,47 +153,45 @@ impl App {
               continue;
             }
 
-            if let Some(aid) = arxiv_id_from_url(&item.url) {
-              if let Some(pos) =
+            if let Some(aid) = arxiv_id_from_url(&item.url)
+              && let Some(pos) =
                 self.workspace.items_store.find_index_by_arxiv_id(aid)
+            {
+              let existing = self
+                .workspace
+                .items_store
+                .get(pos)
+                .expect("index points into items_store");
+              let workflow_state = existing.workflow_state;
+              let existing_is_canonical_arxiv =
+                existing.source_platform == SourcePlatform::ArXiv;
+              if existing_is_canonical_arxiv
+                && item.source_platform != SourcePlatform::ArXiv
               {
-                let existing = self
+                // Existing arxiv entry: merge in the non-arxiv item's
+                // optional fields without overwriting the canonical
+                // record.  `get_mut` gives in-place access so we don't
+                // round-trip through replace_at.
+                let existing_mut = self
                   .workspace
                   .items_store
-                  .get(pos)
+                  .get_mut(pos)
                   .expect("index points into items_store");
-                let workflow_state = existing.workflow_state;
-                let existing_is_canonical_arxiv =
-                  existing.source_platform == SourcePlatform::ArXiv;
-                if existing_is_canonical_arxiv
-                  && item.source_platform != SourcePlatform::ArXiv
-                {
-                  // Existing arxiv entry: merge in the non-arxiv item's
-                  // optional fields without overwriting the canonical
-                  // record.  `get_mut` gives in-place access so we don't
-                  // round-trip through replace_at.
-                  let existing_mut = self
-                    .workspace
-                    .items_store
-                    .get_mut(pos)
-                    .expect("index points into items_store");
-                  if existing_mut.github_repo.is_none() {
-                    existing_mut.github_repo = item.github_repo.take();
-                    existing_mut.github_owner = item.github_owner.take();
-                    existing_mut.github_repo_name =
-                      item.github_repo_name.take();
-                  }
-                  if existing_mut.full_content.is_none() {
-                    existing_mut.full_content = item.full_content.take();
-                  }
-                  had_enriched_updates = true;
-                  continue;
+                if existing_mut.github_repo.is_none() {
+                  existing_mut.github_repo = item.github_repo.take();
+                  existing_mut.github_owner = item.github_owner.take();
+                  existing_mut.github_repo_name = item.github_repo_name.take();
                 }
-                item.workflow_state = workflow_state;
-                self.workspace.items_store.replace_at(pos, item);
+                if existing_mut.full_content.is_none() {
+                  existing_mut.full_content = item.full_content.take();
+                }
                 had_enriched_updates = true;
                 continue;
               }
+              item.workflow_state = workflow_state;
+              self.workspace.items_store.replace_at(pos, item);
+              had_enriched_updates = true;
+              continue;
             }
 
             self.workspace.items_store.push(item);
@@ -485,15 +482,15 @@ impl App {
       }
 
       // ArXiv ID dedup — O(1).
-      if let Some(aid) = arxiv_id_from_url(&item.url) {
-        if let Some(&pos) = self.discovery.arxiv_id_index.get(aid) {
-          if item.source_platform == SourcePlatform::ArXiv {
-            let ws = self.discovery.items[pos].workflow_state;
-            self.discovery.items[pos] = item;
-            self.discovery.items[pos].workflow_state = ws;
-          }
-          continue;
+      if let Some(aid) = arxiv_id_from_url(&item.url)
+        && let Some(&pos) = self.discovery.arxiv_id_index.get(aid)
+      {
+        if item.source_platform == SourcePlatform::ArXiv {
+          let ws = self.discovery.items[pos].workflow_state;
+          self.discovery.items[pos] = item;
+          self.discovery.items[pos].workflow_state = ws;
         }
+        continue;
       }
 
       // New item: push and update indices incrementally.

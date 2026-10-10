@@ -273,15 +273,7 @@ fn footer_command_line(app: &App, width: u16) -> Line<'static> {
       FooterKey { key: "Ctrl+N", label: "new" },
       FooterKey { key: "Tab", label: "history" },
     ];
-    return responsive_footer(
-      spans,
-      "discoveries",
-      KEYS,
-      true,
-      width,
-      ordinary,
-      accent,
-    );
+    responsive_footer(spans, "discoveries", KEYS, true, width, ordinary, accent)
   } else if app.feed.feed_tab == FeedTab::Library {
     if app.feed.library_visual_mode {
       const KEYS: &[FooterKey] = &[
@@ -292,7 +284,7 @@ fn footer_command_line(app: &App, width: u16) -> Line<'static> {
         FooterKey { key: "t", label: "tag" },
         FooterKey { key: "Esc", label: "cancel" },
       ];
-      return responsive_footer(
+      responsive_footer(
         spans,
         "library visual",
         KEYS,
@@ -300,7 +292,7 @@ fn footer_command_line(app: &App, width: u16) -> Line<'static> {
         width,
         ordinary,
         accent,
-      );
+      )
     } else {
       const KEYS: &[FooterKey] = &[
         FooterKey { key: "[/]", label: "state" },
@@ -309,9 +301,7 @@ fn footer_command_line(app: &App, width: u16) -> Line<'static> {
         FooterKey { key: "Tab", label: "discoveries" },
       ];
       let mode = format!("library · {}", app.feed.library_filter.label());
-      return responsive_footer(
-        spans, mode, KEYS, true, width, ordinary, accent,
-      );
+      responsive_footer(spans, mode, KEYS, true, width, ordinary, accent)
     }
   } else if app.feed.feed_tab == FeedTab::History {
     const KEYS: &[FooterKey] = &[
@@ -322,7 +312,7 @@ fn footer_command_line(app: &App, width: u16) -> Line<'static> {
       FooterKey { key: "Tab", label: "inbox" },
     ];
     let mode = format!("history · {}", app.feed.history_filter.label());
-    return responsive_footer(spans, mode, KEYS, true, width, ordinary, accent);
+    responsive_footer(spans, mode, KEYS, true, width, ordinary, accent)
   } else if app.feed.feed_tab == FeedTab::Browse {
     if app.browse.focus == crate::app::BrowseFocus::Feed {
       const KEYS: &[FooterKey] = &[
@@ -333,7 +323,7 @@ fn footer_command_line(app: &App, width: u16) -> Line<'static> {
         FooterKey { key: "x", label: "archive" },
         FooterKey { key: "Tab", label: "library" },
       ];
-      return responsive_footer(
+      responsive_footer(
         spans,
         "browse feed",
         KEYS,
@@ -341,7 +331,7 @@ fn footer_command_line(app: &App, width: u16) -> Line<'static> {
         width,
         ordinary,
         accent,
-      );
+      )
     } else {
       const KEYS: &[FooterKey] = &[
         FooterKey { key: "h", label: "back/feed" },
@@ -352,9 +342,7 @@ fn footer_command_line(app: &App, width: u16) -> Line<'static> {
         FooterKey { key: "x", label: "follow" },
         FooterKey { key: "Tab", label: "library" },
       ];
-      return responsive_footer(
-        spans, "browse", KEYS, false, width, ordinary, accent,
-      );
+      responsive_footer(spans, "browse", KEYS, false, width, ordinary, accent)
     }
   } else {
     const FEED_KEYS: &[FooterKey] = &[
@@ -369,9 +357,7 @@ fn footer_command_line(app: &App, width: u16) -> Line<'static> {
       FooterKey { key: "x", label: "archive" },
       FooterKey { key: "q", label: "quit" },
     ];
-    return responsive_footer(
-      spans, "feed", FEED_KEYS, true, width, ordinary, accent,
-    );
+    responsive_footer(spans, "feed", FEED_KEYS, true, width, ordinary, accent)
   }
 }
 

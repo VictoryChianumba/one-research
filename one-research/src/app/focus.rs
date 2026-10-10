@@ -53,6 +53,7 @@ impl FocusManager {
 
   /// Called from layout every frame with the computed screen rects.
   /// Pass `None` for a pane that is not currently rendered.
+  #[allow(clippy::too_many_arguments)] // one Option<Rect> per pane
   pub fn update_pane_rects(
     &mut self,
     feed: Option<Rect>,

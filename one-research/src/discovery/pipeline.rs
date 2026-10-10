@@ -77,20 +77,18 @@ fn run_fallback(
     .filter(|cat| !config.sources.arxiv_categories.contains(*cat))
     .cloned()
     .collect();
-  if !new_categories.is_empty() {
-    if let Ok(items) = crate::ingestion::arxiv::fetch(&new_categories) {
-      if !items.is_empty() {
-        let _ = tx.send(DiscoveryMessage::Items(items));
-      }
-    }
+  if !new_categories.is_empty()
+    && let Ok(items) = crate::ingestion::arxiv::fetch(&new_categories)
+    && !items.is_empty()
+  {
+    let _ = tx.send(DiscoveryMessage::Items(items));
   }
 
-  if !plan.paper_ids.is_empty() {
-    if let Ok(items) = crate::ingestion::arxiv::fetch_by_ids(&plan.paper_ids) {
-      if !items.is_empty() {
-        let _ = tx.send(DiscoveryMessage::Items(items));
-      }
-    }
+  if !plan.paper_ids.is_empty()
+    && let Ok(items) = crate::ingestion::arxiv::fetch_by_ids(&plan.paper_ids)
+    && !items.is_empty()
+  {
+    let _ = tx.send(DiscoveryMessage::Items(items));
   }
 
   let _ = tx.send(DiscoveryMessage::Complete);

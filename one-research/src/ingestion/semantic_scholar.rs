@@ -91,16 +91,16 @@ pub fn enrich(
     log::debug!("semantic_scholar: enriching arXiv:{id}");
 
     // Use cached entry if still fresh.
-    if let Some(entry) = cache.get(&id) {
-      if !is_stale(entry, &id) {
-        log::debug!(
-          "semantic_scholar: cache hit for arXiv:{id} (cached_at={})",
-          entry.cached_at
-        );
-        apply_entry(item, entry);
-        enriched += 1;
-        continue;
-      }
+    if let Some(entry) = cache.get(&id)
+      && !is_stale(entry, &id)
+    {
+      log::debug!(
+        "semantic_scholar: cache hit for arXiv:{id} (cached_at={})",
+        entry.cached_at
+      );
+      apply_entry(item, entry);
+      enriched += 1;
+      continue;
     }
 
     // Enforce request cap (lifted when API key is present).
@@ -124,7 +124,7 @@ pub fn enrich(
 
     log::debug!("semantic_scholar: network request for arXiv:{id}");
     request_count += 1;
-    let entry = match fetch_entry(&client, &api_url, &id, api_key) {
+    let entry = match fetch_entry(client, &api_url, &id, api_key) {
       Ok(Some(e)) => e,
       Ok(None) => {
         skipped += 1;

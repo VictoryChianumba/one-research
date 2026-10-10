@@ -48,6 +48,12 @@ pub struct NoteEditor<'a> {
   pub sync_os_clipboard: bool,
 }
 
+impl<'a> Default for NoteEditor<'a> {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
 impl<'a> NoteEditor<'a> {
   pub fn new() -> NoteEditor<'a> {
     NoteEditor {

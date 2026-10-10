@@ -127,10 +127,10 @@ impl RenderContext {
   }
 
   fn flush_inline(&mut self) {
-    if let Some(block) = self.current_inline.take() {
-      if !block.runs.is_empty() || block.kind == BlockKind::ListItem {
-        self.blocks.push(MarkdownBlock::Inline(block));
-      }
+    if let Some(block) = self.current_inline.take()
+      && (!block.runs.is_empty() || block.kind == BlockKind::ListItem)
+    {
+      self.blocks.push(MarkdownBlock::Inline(block));
     }
   }
 
@@ -343,7 +343,7 @@ fn render_inline_block(block: &InlineBlock, width: usize) -> Vec<RenderedLine> {
           current_width + pending_space_width + token.width <= width;
         if fits_current {
           if !pending_spaces.is_empty() {
-            current.extend(pending_spaces.drain(..));
+            current.append(&mut pending_spaces);
             current_width += pending_space_width;
             pending_space_width = 0;
           }
@@ -446,14 +446,14 @@ fn inline_style(ctx: &RenderContext) -> Style {
     style = style.fg(Color::Cyan).add_modifier(Modifier::UNDERLINED);
   }
 
-  if let Some(block) = ctx.current_inline.as_ref() {
-    if let BlockKind::Heading(level) = block.kind {
-      style = style.add_modifier(Modifier::BOLD).fg(match level {
-        HeadingLevel::H1 => Color::Yellow,
-        HeadingLevel::H2 => Color::White,
-        _ => Color::Cyan,
-      });
-    }
+  if let Some(block) = ctx.current_inline.as_ref()
+    && let BlockKind::Heading(level) = block.kind
+  {
+    style = style.add_modifier(Modifier::BOLD).fg(match level {
+      HeadingLevel::H1 => Color::Yellow,
+      HeadingLevel::H2 => Color::White,
+      _ => Color::Cyan,
+    });
   }
 
   style
