@@ -4,6 +4,9 @@
 # and CORE (needs the CORE_API_KEY secret), then pushes them to a new
 # branch `fixtures/refresh-<run id>` for review as a normal PR. Never
 # writes to the branch it was run from.
+#
+# Known: OpenReview returns a 403 bot challenge to GitHub-hosted runners,
+# so that fixture must be recorded locally (see scripts/record-fixtures.sh).
 name: Record API fixtures
 
 on:
@@ -30,7 +33,10 @@ jobs:
           CORE_API_KEY: ${{ secrets.CORE_API_KEY }}
         run: scripts/record-fixtures.sh one-research/tests/fixtures
 
+      # Runs even if some sources failed, so partial results can be
+      # reviewed; the job itself still fails and the annotations say why.
       - name: Push to a review branch
+        if: ${{ !cancelled() }}
         env:
           BRANCH: fixtures/refresh-${{ github.run_id }}
         run: |

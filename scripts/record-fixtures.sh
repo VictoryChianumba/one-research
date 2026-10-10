@@ -10,6 +10,11 @@
 #
 # CORE needs an API key: set CORE_API_KEY, otherwise CORE is skipped and
 # reported (never faked).
+#
+# Needs curl and jq (macOS: `brew install jq`). OpenReview answers
+# datacenter IPs (incl. GitHub's runners) with a 403 bot challenge, so its
+# fixture has to be recorded from a normal connection:
+#   scripts/record-fixtures.sh
 set -euo pipefail
 
 out="${1:-one-research/tests/fixtures}"
@@ -28,6 +33,12 @@ fail() {
     echo "::error title=record-fixtures::${msg}"
   fi
   failed=1
+}
+
+# sha256sum (Linux) or shasum (macOS).
+sha256() {
+  if command -v sha256sum >/dev/null; then sha256sum "$1" | cut -d' ' -f1
+  else shasum -a 256 "$1" | cut -d' ' -f1; fi
 }
 
 # fetch NAME URL SHAPE_REGEX [extra curl args...]
@@ -49,7 +60,7 @@ fetch() {
   mv "$tmp" "$out/$name"
   local size sha
   size="$(wc -c < "$out/$name" | tr -d ' ')"
-  sha="$(sha256sum "$out/$name" | cut -d' ' -f1)"
+  sha="$(sha256 "$out/$name")"
   echo "ok   $name ($size bytes)"
   manifest_entries+=("$(jq -n --arg f "$name" --arg u "$url" --arg t "$recorded_at" \
     --arg s "$sha" --argjson b "$size" \
