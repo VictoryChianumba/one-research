@@ -1,0 +1,134 @@
+# Continuous integration. Runs on every PR and on pushes to main.
+#
+# Everything here is offline with respect to the app's APIs: tests use
+# recorded fixtures, and test builds compile in a guard that blocks
+# non-loopback HTTP (crates/http, `deny-network`). Live API checks live in
+# live-integration.yml and are manual.
+#
+# Action versions are pinned to full commit SHAs (tag in the comment);
+# Dependabot keeps them current. Runner images are pinned too, so an image
+# rollover cannot change results without a commit.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_INCREMENTAL: "0"
+  # Plain output: ANSI colour codes would break the problem matchers that
+  # turn compiler errors and test panics into annotations.
+  CARGO_TERM_COLOR: never
+
+jobs:
+  fmt:
+    name: rustfmt
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: echo "::add-matcher::.github/matchers/rust.json"
+      # The toolchain (and its rustfmt) comes from rust-toolchain.toml.
+      - run: cargo fmt --all --check
+
+  clippy:
+    name: clippy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install system libraries
+        run: sudo apt-get update -q && sudo apt-get install -y -q libasound2-dev
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - run: echo "::add-matcher::.github/matchers/rust.json"
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+  test:
+    name: build + test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install system libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -q && sudo apt-get install -y -q libasound2-dev
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - run: echo "::add-matcher::.github/matchers/rust.json"
+      - name: Build
+        run: cargo build --workspace --locked
+      # Throwaway $HOME so tests never touch real config dirs (see script).
+      - name: Test
+        run: scripts/test.sh
+
+  msrv:
+    name: MSRV (1.88)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install system libraries
+        run: sudo apt-get update -q && sudo apt-get install -y -q libasound2-dev
+      # Keep in sync with `rust-version` in the workspace Cargo.toml.
+      - name: Install Rust 1.88.0
+        run: rustup toolchain install 1.88.0 --profile minimal
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: msrv
+      - run: echo "::add-matcher::.github/matchers/rust.json"
+      # `+1.88.0` overrides rust-toolchain.toml.
+      - run: cargo +1.88.0 check --workspace --all-targets --locked
+
+  audit:
+    name: cargo audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe # v2.87.27
+        with:
+          tool: cargo-audit@0.22.2
+      # Fails on any vulnerability advisory; "unmaintained"/"unsound"
+      # warnings are reported but do not fail the job. On failure, each
+      # advisory is also emitted as an annotation.
+      - name: cargo audit
+        run: |
+          if ! cargo audit; then
+            cargo audit --json 2>/dev/null \
+              | jq -r '.vulnerabilities.list[] | "::error title=\(.advisory.id)::\(.package.name) \(.package.version): \(.advisory.title)"' \
+              || true
+            exit 1
+          fi
+
+  architecture:
+    name: architecture tripwires
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The grep-based ADR checks in scripts/ (see ci.sh for the list).
+      - name: Run scripts/check-*.sh
+        run: |
+          status=0
+          for script in scripts/check-*.sh; do
+            if out="$(bash "$script" 2>&1)"; then
+              echo "ok   $script"
+            else
+              status=1
+              msg="$(printf '%s' "$out" | tail -n 20 | sed -e ':a' -e 'N' -e '$!ba' -e 's/%/%25/g' -e 's/\n/%0A/g')"
+              echo "::error title=$script::$msg"
+            fi
+          done
+          exit "$status"

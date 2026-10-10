@@ -184,7 +184,7 @@ where time/memory actually goes.
 | Heap profiling | `dhat-rs`, `heaptrack` |
 | Allocation counts | `dhat-rs`, custom allocator wrapper |
 | Binary size | `cargo bloat`, `cargo-llvm-lines` |
-| Unused deps | `cargo udeps` (nightly) — already in `ci.sh` |
+| Unused deps | `cargo udeps` (nightly) — run manually; not part of CI |
 | Tracing | `tracing` + `tracing-flame` |
 | Allocator swap | `mimalloc`, `jemalloc` as `#[global_allocator]` |
 
