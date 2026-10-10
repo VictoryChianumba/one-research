@@ -5,13 +5,22 @@
 # Checks the properties the image promises, not just that it builds:
 #   1. runs as the non-root `app` user (uid 10001)
 #   2. no API keys baked into the image config or layer history
-#   3. the TUI starts and draws when given a TTY (`-t`)
+#   3. the TUI starts and keeps running under `docker run -it`
 #   4. state written to the mounted volume survives into a new container
 #   5. a key passed with `-e` is not written into that volume
 #
 # The app runs with --network none so the check is hermetic: the UI must
 # come up even when every feed fetch fails.
+#
+# The TUI is driven the way a user runs it — `docker run -it` from a real
+# terminal — via `script`, with the pseudo-terminal sized 40x120. A
+# detached `docker run -d -t` would give the app a 0x0 terminal, which it
+# does not survive (ratatui index panic); that is an app bug, not an image
+# one, and not what users hit.
 set -euo pipefail
+
+# Needs GNU `timeout` (macOS: `brew install coreutils`).
+command -v timeout >/dev/null || { echo "timeout(1) not found; on macOS: brew install coreutils" >&2; exit 2; }
 
 img="${1:-one-research}"
 vol="one-research-smoke-$$"
@@ -24,8 +33,6 @@ cleanup() {
   docker rm -f "$name" >/dev/null 2>&1 || true
   docker volume rm -f "$vol" >/dev/null 2>&1 || true
 }
-trap cleanup EXIT
-
 pass() { echo "ok   $*"; }
 fail() {
   echo "FAIL $*" >&2
@@ -36,16 +43,29 @@ fail() {
   failures=$((failures + 1))
 }
 
-# Run the TUI detached with a pseudo-TTY, wait, then stop it.
-run_tui() {
-  docker run -d -t --network none --name "$name" \
-    -e ONE_RESEARCH_CORE_API_KEY="$secret" \
-    -v "$vol:$state" "$img" >/dev/null
-  sleep 8
+screen="$(mktemp)"
+trap 'cleanup; rm -f "$screen"' EXIT
+
+# Run `sh -c CMD` inside a fresh pseudo-terminal, recording what it draws.
+with_pty() {
+  if script --version 2>/dev/null | grep -q util-linux; then
+    script -qec "$1" "$screen" >/dev/null 2>&1
+  else # BSD/macOS script
+    script -q "$screen" sh -c "$1" >/dev/null 2>&1
+  fi
 }
-stop_tui() {
-  docker stop -t 3 "$name" >/dev/null
-  docker rm "$name" >/dev/null
+
+# Run the TUI for 8 seconds in a 40x120 terminal, as `docker run -it`.
+# Prints docker's exit status: 124 means it was still running when the
+# timeout stopped it (the pass case); anything else means it exited.
+run_tui() {
+  local rc=0
+  with_pty "stty rows 40 cols 120; exec timeout 8 docker run --rm -it \
+    --network none --name $name -e ONE_RESEARCH_CORE_API_KEY=$secret \
+    -v $vol:$state $img" || rc=$?
+  # timeout stops the client; make sure the container is gone too.
+  docker rm -f "$name" >/dev/null 2>&1 || true
+  echo "$rc"
 }
 # Run a command in a throwaway container sharing the state volume.
 in_volume() {
@@ -70,20 +90,19 @@ fi
 
 # 3. The TUI starts and draws.
 docker volume create "$vol" >/dev/null
-run_tui
-if [[ "$(docker inspect -f '{{.State.Running}}' "$name")" == "true" ]]; then
+rc="$(run_tui)"
+if [[ "$rc" == "124" ]]; then
   pass "TUI still running after 8s"
 else
-  fail "container exited early (exit code $(docker inspect -f '{{.State.ExitCode}}' "$name")):"$'\n'"$(docker logs "$name" 2>&1 | tail -c 1500)"
+  fail "TUI exited early (status $rc). Terminal:"$'\n'"$(tail -c 800 "$screen" | tr -d '\033')"$'\n'"App log:"$'\n'"$(in_volume tail -n 15 "$state/one-research.log" 2>&1 || true)"
 fi
 # Entering the alternate screen (ESC [ ? 1049 h) means the TUI took over
 # the terminal and is drawing.
-if docker logs "$name" 2>&1 | grep -q $'\e\[?1049h'; then
+if grep -q $'\e\[?1049h' "$screen"; then
   pass "TUI entered the alternate screen"
 else
   fail "no alternate-screen escape in output; the TUI never drew"
 fi
-stop_tui
 
 # 4. State persists across containers.
 first="$(in_volume ls -A "$state")"
@@ -92,8 +111,8 @@ if [[ -n "$first" ]]; then
 else
   fail "nothing written to $state"
 fi
-run_tui
-stop_tui
+rc="$(run_tui)"
+[[ "$rc" == "124" ]] || fail "second run exited early (status $rc)"
 second="$(in_volume ls -A "$state")"
 missing="$(comm -23 <(echo "$first" | sort) <(echo "$second" | sort))"
 [[ -z "$missing" ]] && pass "state from the first run survived a new container" \
