@@ -1,0 +1,18 @@
+name: TEMP resolve image digests
+on:
+  push:
+    branches: [tmp/image-digests]
+permissions:
+  contents: read
+jobs:
+  digests:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: |
+          for ref in rust:1.97.0-slim-bookworm rust:1.97.0-slim-trixie debian:bookworm-slim debian:trixie-slim rust:1.88.0-slim-bookworm; do
+            if d=$(docker buildx imagetools inspect "$ref" --format '{{json .Manifest.Digest}}' 2>&1); then
+              echo "::notice title=$ref::$d"
+            else
+              echo "::warning title=$ref::not found: ${d//$'\n'/ }"
+            fi
+          done
