@@ -47,8 +47,13 @@ pub fn fetch(api_key: &str) -> Result<Vec<FeedItem>, String> {
     .map_err(|e| format!("core: HTTP failed: {e}"))?;
   let body = crate::http::read_body(resp)
     .map_err(|e| format!("core: read failed: {e}"))?;
+  parse_response(&body)
+}
 
-  let parsed: CoreResponse = serde_json::from_str(&body)
+/// Parse a CORE v3 `/search/works` response body. Split out of `fetch` so
+/// it can be tested against recorded responses.
+fn parse_response(body: &str) -> Result<Vec<FeedItem>, String> {
+  let parsed: CoreResponse = serde_json::from_str(body)
     .map_err(|e| format!("core: JSON parse failed: {e}"))?;
 
   let mut items = Vec::new();
@@ -154,4 +159,67 @@ struct CoreAuthor {
 #[derive(Deserialize)]
 struct CoreLink {
   url: String,
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  // NOTE: hand-written, not a recording — recording CORE needs the
+  // CORE_API_KEY secret. Pins the mapping logic in `work_to_item`; a
+  // recorded response should replace this once available.
+  const BODY: &str = r#"{"totalHits": 3, "results": [
+    {"title": "  Graph   Nets ", "abstract": "About graphs.",
+     "authors": [{"name": "Ada Lovelace"}, {"name": ""}, {"name": null}],
+     "publishedDate": "2026-09-30T00:00:00",
+     "sourceFulltextUrls": ["https://example.org/a.pdf", "https://arxiv.org/abs/2609.00001"],
+     "links": [{"url": "https://core.ac.uk/works/1"}]},
+    {"title": "Only Links", "links": [{"url": "ftp://x"}, {"url": "https://core.ac.uk/works/2"}]},
+    {"title": "No Usable URL", "links": [{"url": "ftp://x"}]}
+  ]}"#;
+
+  #[test]
+  fn parse_response_prefers_arxiv_url_and_skips_unlinkable_works() {
+    let items = parse_response(BODY).expect("parse ok");
+    assert_eq!(items.len(), 2, "a work with no http(s) URL is dropped");
+
+    let a = &items[0];
+    assert_eq!(a.title, "Graph Nets");
+    assert_eq!(
+      a.url, "https://arxiv.org/abs/2609.00001",
+      "arXiv wins for dedup"
+    );
+    assert_eq!(a.authors, ["Ada Lovelace"], "empty/null names dropped");
+
+    assert_eq!(items[1].url, "https://core.ac.uk/works/2");
+  }
+
+  // Suspected, unconfirmed: CORE v3 documents `yearPublished` as an
+  // integer, but `CoreWork` types it `Option<String>`. If real responses
+  // carry an integer, serde rejects the whole body and CORE never yields
+  // a paper. Confirm (or delete this test) once a recorded CORE fixture
+  // exists.
+  #[test]
+  #[ignore = "suspected bug: integer yearPublished fails the whole CORE parse"]
+  fn parse_response_accepts_integer_year_published() {
+    let body = r#"{"results": [{"title": "T", "yearPublished": 2024,
+      "links": [{"url": "https://core.ac.uk/works/3"}]}]}"#;
+    assert_eq!(parse_response(body).expect("parse ok").len(), 1);
+  }
+
+  // ── Live integration tests ────────────────────────────────────────────
+  // Hit the real API. Never run by default: `#[ignore]` plus the test
+  // build's deny-network guard. Run them with
+  //   ONE_RESEARCH_ALLOW_NETWORK=1 scripts/test.sh -- --ignored live_
+  // or the manual "Live integration" workflow.
+  // Needs CORE_API_KEY. Panics without it rather than passing vacuously;
+  // the workflow skips this test (with a notice) when the secret is unset.
+  #[test]
+  #[ignore = "live: real CORE API, needs CORE_API_KEY"]
+  fn live_core_fetch_returns_papers() {
+    let key = std::env::var("CORE_API_KEY")
+      .expect("CORE_API_KEY must be set for the live CORE test");
+    let items = fetch(&key).expect("CORE fetch");
+    assert!(!items.is_empty(), "CORE returned zero papers");
+  }
 }
