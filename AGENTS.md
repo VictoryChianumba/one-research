@@ -110,9 +110,12 @@ crates/chat        → chat-pane backend
 crates/ui-theme    → theme system
 ```
 
-The reader logic now lives in the sibling `tread` repo at
-`../../tread/crates/tread`, consumed through the path dependency in
-`one-research/Cargo.toml`. Reader internals belong to tread's docs.
+The reader logic now lives in the separate `tread` repo
+(github.com/VictoryChianumba/tread), consumed as a git dependency pinned
+to an exact `rev` in `one-research/Cargo.toml`. To develop against a
+local tread checkout, add a `[patch]` override to your own
+`~/.cargo/config.toml` (see README "Development") rather than editing
+the manifest. Reader internals belong to tread's docs.
 
 ## Workspace-wide Clippy Allowances
 

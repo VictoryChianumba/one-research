@@ -16,16 +16,12 @@ members = [
 version = "0.1.19"
 rust-version = "1.88"
 edition = "2024"
-authors = ["kruseio"]
+authors = ["Victory Chianumba"]
 license = "AGPL-3.0"
 readme = "README.md"
 repository = "https://github.com/VictoryChianumba/one-research"
-keywords = ["pdf", "cli", "parser", "terminal", "utility"]
-categories = [
-  "command-line-utilities",
-  "parser-implementations",
-  "text-processing",
-]
+keywords = ["arxiv", "research", "papers", "tui", "terminal"]
+categories = ["command-line-utilities"]
 
 [workspace.lints.rust]
 unused_parens = "allow"

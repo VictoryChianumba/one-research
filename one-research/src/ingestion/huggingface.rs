@@ -143,7 +143,9 @@ fn fetch_abstracts(items: &mut [FeedItem], ctx: &FetchContext) {
 fn parse_abstracts(xml: &str) -> HashMap<String, String> {
   let mut map = HashMap::new();
   let mut reader = Reader::from_str(xml);
-  reader.config_mut().trim_text(true);
+  // Trimming is done per text node by `XmlTextNode` (see its docs).
+  reader.config_mut().trim_text(false);
+  let mut node = XmlTextNode::default();
 
   let mut in_entry = false;
   let mut current_tag = String::new();
@@ -151,10 +153,32 @@ fn parse_abstracts(xml: &str) -> HashMap<String, String> {
   let mut summary = String::new();
 
   loop {
-    match reader.read_event() {
+    let event = reader.read_event();
+    match &event {
+      Ok(XmlEvent::Text(e)) => {
+        node.push_text(e);
+        continue;
+      }
+      Ok(XmlEvent::GeneralRef(e)) => {
+        node.push_ref(e);
+        continue;
+      }
+      _ => {}
+    }
+    // A non-text event ends the current text node.
+    if let Some(text) = node.take()
+      && in_entry
+    {
+      match current_tag.as_str() {
+        "id" => entry_id.push_str(&text),
+        "summary" => summary.push_str(&text),
+        _ => {}
+      }
+    }
+
+    match event {
       Ok(XmlEvent::Start(ref e)) => {
-        let tag =
-          std::str::from_utf8(e.name().as_ref()).unwrap_or("").to_string();
+        let tag = e.name().as_ref().to_string();
         if tag == "entry" {
           in_entry = true;
           entry_id.clear();
@@ -163,21 +187,8 @@ fn parse_abstracts(xml: &str) -> HashMap<String, String> {
         current_tag = tag;
       }
 
-      Ok(XmlEvent::Text(ref e)) => {
-        if !in_entry {
-          continue;
-        }
-        let text = e.unescape().unwrap_or_default().to_string();
-        match current_tag.as_str() {
-          "id" => entry_id.push_str(&text),
-          "summary" => summary.push_str(&text),
-          _ => {}
-        }
-      }
-
       Ok(XmlEvent::End(ref e)) => {
-        let tag =
-          std::str::from_utf8(e.name().as_ref()).unwrap_or("").to_string();
+        let tag = e.name().as_ref().to_string();
         if in_entry && tag == "entry" {
           in_entry = false;
           if let Some(id) = extract_arxiv_id(&entry_id) {
@@ -209,7 +220,7 @@ fn extract_arxiv_id(url: &str) -> Option<String> {
   if id.is_empty() { None } else { Some(id.to_string()) }
 }
 
-use super::collapse_whitespace;
+use super::{XmlTextNode, collapse_whitespace};
 
 // ---------------------------------------------------------------------------
 // HTTP
@@ -870,5 +881,25 @@ mod tests {
     );
     // Garbage in both fields.
     assert_eq!(extract_paper_arxiv_id(&item("nope", "also nope")), None);
+  }
+
+  // Pins quick-xml text-node semantics across the 0.36 → 0.42 upgrade
+  // (see the matching tests in arxiv.rs for why).
+  #[test]
+  fn parse_abstracts_preserves_entities_and_whitespace() {
+    let xml = r#"<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>http://arxiv.org/abs/2312.12345v1</id>
+    <summary>
+      Diffusion &amp; flow   models
+      beat &lt;baselines&gt;.
+    </summary>
+  </entry>
+</feed>"#;
+    let map = parse_abstracts(xml);
+    assert_eq!(
+      map.get("2312.12345").map(String::as_str),
+      Some("Diffusion & flow models beat <baselines>.")
+    );
   }
 }
