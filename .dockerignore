@@ -1,0 +1,18 @@
+# Allowlist: ignore everything, then re-include only what a release build
+# of the binary reads. New files (build artefacts, test data, editor
+# droppings) stay out of the build context by default.
+*
+
+!Cargo.toml
+!Cargo.lock
+# Profiles (release: LTO, strip) live here, not in Cargo.toml.
+!.cargo/config.toml
+!crates/
+!one-research/
+
+# Never needed by a release build, and target/ can be many GB.
+**/target/
+one-research/tests/
+# rust-toolchain.toml is deliberately not included: the builder image is
+# already pinned to the same Rust version (CI checks they match), and the
+# file would make rustup download clippy/rustfmt inside the build.
