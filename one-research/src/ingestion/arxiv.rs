@@ -281,7 +281,9 @@ fn parse_atom(xml: &str) -> Result<Vec<FeedItem>, String> {
   }
 
   let mut reader = Reader::from_str(xml);
-  reader.config_mut().trim_text(true);
+  // Trimming is done per text node by `XmlTextNode` (see its docs).
+  reader.config_mut().trim_text(false);
+  let mut node = XmlTextNode::default();
 
   let mut items: Vec<FeedItem> = Vec::new();
 
@@ -300,10 +302,39 @@ fn parse_atom(xml: &str) -> Result<Vec<FeedItem>, String> {
   let mut domain_tags: Vec<String> = Vec::new();
 
   loop {
-    match reader.read_event() {
+    let event = reader.read_event();
+    match &event {
+      Ok(Event::Text(e)) => {
+        node.push_text(e);
+        continue;
+      }
+      Ok(Event::GeneralRef(e)) => {
+        node.push_ref(e);
+        continue;
+      }
+      _ => {}
+    }
+    // A non-text event ends the current text node.
+    if let Some(text) = node.take()
+      && in_entry
+    {
+      if in_author && current_tag == "name" {
+        current_author_name.push_str(&text);
+      } else {
+        match current_tag.as_str() {
+          "title" => title.push_str(&text),
+          "id" => url.push_str(&text),
+          "published" => published_at.push_str(&text),
+          "summary" => summary.push_str(&text),
+          "arxiv:comment" => arxiv_comment.push_str(&text),
+          _ => {}
+        }
+      }
+    }
+
+    match event {
       Ok(Event::Start(ref e)) => {
-        let tag =
-          std::str::from_utf8(e.name().as_ref()).unwrap_or("").to_string();
+        let tag = e.name().as_ref().to_string();
 
         match tag.as_str() {
           "entry" => {
@@ -328,41 +359,19 @@ fn parse_atom(xml: &str) -> Result<Vec<FeedItem>, String> {
 
       Ok(Event::Empty(ref e)) => {
         let name = e.name();
-        let tag = std::str::from_utf8(name.as_ref()).unwrap_or("");
+        let tag = name.as_ref();
         if in_entry && tag == "category" {
           // <category term="cs.LG" scheme="..."/>
           for attr in e.attributes().flatten() {
-            if attr.key.as_ref() == b"term" {
-              if let Ok(val) = std::str::from_utf8(&attr.value) {
-                domain_tags.push(val.to_string());
-              }
+            if attr.key.as_ref() == "term" {
+              domain_tags.push(attr.value.to_string());
             }
           }
         }
       }
 
-      Ok(Event::Text(ref e)) => {
-        let text = e.unescape().unwrap_or_default().to_string();
-        if !in_entry {
-          continue;
-        }
-        if in_author && current_tag == "name" {
-          current_author_name.push_str(&text);
-        } else {
-          match current_tag.as_str() {
-            "title" => title.push_str(&text),
-            "id" => url.push_str(&text),
-            "published" => published_at.push_str(&text),
-            "summary" => summary.push_str(&text),
-            "arxiv:comment" => arxiv_comment.push_str(&text),
-            _ => {}
-          }
-        }
-      }
-
       Ok(Event::End(ref e)) => {
-        let tag =
-          std::str::from_utf8(e.name().as_ref()).unwrap_or("").to_string();
+        let tag = e.name().as_ref().to_string();
 
         if in_entry && in_author && tag == "name" {
           // name closed inside author — nothing extra needed
@@ -465,7 +474,7 @@ fn parse_atom(xml: &str) -> Result<Vec<FeedItem>, String> {
   Ok(items)
 }
 
-use super::collapse_whitespace;
+use super::{XmlTextNode, collapse_whitespace};
 
 fn encode_arxiv_query(query: &str) -> String {
   query
