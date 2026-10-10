@@ -1,0 +1,7 @@
+# Pinned so local `cargo clippy` / `cargo fmt` match CI exactly: new stable
+# releases add lints, and an unpinned toolchain would let CI break on its
+# own. Bump deliberately (and fix any new lints in the same PR).
+# MSRV (workspace rust-version = 1.88) is checked separately in CI.
+[toolchain]
+channel = "1.97.0"
+components = ["clippy", "rustfmt"]
