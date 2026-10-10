@@ -79,8 +79,9 @@ cargo run -p one-research --release
 # Build all crates
 cargo build --release
 
-# Run all tests
-cargo test
+# Run all tests (throwaway $HOME — plain `cargo test` can overwrite your
+# real ~/.config/one-research state; this is what CI runs)
+scripts/test.sh
 
 # Run tests for a specific crate
 cargo test -p one-research

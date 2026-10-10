@@ -88,12 +88,25 @@ where
 pub fn client() -> &'static reqwest::blocking::Client {
   static CLIENT: OnceLock<reqwest::blocking::Client> = OnceLock::new();
   CLIENT.get_or_init(|| {
-    reqwest::blocking::Client::builder()
+    let builder = reqwest::blocking::Client::builder()
       .timeout(REQUEST_TIMEOUT)
       .redirect(reqwest::redirect::Policy::limited(2))
-      .user_agent(concat!("one-research/", env!("CARGO_PKG_VERSION")))
-      .build()
-      .expect("failed to build HTTP client")
+      .user_agent(concat!("one-research/", env!("CARGO_PKG_VERSION")));
+    #[cfg(feature = "deny-network")]
+    let builder = builder.proxy(deny_network_proxy());
+    builder.build().expect("failed to build HTTP client")
+  })
+}
+
+/// Test builds only (`deny-network` feature): send every request that is
+/// not to a loopback host through a proxy on a closed port, so it fails
+/// immediately with "connection refused" instead of reaching the internet.
+/// Loopback stays direct so stub-server tests keep working.
+#[cfg(feature = "deny-network")]
+fn deny_network_proxy() -> reqwest::Proxy {
+  reqwest::Proxy::custom(|url| match url.host_str() {
+    Some("127.0.0.1" | "localhost" | "[::1]") => None,
+    _ => Some("http://127.0.0.1:1"),
   })
 }
 
@@ -264,5 +277,23 @@ mod tests {
     let err = result.expect_err("none() policy = no retries");
     assert!(err.contains("503"));
     server.join().unwrap();
+  }
+
+  // WHY: CI must be hermetic. If a test path reaches a real API, the run
+  // depends on that API's uptime and rate limits. This proves the guard is
+  // actually wired, not just declared.
+  #[cfg(feature = "deny-network")]
+  #[test]
+  fn deny_network_blocks_non_loopback_hosts() {
+    let started = std::time::Instant::now();
+    let err = client()
+      .get("https://export.arxiv.org/api/query?search_query=all:x")
+      .send()
+      .expect_err("real hosts must be unreachable in test builds");
+    assert!(err.is_connect(), "expected a connect error, got: {err}");
+    assert!(
+      started.elapsed() < std::time::Duration::from_secs(5),
+      "must fail fast, not wait for the 15s timeout"
+    );
   }
 }

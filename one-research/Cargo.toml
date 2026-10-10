@@ -44,5 +44,10 @@ html2text = "0.15"
 pulldown-cmark = "0.12"
 nucleo = "0.5"
 
+[dev-dependencies]
+# Tests must never touch the real network: see the feature's docs in
+# crates/http/Cargo.toml.
+one-research-http = { path = "../crates/http", features = ["deny-network"] }
+
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
