@@ -39,7 +39,38 @@ pub struct Config {
   pub active_custom_theme_id: Option<String>,
   #[serde(default)]
   pub custom_themes: Vec<CustomThemeConfig>,
+  /// Keys currently supplied by `ONE_RESEARCH_*` environment variables,
+  /// with the file values they shadow. Never serialized: `save` uses it
+  /// to keep env-supplied keys out of config.json.
+  #[serde(skip)]
+  env_shadows: Vec<EnvShadow>,
 }
+
+/// One key field overridden from the environment for this session.
+#[derive(Debug, Clone)]
+struct EnvShadow {
+  env_var: &'static str,
+  /// The value taken from the environment (what the field held after load).
+  env_value: String,
+  /// What config.json held before the override; restored on save.
+  file_value: Option<String>,
+}
+
+/// Secret fields that can be supplied via environment variables instead
+/// of config.json — for containers and CI, where baking keys into a file
+/// on a volume is the wrong default. Prefixed so a generic
+/// `OPENAI_API_KEY` exported for some other tool is never picked up
+/// implicitly.
+type KeyField = fn(&mut Config) -> &mut Option<String>;
+
+const ENV_KEY_FIELDS: &[(&str, KeyField)] = &[
+  ("ONE_RESEARCH_GITHUB_TOKEN", |c| &mut c.github_token),
+  ("ONE_RESEARCH_SEMANTIC_SCHOLAR_KEY", |c| &mut c.semantic_scholar_key),
+  ("ONE_RESEARCH_CLAUDE_API_KEY", |c| &mut c.claude_api_key),
+  ("ONE_RESEARCH_OPENAI_API_KEY", |c| &mut c.openai_api_key),
+  ("ONE_RESEARCH_CORE_API_KEY", |c| &mut c.core_api_key),
+  ("ONE_RESEARCH_PERPLEXITY_API_KEY", |c| &mut c.perplexity_api_key),
+];
 
 fn default_chat_provider() -> String {
   "claude".to_string()
@@ -316,7 +347,15 @@ impl Default for SourcesConfig {
 }
 
 impl Config {
+  /// Load config.json, then apply any `ONE_RESEARCH_*` key overrides from
+  /// the environment (see [`ENV_KEY_FIELDS`]).
   pub fn load() -> Self {
+    let mut config = Self::load_file();
+    config.apply_env_overrides(|name| std::env::var(name).ok());
+    config
+  }
+
+  fn load_file() -> Self {
     let path = match config_path() {
       Some(p) => p,
       None => return Config::default(),
@@ -334,6 +373,45 @@ impl Config {
     }
   }
 
+  /// Override key fields from the environment. Empty values are ignored.
+  /// Takes the lookup as a parameter so tests never touch the process env.
+  fn apply_env_overrides(&mut self, lookup: impl Fn(&str) -> Option<String>) {
+    for (env_var, field) in ENV_KEY_FIELDS {
+      let Some(value) = lookup(env_var).filter(|v| !v.trim().is_empty()) else {
+        continue;
+      };
+      let slot = field(self);
+      let file_value = slot.replace(value.clone());
+      self.env_shadows.push(EnvShadow {
+        env_var,
+        env_value: value,
+        file_value,
+      });
+    }
+  }
+
+  /// The config as it should be written to disk: any key still holding its
+  /// environment-supplied value is put back to what the file had, so
+  /// secrets passed via `docker run -e` never land in config.json. A key
+  /// the user changed in the settings screen during the session is saved
+  /// as edited.
+  fn persistable(&self) -> Config {
+    let mut out = self.clone();
+    out.env_shadows.clear();
+    for shadow in &self.env_shadows {
+      let field = ENV_KEY_FIELDS
+        .iter()
+        .find(|(name, _)| *name == shadow.env_var)
+        .map(|(_, field)| *field)
+        .expect("env shadow for a known field");
+      let slot = field(&mut out);
+      if slot.as_deref() == Some(shadow.env_value.as_str()) {
+        *slot = shadow.file_value.clone();
+      }
+    }
+    out
+  }
+
   pub fn save(&self) {
     let path = match config_path() {
       Some(p) => p,
@@ -342,7 +420,7 @@ impl Config {
     if let Some(parent) = path.parent() {
       let _ = std::fs::create_dir_all(parent);
     }
-    if let Ok(json) = serde_json::to_vec(self) {
+    if let Ok(json) = serde_json::to_vec(&self.persistable()) {
       if let Err(e) = crate::store::atomic_write(&path, &json) {
         log::error!("config: failed to write {}: {e}", path.display());
       } else {
@@ -392,5 +470,67 @@ mod tests {
       decoded.custom_themes[0].colors.accent,
       color_to_hex(base.theme().accent)
     );
+  }
+
+  // ── Environment key overrides ─────────────────────────────────────────
+  // WHY these matter: the Docker image takes API keys only via `-e`, and
+  // the config lives on a mounted volume. If an env-supplied key were
+  // saved, the first settings change would write the secret into the
+  // volume in plain text — exactly what passing it via env avoids.
+
+  fn env(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> {
+    let map: std::collections::HashMap<String, String> =
+      pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+    move |k| map.get(k).cloned()
+  }
+
+  #[test]
+  fn env_key_overrides_file_value_in_memory() {
+    let mut c =
+      Config { core_api_key: Some("from-file".into()), ..Config::default() };
+    c.apply_env_overrides(env(&[
+      ("ONE_RESEARCH_CORE_API_KEY", "from-env"),
+      ("ONE_RESEARCH_OPENAI_API_KEY", "sk-env"),
+    ]));
+    assert_eq!(c.core_api_key.as_deref(), Some("from-env"));
+    assert_eq!(c.openai_api_key.as_deref(), Some("sk-env"));
+    assert_eq!(c.claude_api_key, None, "unset vars leave fields alone");
+  }
+
+  #[test]
+  fn env_supplied_keys_are_never_written_to_disk() {
+    let mut c =
+      Config { core_api_key: Some("from-file".into()), ..Config::default() };
+    c.apply_env_overrides(env(&[
+      ("ONE_RESEARCH_CORE_API_KEY", "core-secret"),
+      ("ONE_RESEARCH_CLAUDE_API_KEY", "claude-secret"),
+    ]));
+    let on_disk = serde_json::to_string(&c.persistable()).unwrap();
+    assert!(!on_disk.contains("core-secret"), "{on_disk}");
+    assert!(!on_disk.contains("claude-secret"), "{on_disk}");
+    let p = c.persistable();
+    assert_eq!(p.core_api_key.as_deref(), Some("from-file"), "file value kept");
+    assert_eq!(p.claude_api_key, None, "absent stays absent");
+    // The in-memory config still uses the env keys.
+    assert_eq!(c.claude_api_key.as_deref(), Some("claude-secret"));
+  }
+
+  #[test]
+  fn key_edited_during_session_is_saved_even_if_env_supplied() {
+    let mut c = Config::default();
+    c.apply_env_overrides(env(&[("ONE_RESEARCH_CORE_API_KEY", "env-key")]));
+    c.core_api_key = Some("typed-in-settings".into());
+    assert_eq!(
+      c.persistable().core_api_key.as_deref(),
+      Some("typed-in-settings")
+    );
+  }
+
+  #[test]
+  fn empty_env_values_are_ignored() {
+    let mut c =
+      Config { github_token: Some("file-token".into()), ..Config::default() };
+    c.apply_env_overrides(env(&[("ONE_RESEARCH_GITHUB_TOKEN", "  ")]));
+    assert_eq!(c.github_token.as_deref(), Some("file-token"));
   }
 }
