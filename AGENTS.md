@@ -99,7 +99,7 @@ cargo clippy --workspace --all-targets
 cargo build -p one-research --release
 ```
 
-Rust edition: 2024, MSRV: 1.88. The `ci.sh` script uses the nightly toolchain for `cargo fix`, `cargo udeps`, and `cargo audit`.
+Rust edition: 2024, MSRV: 1.88 (checked in CI). The toolchain is pinned in `rust-toolchain.toml`. `./ci.sh` runs the same checks as `.github/workflows/ci.yml` locally.
 
 ## Workspace Structure
 

@@ -1,41 +1,37 @@
 #!/usr/bin/env bash
-
-# Deps
-# cargo install --locked cargo-audit cargo-edit cargo-udeps cargo-geiger cargo-crev cargo-deny
-
+# Run the same checks as .github/workflows/ci.yml, locally.
+#
+# Uses the toolchain pinned in rust-toolchain.toml. Checks that need an
+# extra tool say so and are skipped explicitly rather than silently.
 set -Eeuo pipefail
+cd "$(dirname "$0")"
 
-ci () {
-  cargo update --verbose
-  cargo upgrade --verbose
+step() { printf '\n==> %s\n' "$*"; }
+
+step "rustfmt"
+cargo fmt --all --check
+
+step "clippy"
+cargo clippy --workspace --all-targets --locked -- -D warnings
+
+step "tests (throwaway \$HOME)"
+scripts/test.sh
+
+step "architecture tripwires"
+for script in scripts/check-*.sh; do
+  bash "$script"
+done
+
+step "cargo audit"
+if command -v cargo-audit >/dev/null; then
   cargo audit
+else
+  echo "SKIPPED: cargo-audit not installed (cargo install --locked cargo-audit)"
+fi
 
-  # Architectural tripwires. Cheap grep checks that catch regressions
-  # before the test suite would.
-  #   - check-render-purification.sh: ADR-001/2/3/5/16 (per-pane composition root)
-  #   - check-ingestion-seam.sh:      ADR-004 (Source / EnrichmentSource seam)
-  #   - check-store-seam.sh:          ADR-006 (load_json / save_json envelope)
-  #   - check-item-store.sh:          ADR-007 (ItemStore encapsulates Workspace triple)
-  #   - check-frame-layout.sh:        ADR-008 (FrameLayout / apply_frame_layout)
-  #   - check-subject-browser.sh:     ADR-010 (FeedTab::Browse + arXiv taxonomy)
-  #   - check-search.sh:              ADR-012/013 (off-thread nucleo feed search)
-  #   - check-design-language.sh:     minimal surfaces (plain dividers, no section titles)
-  scripts/check-render-purification.sh
-  scripts/check-ingestion-seam.sh
-  scripts/check-store-seam.sh
-  scripts/check-item-store.sh
-  scripts/check-frame-layout.sh
-  scripts/check-subject-browser.sh
-  scripts/check-search.sh
-  scripts/check-design-language.sh
-
-  cargo +nightly check && cargo +nightly fix --allow-dirty && cargo +nightly clippy --fix --allow-dirty && cargo +nightly fmt --all && cargo +nightly test
-  #cargo +nightly fmt --all
-  #cargo +nightly clippy --all-targets --all-features -- -Dwarnings
-  #cargo test
-
-  cargo +nightly udeps --all-targets
-  # cargo udeps --all-targets
-}
-
-ci
+step "MSRV 1.88.0"
+if rustup toolchain list | grep -q '^1\.88\.0'; then
+  cargo +1.88.0 check --workspace --all-targets --locked
+else
+  echo "SKIPPED: toolchain 1.88.0 not installed (rustup toolchain install 1.88.0)"
+fi
