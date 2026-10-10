@@ -23,7 +23,14 @@ fn cache_path() -> Option<PathBuf> {
 
 pub fn load() -> Vec<FeedItem> {
   let Some(path) = cache_path() else { return Vec::new() };
-  let mut items: Vec<FeedItem> = super::load_json(&path, "one-research/cache");
+  load_from(&path)
+}
+
+/// `load` with an explicit path, so tests can exercise it without
+/// mutating the process-wide `$HOME` (same pattern as notes'
+/// `AppState::save_to`).
+fn load_from(path: &std::path::Path) -> Vec<FeedItem> {
+  let mut items: Vec<FeedItem> = super::load_json(path, "one-research/cache");
   // Defense-in-depth: items persisted before sanitize-at-ingestion shipped
   // may have raw escape sequences baked into their string fields. Idempotent
   // re-sanitize protects against terminal-hijack via the cache.
@@ -202,32 +209,16 @@ mod tests {
     };
     let json = serde_json::to_vec(&vec![raw_item]).unwrap();
 
-    // Set HOME to a temp dir so cache_path() resolves there. Running this in
-    // serial would be safer; for a single test it's fine since other tests
-    // don't rely on $HOME.
+    // Explicit path rather than overriding $HOME: `set_var("HOME")` races
+    // with every other test that resolves a config path while it runs.
     let dir = std::env::temp_dir()
       .join(format!("one_research_cache_load_test_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(dir.join(".config/one-research")).unwrap();
-    std::fs::write(dir.join(".config/one-research/cache.json"), &json).unwrap();
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("cache.json");
+    std::fs::write(&path, &json).unwrap();
 
-    // SAFETY: tests run in a single-process address space; we override HOME
-    // for the duration of this test only. Acceptable risk inside a #[cfg(test)]
-    // block that doesn't run in parallel with other HOME-dependent tests.
-    let prev_home = std::env::var_os("HOME");
-    unsafe {
-      std::env::set_var("HOME", &dir);
-    }
-
-    let items = load();
-
-    // Restore HOME before any assertion can fail and skip the cleanup.
-    unsafe {
-      match prev_home {
-        Some(v) => std::env::set_var("HOME", v),
-        None => std::env::remove_var("HOME"),
-      }
-    }
+    let items = load_from(&path);
     let _ = std::fs::remove_dir_all(&dir);
 
     assert_eq!(items.len(), 1);

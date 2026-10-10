@@ -7,3 +7,10 @@ rust-version.workspace = true
 [dependencies]
 reqwest = { version = "0.12", features = ["blocking", "json"] }
 log = "0.4"
+
+[features]
+# Test-only guard. Routes every non-loopback request from `client()` to a
+# closed local port, so a test can never reach the real network (arXiv,
+# OpenReview, ...). Enabled through one-research's [dev-dependencies]
+# only; with resolver 2 it is never active in `cargo build`/`install`.
+deny-network = []
