@@ -78,7 +78,11 @@ in_volume() {
 
 # 1. Non-root.
 uid="$(docker run --rm --entrypoint id "$img" -u)"
-[[ "$uid" == "10001" ]] && pass "runs as uid 10001" || fail "runs as uid $uid, expected 10001"
+if [[ "$uid" == "10001" ]]; then
+  pass "runs as uid 10001"
+else
+  fail "runs as uid $uid, expected 10001"
+fi
 
 # 2. No secrets in the image.
 if docker image inspect "$img" --format '{{json .Config.Env}}' | grep -q 'ONE_RESEARCH_'; then
@@ -121,8 +125,11 @@ rc="$(run_tui)"
 [[ "$rc" == "124" ]] || fail "second run exited early (status $rc)"
 second="$(in_volume ls -A "$state")"
 missing="$(comm -23 <(echo "$first" | sort) <(echo "$second" | sort))"
-[[ -z "$missing" ]] && pass "state from the first run survived a new container" \
-  || fail "files lost between runs: $missing"
+if [[ -z "$missing" ]]; then
+  pass "state from the first run survived a new container"
+else
+  fail "files lost between runs: $missing"
+fi
 
 # 5. The -e key is not persisted.
 if in_volume grep -rqF "$secret" "$state"; then
