@@ -22,9 +22,8 @@ name: Release
 on:
   push:
     tags: ["v*"]
+    branches: [release/bootstrap] # TEMPORARY bootstrap trigger — not merged
   workflow_dispatch:
-  push: # TEMPORARY bootstrap trigger — not merged
-    branches: [release/bootstrap]
 
 permissions:
   contents: read
