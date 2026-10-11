@@ -34,7 +34,8 @@ cleanup() {
   docker rm -f "$name" >/dev/null 2>&1 || true
   docker volume rm -f "$vol" >/dev/null 2>&1 || true
 }
-pass() { echo "ok   $*"; }
+passed=()
+pass() { echo "ok   $*"; passed+=("$*"); }
 fail() {
   echo "FAIL $*" >&2
   if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
@@ -135,3 +136,7 @@ if (( failures > 0 )); then
   exit 1
 fi
 echo "all docker smoke checks passed"
+if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+  summary="$(printf '%s\n' "${passed[@]}")"
+  echo "::notice title=docker smoke test passed::${summary//$'\n'/'%0A'}"
+fi
