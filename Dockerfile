@@ -44,10 +44,12 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 # ── Runtime ───────────────────────────────────────────────────────────────
 FROM ${RUNTIME_IMAGE}
 
-# Shared libraries the binary links against (checked by `ldd` below), plus
-# CA roots for HTTPS.
+# Shared libraries the binary links against (checked by `ldd` below), CA
+# roots for HTTPS, and tini as PID 1: the app installs no SIGTERM handler,
+# and the kernel ignores SIGTERM for a PID 1 without one, so without an
+# init `docker stop` / Ctrl-C would hang until Docker's SIGKILL.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates libasound2 libssl3 \
+ && apt-get install -y --no-install-recommends ca-certificates libasound2 libssl3 tini \
  && rm -rf /var/lib/apt/lists/*
 
 # Fixed non-root uid/gid so bind-mounted state has predictable ownership.
@@ -70,4 +72,4 @@ WORKDIR /home/app
 # volume per run (state that looks saved but is orphaned). Mount one
 # explicitly at /home/app/.config/one-research instead.
 
-ENTRYPOINT ["/usr/local/bin/one-research"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/one-research"]

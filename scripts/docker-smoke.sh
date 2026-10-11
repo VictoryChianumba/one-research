@@ -5,7 +5,8 @@
 # Checks the properties the image promises, not just that it builds:
 #   1. runs as the non-root `app` user (uid 10001)
 #   2. no API keys baked into the image config or layer history
-#   3. the TUI starts and keeps running under `docker run -it`
+#   3. the TUI starts and keeps running under `docker run -it`, and stops
+#      promptly on SIGTERM (the image runs tini as PID 1)
 #   4. state written to the mounted volume survives into a new container
 #   5. a key passed with `-e` is not written into that volume
 #
@@ -55,12 +56,14 @@ with_pty() {
   fi
 }
 
-# Run the TUI for 8 seconds in a 40x120 terminal, as `docker run -it`.
-# Prints docker's exit status: 124 means it was still running when the
-# timeout stopped it (the pass case); anything else means it exited.
+# Run the TUI for 8 seconds in a 40x120 terminal, as `docker run -it`,
+# then SIGTERM it. Prints timeout's status:
+#   124  still running at 8s and stopped cleanly on SIGTERM  (pass)
+#   137  ignored SIGTERM and had to be SIGKILLed 5s later     (fail)
+#   else exited on its own before 8s                          (fail)
 run_tui() {
   local rc=0
-  with_pty "stty rows 40 cols 120; exec timeout 8 docker run --rm -it \
+  with_pty "stty rows 40 cols 120; exec timeout -k 5 8 docker run --rm -it \
     --network none --name $name -e ONE_RESEARCH_CORE_API_KEY=$secret \
     -v $vol:$state $img" || rc=$?
   # timeout stops the client; make sure the container is gone too.
@@ -92,7 +95,9 @@ fi
 docker volume create "$vol" >/dev/null
 rc="$(run_tui)"
 if [[ "$rc" == "124" ]]; then
-  pass "TUI still running after 8s"
+  pass "TUI ran for 8s, then stopped cleanly on SIGTERM"
+elif [[ "$rc" == "137" ]]; then
+  fail "TUI ignored SIGTERM and had to be killed (is tini PID 1?)"
 else
   fail "TUI exited early (status $rc). Terminal:"$'\n'"$(tail -c 800 "$screen" | tr -d '\033')"$'\n'"App log:"$'\n'"$(in_volume tail -n 15 "$state/one-research.log" 2>&1 || true)"
 fi
