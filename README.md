@@ -1,5 +1,9 @@
 # One-Research
 
+[![CI](https://github.com/VictoryChianumba/one-research/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/VictoryChianumba/one-research/actions/workflows/ci.yml)
+[![Release](https://github.com/VictoryChianumba/one-research/actions/workflows/release.yml/badge.svg)](https://github.com/VictoryChianumba/one-research/actions/workflows/release.yml)
+[![Latest release](https://img.shields.io/github/v/release/VictoryChianumba/one-research?include_prereleases&sort=semver)](https://github.com/VictoryChianumba/one-research/releases)
+
 A terminal UI for following AI research — aggregates arXiv, HuggingFace daily papers, and blog feeds into a single keyboard-driven interface.
 
 ![One-Research screenshot](docs/screenshot.png)
@@ -68,9 +72,98 @@ load-bearing references are:
 
 ## Installation
 
+Three ways in. All of them read keys and settings from the same places
+(see [Configuration](#configuration)).
+
+### Prebuilt binary
+
+Each [release](https://github.com/VictoryChianumba/one-research/releases)
+has archives for Linux and macOS on x86_64 and aarch64, each with a
+`.sha256`, plus a combined `SHA256SUMS`.
+
+```sh
+# pick one: x86_64-unknown-linux-gnu, aarch64-unknown-linux-gnu,
+#           aarch64-apple-darwin, x86_64-apple-darwin
+target=aarch64-apple-darwin
+version=v0.1.19   # the release you want
+base=https://github.com/VictoryChianumba/one-research/releases/download/$version
+curl -fLO "$base/one-research-$version-$target.tar.gz"
+curl -fLO "$base/one-research-$version-$target.tar.gz.sha256"
+shasum -a 256 -c "one-research-$version-$target.tar.gz.sha256"
+tar xzf "one-research-$version-$target.tar.gz"
+mkdir -p ~/.local/bin
+install "one-research-$version-$target/one-research" ~/.local/bin/   # or anywhere on PATH
+```
+
+- **Linux:** needs glibc 2.34+ (e.g. Ubuntu 22.04, Debian 12, RHEL 9 or newer) and the
+  ALSA and OpenSSL runtime libraries, which most desktops already have
+  (`sudo apt install libasound2 libssl3` on Debian/Ubuntu).
+- **macOS:** the binaries are not signed or notarized. Downloading with
+  `curl` as above is fine; if you downloaded the archive in a browser,
+  Gatekeeper will block it until you clear the quarantine flag:
+  `xattr -d com.apple.quarantine ~/.local/bin/one-research`.
+
+### `cargo install`
+
+Requires Rust 1.88 or later. On Linux, install the build dependencies
+first: `sudo apt install pkg-config libasound2-dev libssl-dev`.
+
+```sh
+cargo install --locked --git https://github.com/VictoryChianumba/one-research one-research
+```
+
+`--locked` uses the repository's `Cargo.lock`, so you get the dependency
+versions CI tested. (One-Research is not published on crates.io.)
+
+### Docker
+
+The image is built locally from this repository (it is not pushed to a
+registry):
+
+```sh
+git clone https://github.com/VictoryChianumba/one-research
+cd one-research
+docker build -t one-research .
+```
+
+Run it with a terminal attached, keys from your environment, and a named
+volume for state:
+
+```sh
+docker run --rm -it \
+  -e ONE_RESEARCH_CLAUDE_API_KEY \
+  -e ONE_RESEARCH_CORE_API_KEY \
+  -v one-research-data:/home/app/.config/one-research \
+  one-research
+```
+
+- **`-it` is required.** It's a TUI: `-t` gives it a terminal (sized to
+  yours) and `-i` passes your keystrokes through. Without a sized terminal
+  the app cannot draw.
+- **Keys** are passed only at run time, as `ONE_RESEARCH_*` variables
+  (`-e NAME` with no value forwards it from your shell, so the key never
+  appears in your shell history). They are not baked into the image, and
+  the app never writes them into the volume. See
+  [Keys from environment variables](#keys-from-environment-variables).
+- **State** (config, feed cache, workflow states, notes, chat history,
+  reading progress) lives in `/home/app/.config/one-research`. With the
+  named volume above it survives across runs; without `-v` every run
+  starts fresh.
+- **Bind-mounting a host folder** instead of a named volume: add
+  `--user "$(id -u):$(id -g)"` so the container can write to it (the image
+  runs as uid 10001 by default).
+- The container runs as a non-root user, with `tini` as PID 1 so `docker
+  stop` and Ctrl-C work immediately.
+- **Not available in the container:** clipboard copy (no X11/Wayland),
+  voice playback (no audio device), and opening links in your browser.
+
+What CI checks for the image on every PR is in
+[`scripts/docker-smoke.sh`](scripts/docker-smoke.sh).
+
 ### From source
 
-Requires Rust 1.88 or later.
+Requires Rust 1.88 or later (`rust-toolchain.toml` pins the exact version
+used for development and CI; rustup picks it up automatically).
 
 ```sh
 git clone https://github.com/VictoryChianumba/one-research
@@ -79,15 +172,10 @@ cargo build -p one-research --release
 # Binary is at target/release/one-research
 ```
 
-To install into `~/.cargo/bin`:
-
-```sh
-cargo install --path one-research
-```
-
 ### Requirements
 
-- Rust 1.88+
+- Rust 1.88+ (for `cargo install` and source builds)
+- Linux build dependencies: `pkg-config`, `libasound2-dev`, `libssl-dev`
 - Optional: Claude API key (`claude_api_key` in config) for AI chat and source discovery
 - Optional: OpenAI API key (`openai_api_key` in config) for AI chat with GPT models
 - Optional: GitHub token (`github_token` in config) for the repository browser
@@ -141,6 +229,27 @@ The file is created automatically on first run. All fields are optional.
 | `sources.custom_feeds` | List of custom RSS/Atom feeds (see Sources below) |
 
 Settings can also be edited from within the TUI via `Ldr+S` (Settings screen), including theme selection.
+
+### Keys from environment variables
+
+Any key can instead be supplied through an environment variable, which
+takes precedence over `config.json` for that session. This is how the
+Docker image takes keys.
+
+| Variable | Overrides |
+|---|---|
+| `ONE_RESEARCH_GITHUB_TOKEN` | `github_token` |
+| `ONE_RESEARCH_SEMANTIC_SCHOLAR_KEY` | `semantic_scholar_key` |
+| `ONE_RESEARCH_CLAUDE_API_KEY` | `claude_api_key` |
+| `ONE_RESEARCH_OPENAI_API_KEY` | `openai_api_key` |
+| `ONE_RESEARCH_CORE_API_KEY` | `core_api_key` |
+| `ONE_RESEARCH_PERPLEXITY_API_KEY` | `perplexity_api_key` |
+
+An environment-supplied key is never written to `config.json`, even when
+the app saves other settings. If you type a different key into the
+Settings screen during that session, the one you typed is saved. Generic
+names such as `OPENAI_API_KEY` are deliberately not read. The ElevenLabs
+voice key lives in the reader's own config and cannot be set this way.
 
 Runtime data files:
 
@@ -334,16 +443,83 @@ re-opening One-Research never surprises you with a stale random shuffle.
 - [ ] Voice mode — fix ElevenLabs wiring and add word-highlight animation
 - [ ] Demo GIF / asciinema cast for the README (hero screenshot is in place)
 
-## Contributing
-
-Issues and pull requests are welcome. The codebase is intentionally minimal — no async, no macros beyond what Rust requires, no framework beyond ratatui. Read [`docs/CONTEXT.md`](docs/CONTEXT.md) and the [ADRs](docs/adr/) for architecture notes before contributing.
+## Development
 
 ```sh
-cargo build -p one-research --release   # build
-cargo test -p one-research               # test
-cargo clippy -p one-research             # lint
-cargo fmt --check                  # format check
+./ci.sh             # everything CI runs: fmt, clippy, tests, tripwires, audit, MSRV
+scripts/test.sh     # just the tests
 ```
+
+**Run tests through `scripts/test.sh`, not plain `cargo test`.** Some tests
+construct the app, which reads and writes state under your real config
+directory; the script points `$HOME` at a throwaway directory first, so
+your feed cache and notes are never touched. Extra arguments go to
+`cargo test` (`scripts/test.sh -p one-research -- feed::`).
+
+The test suite is offline by design:
+
+- API parsing is tested against **recorded responses** in
+  [`one-research/tests/fixtures/`](one-research/tests/fixtures/), each
+  listed in `manifest.json` with its source URL and capture time.
+- Test builds compile in a guard (`deny-network` in `crates/http`) that
+  refuses every non-loopback request, so no test can reach a real API by
+  accident.
+- Tests marked `#[ignore = "known bug: ..."]` pin bugs the fixtures
+  exposed; they fail when run with `--ignored` until the bug is fixed.
+
+### Live integration tests
+
+The `live_*` tests call the real arXiv, Hugging Face, OpenReview and CORE
+APIs. They are skipped by default and need the network guard lifted:
+
+```sh
+ONE_RESEARCH_ALLOW_NETWORK=1 CORE_API_KEY=... \
+  scripts/test.sh -p one-research -- --ignored live_
+```
+
+Or run the **Live integration** workflow from the Actions tab (it uses the
+`CORE_API_KEY` repository secret and reports each API as its own step).
+OpenReview answers GitHub's runners with a bot challenge, so its step fails
+there; run it locally to check OpenReview.
+
+### Re-recording fixtures
+
+Run the **Record API fixtures** workflow; it pushes the new responses to a
+`fixtures/refresh-<run>` branch for review. OpenReview has to be recorded
+from a normal connection: `scripts/record-fixtures.sh` (needs `jq`).
+
+### Working on the reader (tread)
+
+The reader comes from the [tread](https://github.com/VictoryChianumba/tread)
+repository as a git dependency pinned to a commit. To build against a local
+checkout instead, add this to your **own** `~/.cargo/config.toml` (not the
+repository's):
+
+```toml
+[patch."https://github.com/VictoryChianumba/tread"]
+tread = { path = "/path/to/tread/crates/tread" }
+```
+
+This rewrites `Cargo.lock` locally; don't commit that change (CI builds
+with `--locked` and would reject it). To ship a tread change, merge it in
+tread and bump the `rev` in `one-research/Cargo.toml`.
+
+### Releases
+
+Pushing a tag that matches the workspace version builds, verifies and
+publishes the release:
+
+```sh
+git tag v0.1.20 && git push origin v0.1.20   # after bumping version in Cargo.toml
+```
+
+A pre-release suffix (`v0.1.20-rc.1`) publishes a GitHub pre-release. Run
+the **Release** workflow manually for a dry run that builds and checks
+everything without publishing.
+
+## Contributing
+
+Issues and pull requests are welcome. The codebase is intentionally minimal — no async, no macros beyond what Rust requires, no framework beyond ratatui. Read [`docs/CONTEXT.md`](docs/CONTEXT.md) and the [ADRs](docs/adr/) for architecture notes before contributing. CI must pass: see [Development](#development).
 
 ## License
 

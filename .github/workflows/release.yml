@@ -16,7 +16,8 @@
 #                                                an ALSA/OpenSSL cross sysroot)
 #   aarch64-apple-darwin       macos-15          native
 #   x86_64-apple-darwin        macos-15          cross-compiled
-# Linux builds use Ubuntu 22.04 so the binaries need only glibc >= 2.35.
+# Linux builds use Ubuntu 22.04 so the binaries need only glibc >= 2.34
+# (the release job reports the actual floor).
 name: Release
 
 on:

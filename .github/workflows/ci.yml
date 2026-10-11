@@ -117,6 +117,28 @@ jobs:
             exit 1
           fi
 
+  workflow-lint:
+    name: lint workflows + scripts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # actionlint from PyPI: the wheel bundles the official binary at an
+      # exact version (install-action has no actionlint manifest).
+      - name: Install actionlint
+        run: pipx install actionlint-py==1.7.12.25
+      # actionlint also shellchecks every `run:` block (shellcheck ships on
+      # the runner image). Its output format is matched by GitHub natively.
+      - name: actionlint
+        run: |
+          # $err is a Go template variable for actionlint, not shell.
+          # shellcheck disable=SC2016
+          actionlint -format '{{range $err := .}}::error file={{$err.Filepath}},line={{$err.Line}},col={{$err.Column}}::{{$err.Message}}%0A{{end}}'
+      # The CI/release helper scripts. (The older scripts/check-*.sh
+      # tripwires predate this job and are not linted.)
+      - name: shellcheck
+        run: shellcheck ci.sh scripts/test.sh scripts/record-fixtures.sh scripts/docker-smoke.sh
+
   architecture:
     name: architecture tripwires
     runs-on: ubuntu-24.04
