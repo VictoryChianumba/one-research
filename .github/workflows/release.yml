@@ -6,6 +6,10 @@
 # A tag with a pre-release suffix (v0.1.20-rc.1) builds the same way and
 # is published as a GitHub pre-release.
 #
+# Run it manually (Actions -> Release -> Run workflow) for a dry run: the
+# same builds, checks and packaging, uploaded as workflow artifacts, with
+# no tag and no release.
+#
 # Targets:
 #   x86_64-unknown-linux-gnu   ubuntu-22.04      native
 #   aarch64-unknown-linux-gnu  ubuntu-22.04-arm  native (ARM runner; avoids
@@ -18,6 +22,7 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -32,21 +37,30 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
+      label: ${{ steps.check.outputs.label }}
       prerelease: ${{ steps.check.outputs.prerelease }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: check
         run: |
-          tag="${GITHUB_REF_NAME}"
           version="$(sed -n '/^\[workspace.package\]/,/^\[/ s/^version = "\(.*\)"/\1/p' Cargo.toml)"
-          base="${tag#v}"; base="${base%%-*}"
-          if [ "$base" != "$version" ]; then
-            echo "::error::tag $tag does not match workspace version $version"
-            exit 1
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            tag="$GITHUB_REF_NAME"
+            base="${tag#v}"; base="${base%%-*}"
+            if [ "$base" != "$version" ]; then
+              echo "::error::tag $tag does not match workspace version $version"
+              exit 1
+            fi
+            case "$tag" in *-*) pre=true ;; *) pre=false ;; esac
+            label="$tag"
+          else
+            # Dry run: name artifacts after the version and commit.
+            pre=true
+            label="v${version}-dryrun.${GITHUB_SHA::7}"
           fi
-          case "$tag" in *-*) pre=true ;; *) pre=false ;; esac
+          echo "label=$label" >> "$GITHUB_OUTPUT"
           echo "prerelease=$pre" >> "$GITHUB_OUTPUT"
-          echo "tag $tag -> version $version (prerelease: $pre)"
+          echo "::notice::building $label (version $version, prerelease: $pre)"
 
   build:
     name: build ${{ matrix.target }}
@@ -127,7 +141,7 @@ jobs:
       - name: Package
         shell: bash
         run: |
-          name="one-research-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          name="one-research-${{ needs.version.outputs.label }}-${{ matrix.target }}"
           mkdir -p "dist/$name"
           cp "target/${{ matrix.target }}/release/one-research" LICENSE README.md "dist/$name/"
           tar -C dist -czf "dist/$name.tar.gz" "$name"
@@ -164,8 +178,11 @@ jobs:
           cat SHA256SUMS
           count="$(wc -l < SHA256SUMS)"
           [ "$count" -eq 4 ] || { echo "::error::expected 4 archives, got $count"; exit 1; }
+          echo "::notice title=SHA256SUMS::$(sed -e ':a' -e 'N' -e '$!ba' -e 's/\n/%0A/g' SHA256SUMS)"
 
       - name: Create release
+        # Dry runs stop after verifying the artifacts.
+        if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
