@@ -91,7 +91,9 @@ fn parse_feed(
   source_name: &str,
 ) -> Result<Vec<FeedItem>, String> {
   let mut reader = Reader::from_str(xml);
-  reader.config_mut().trim_text(true);
+  // Trimming is done per text node by `XmlTextNode` (see its docs).
+  reader.config_mut().trim_text(false);
+  let mut node = XmlTextNode::default();
 
   let mut items: Vec<FeedItem> = Vec::new();
 
@@ -107,9 +109,52 @@ fn parse_feed(
   let mut content_encoded = String::new();
 
   loop {
-    match reader.read_event() {
+    let event = reader.read_event();
+    match &event {
+      Ok(XmlEvent::Text(e)) => {
+        node.push_text(e);
+        continue;
+      }
+      Ok(XmlEvent::GeneralRef(e)) => {
+        node.push_ref(e);
+        continue;
+      }
+      _ => {}
+    }
+    // A non-text event ends the current text node.
+    if let Some(text) = node.take()
+      && in_entry
+      && !text.is_empty()
+    {
+      if in_author && current_tag == "name" {
+        // Atom: <author><name>text</name></author>
+        author = text;
+      } else {
+        match current_tag.as_str() {
+          "title" => title.push_str(&text),
+          // RSS 2.0: <link> contains the URL as text
+          "link" if url.is_empty() => url.push_str(&text),
+          "pubDate" | "published" => {
+            if published_at.is_empty() {
+              published_at = text;
+            }
+          }
+          "description" | "summary" => summary.push_str(&text),
+          // RSS <author> text or <dc:creator>
+          "author" | "creator" => {
+            if author.is_empty() {
+              author = text;
+            }
+          }
+          "encoded" => content_encoded.push_str(&text),
+          _ => {}
+        }
+      }
+    }
+
+    match event {
       Ok(XmlEvent::Start(ref e)) => {
-        let tag = local_name(e.name().as_ref());
+        let tag = local_name(e.name().as_ref().as_bytes());
         match tag.as_str() {
           "entry" | "item" => {
             in_entry = true;
@@ -131,50 +176,12 @@ fn parse_feed(
 
       Ok(XmlEvent::Empty(ref e)) => {
         // Atom: <link href="..." rel="alternate"/>
-        let tag = local_name(e.name().as_ref());
+        let tag = local_name(e.name().as_ref().as_bytes());
         if in_entry && tag == "link" && url.is_empty() {
           for attr in e.attributes().flatten() {
-            if attr.key.as_ref() == b"href" {
-              if let Ok(val) = std::str::from_utf8(&attr.value) {
-                url = val.to_string();
-              }
+            if attr.key.as_ref() == "href" {
+              url = attr.value.to_string();
             }
-          }
-        }
-      }
-
-      Ok(XmlEvent::Text(ref e)) => {
-        if !in_entry {
-          continue;
-        }
-        let text = e.unescape().unwrap_or_default();
-        let text = text.trim().to_string();
-        if text.is_empty() {
-          continue;
-        }
-
-        if in_author && current_tag == "name" {
-          // Atom: <author><name>text</name></author>
-          author = text;
-        } else {
-          match current_tag.as_str() {
-            "title" => title.push_str(&text),
-            // RSS 2.0: <link> contains the URL as text
-            "link" if url.is_empty() => url.push_str(&text),
-            "pubDate" | "published" => {
-              if published_at.is_empty() {
-                published_at = text;
-              }
-            }
-            "description" | "summary" => summary.push_str(&text),
-            // RSS <author> text or <dc:creator>
-            "author" | "creator" => {
-              if author.is_empty() {
-                author = text;
-              }
-            }
-            "encoded" => content_encoded.push_str(&text),
-            _ => {}
           }
         }
       }
@@ -185,7 +192,7 @@ fn parse_feed(
         if !in_entry {
           continue;
         }
-        let text = String::from_utf8_lossy(e.as_ref()).trim().to_string();
+        let text = e.as_ref().trim().to_string();
         if text.is_empty() {
           continue;
         }
@@ -214,7 +221,7 @@ fn parse_feed(
       }
 
       Ok(XmlEvent::End(ref e)) => {
-        let tag = local_name(e.name().as_ref());
+        let tag = local_name(e.name().as_ref().as_bytes());
 
         if in_entry && tag == "author" {
           in_author = false;
@@ -349,7 +356,7 @@ fn local_name(raw: &[u8]) -> String {
   }
 }
 
-use super::collapse_whitespace;
+use super::{XmlTextNode, collapse_whitespace};
 
 /// Remove HTML tags, replacing them with a space.
 ///
@@ -429,4 +436,66 @@ fn normalise_date(raw: &str) -> String {
   };
   let year = parts[2];
   format!("{year}-{month}-{day_n:02}")
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  // Pins quick-xml text-node semantics across the 0.36 → 0.42 upgrade.
+  // WHY: 0.38+ delivers `&amp;` as its own event, and RSS titles are full
+  // of them ("Q&amp;A", "R&amp;D"). Also pins that CDATA is taken
+  // verbatim and that attribute values (Atom `href`) stay raw — 0.36 never
+  // unescaped them, so `&amp;` survives in the stored URL.
+  #[test]
+  fn parse_feed_rss_entities_cdata_and_whitespace() {
+    let xml = r#"<?xml version="1.0"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>Blog</title>
+    <item>
+      <title>  Q&amp;A with   R&amp;D  </title>
+      <link>https://example.org/a?x=1&amp;y=2</link>
+      <pubDate>Tue, 07 Apr 2026 10:00:00 GMT</pubDate>
+      <description>Fish &amp; chips &#8212; tasty</description>
+      <dc:creator>Ann &amp; Ben</dc:creator>
+    </item>
+    <item>
+      <title><![CDATA[Raw <b>&amp;</b> title]]></title>
+      <link>https://example.org/b</link>
+      <pubDate>Wed, 08 Apr 2026 10:00:00 GMT</pubDate>
+      <description>second</description>
+    </item>
+  </channel>
+</rss>"#;
+    let items =
+      parse_feed(xml, SourcePlatform::Blog, ContentType::Article, "t")
+        .expect("parse ok");
+    assert_eq!(items.len(), 2);
+    assert_eq!(items[0].title, "Q&A with R&D");
+    assert_eq!(items[0].url, "https://example.org/a?x=1&y=2");
+    assert!(items[0].summary_short.contains("Fish & chips — tasty"));
+    assert_eq!(items[0].authors, vec!["Ann & Ben".to_string()]);
+    assert_eq!(items[1].title, "Raw <b>&amp;</b> title");
+  }
+
+  #[test]
+  fn parse_feed_atom_link_href_attribute_stays_raw() {
+    let xml = r#"<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <title>Atom &amp; Eve</title>
+    <link rel="alternate" href="https://example.org/p?a=1&amp;b=2"/>
+    <published>2026-04-07T10:00:00Z</published>
+    <author><name>Eve</name></author>
+    <summary>s</summary>
+  </entry>
+</feed>"#;
+    let items =
+      parse_feed(xml, SourcePlatform::Blog, ContentType::Article, "t")
+        .expect("parse ok");
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].title, "Atom & Eve");
+    assert_eq!(items[0].url, "https://example.org/p?a=1&amp;b=2");
+    assert_eq!(items[0].authors, vec!["Eve".to_string()]);
+  }
 }

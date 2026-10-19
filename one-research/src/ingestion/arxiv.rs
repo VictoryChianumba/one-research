@@ -281,7 +281,9 @@ fn parse_atom(xml: &str) -> Result<Vec<FeedItem>, String> {
   }
 
   let mut reader = Reader::from_str(xml);
-  reader.config_mut().trim_text(true);
+  // Trimming is done per text node by `XmlTextNode` (see its docs).
+  reader.config_mut().trim_text(false);
+  let mut node = XmlTextNode::default();
 
   let mut items: Vec<FeedItem> = Vec::new();
 
@@ -300,10 +302,39 @@ fn parse_atom(xml: &str) -> Result<Vec<FeedItem>, String> {
   let mut domain_tags: Vec<String> = Vec::new();
 
   loop {
-    match reader.read_event() {
+    let event = reader.read_event();
+    match &event {
+      Ok(Event::Text(e)) => {
+        node.push_text(e);
+        continue;
+      }
+      Ok(Event::GeneralRef(e)) => {
+        node.push_ref(e);
+        continue;
+      }
+      _ => {}
+    }
+    // A non-text event ends the current text node.
+    if let Some(text) = node.take()
+      && in_entry
+    {
+      if in_author && current_tag == "name" {
+        current_author_name.push_str(&text);
+      } else {
+        match current_tag.as_str() {
+          "title" => title.push_str(&text),
+          "id" => url.push_str(&text),
+          "published" => published_at.push_str(&text),
+          "summary" => summary.push_str(&text),
+          "arxiv:comment" => arxiv_comment.push_str(&text),
+          _ => {}
+        }
+      }
+    }
+
+    match event {
       Ok(Event::Start(ref e)) => {
-        let tag =
-          std::str::from_utf8(e.name().as_ref()).unwrap_or("").to_string();
+        let tag = e.name().as_ref().to_string();
 
         match tag.as_str() {
           "entry" => {
@@ -328,41 +359,19 @@ fn parse_atom(xml: &str) -> Result<Vec<FeedItem>, String> {
 
       Ok(Event::Empty(ref e)) => {
         let name = e.name();
-        let tag = std::str::from_utf8(name.as_ref()).unwrap_or("");
+        let tag = name.as_ref();
         if in_entry && tag == "category" {
           // <category term="cs.LG" scheme="..."/>
           for attr in e.attributes().flatten() {
-            if attr.key.as_ref() == b"term" {
-              if let Ok(val) = std::str::from_utf8(&attr.value) {
-                domain_tags.push(val.to_string());
-              }
+            if attr.key.as_ref() == "term" {
+              domain_tags.push(attr.value.to_string());
             }
           }
         }
       }
 
-      Ok(Event::Text(ref e)) => {
-        let text = e.unescape().unwrap_or_default().to_string();
-        if !in_entry {
-          continue;
-        }
-        if in_author && current_tag == "name" {
-          current_author_name.push_str(&text);
-        } else {
-          match current_tag.as_str() {
-            "title" => title.push_str(&text),
-            "id" => url.push_str(&text),
-            "published" => published_at.push_str(&text),
-            "summary" => summary.push_str(&text),
-            "arxiv:comment" => arxiv_comment.push_str(&text),
-            _ => {}
-          }
-        }
-      }
-
       Ok(Event::End(ref e)) => {
-        let tag =
-          std::str::from_utf8(e.name().as_ref()).unwrap_or("").to_string();
+        let tag = e.name().as_ref().to_string();
 
         if in_entry && in_author && tag == "name" {
           // name closed inside author — nothing extra needed
@@ -465,7 +474,7 @@ fn parse_atom(xml: &str) -> Result<Vec<FeedItem>, String> {
   Ok(items)
 }
 
-use super::collapse_whitespace;
+use super::{XmlTextNode, collapse_whitespace};
 
 fn encode_arxiv_query(query: &str) -> String {
   query
@@ -650,5 +659,69 @@ mod tests {
 </feed>"#;
     let items = parse_atom(xml).expect("an empty feed is a valid response");
     assert!(items.is_empty());
+  }
+
+  // Characterization tests pinning text-node semantics across the
+  // quick-xml 0.36 → 0.42 upgrade. WHY: 0.38+ splits text around every
+  // `&ref;` into separate Text/GeneralRef events, and with trim_text(true)
+  // each fragment is trimmed independently — so a naive port turns
+  // "Attention &amp; Memory" into "Attention&Memory" in every title.
+  // These were written and passed against 0.36 before the upgrade.
+  #[test]
+  fn parse_atom_preserves_entities_and_surrounding_whitespace() {
+    let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:arxiv="http://arxiv.org/schemas/atom">
+  <entry>
+    <id>http://arxiv.org/abs/2401.00002v2</id>
+    <title>
+      Attention &amp; Memory: Q &lt; K &#8212; R&#233;sum&#xE9;
+    </title>
+    <summary>  Line one &quot;quoted&quot;
+      line two &apos;s  </summary>
+    <published>2026-04-02T00:00:00Z</published>
+    <author><name>Ad&#233;la &amp; Co</name></author>
+    <author><name>Bob</name></author>
+    <category term="cs.LG" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="stat.ML" scheme="http://arxiv.org/schemas/atom"/>
+  </entry>
+</feed>"#;
+    let items = parse_atom(xml).expect("parse ok");
+    assert_eq!(items.len(), 1);
+    let it = &items[0];
+    assert_eq!(it.title, "Attention & Memory: Q < K — Résumé");
+    assert!(
+      it.summary_short.contains("\"quoted\"")
+        && it.summary_short.contains("'s"),
+      "entities in summary must resolve, got: {:?}",
+      it.summary_short
+    );
+    assert_eq!(it.authors, vec!["Adéla & Co".to_string(), "Bob".to_string()]);
+    assert!(it.domain_tags.iter().any(|t| t == "cs.LG"));
+    assert!(it.url.contains("2401.00002"));
+  }
+
+  // Pre-existing behaviour, preserved deliberately: an entity outside the
+  // XML predefined set (e.g. `&nbsp;`) makes the whole text node resolve to
+  // empty (0.36's `unescape()` errored and the caller used
+  // `unwrap_or_default()`). Pinned so the upgrade doesn't change it
+  // silently; changing it is an application-behaviour decision.
+  #[test]
+  fn parse_atom_unknown_entity_blanks_its_text_node() {
+    let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>http://arxiv.org/abs/2401.00003v1</id>
+    <title>Kept Title</title>
+    <summary>Has&nbsp;nbsp</summary>
+    <published>2026-04-03T00:00:00Z</published>
+  </entry>
+</feed>"#;
+    let items = parse_atom(xml).expect("parse ok");
+    assert_eq!(items[0].title, "Kept Title");
+    assert!(
+      !items[0].summary_short.contains("nbsp"),
+      "unknown-entity node should be blank, got: {:?}",
+      items[0].summary_short
+    );
   }
 }
