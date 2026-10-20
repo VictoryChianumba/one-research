@@ -1,0 +1,35 @@
+[2026-10-20T00:38:04Z WARN  one_research::ingestion::registry] source anthropic: no RSS feed available; skipping (https://www.anthropic.com/news has no feed link)
+[2026-10-20T00:38:04Z INFO  one_research::ingestion::registry] source core: disabled — skipping
+[2026-10-20T00:38:04Z INFO  one_research::ingestion::registry] ingestion: semantic_scholar skipped — no API key configured
+[2026-10-20T00:38:04Z INFO  one_research::services::ingestion] source import_ai: starting fetch
+[2026-10-20T00:38:04Z INFO  one_research::ingestion::rss] rss import_ai: fetching https://importai.substack.com/feed
+[2026-10-20T00:38:04Z INFO  one_research::services::ingestion] source openreview: starting fetch
+[2026-10-20T00:38:04Z INFO  one_research::services::ingestion] source deepmind: starting fetch
+[2026-10-20T00:38:04Z INFO  one_research::ingestion::rss] rss deepmind: fetching https://deepmind.google/blog/rss.xml
+[2026-10-20T00:38:04Z INFO  one_research::services::ingestion] source arxiv: starting fetch
+[2026-10-20T00:38:04Z INFO  one_research::services::ingestion] source bair: starting fetch
+[2026-10-20T00:38:04Z INFO  one_research::ingestion::rss] rss bair: fetching https://bair.berkeley.edu/blog/feed.xml
+[2026-10-20T00:38:04Z INFO  one_research::services::ingestion] source openai: starting fetch
+[2026-10-20T00:38:04Z INFO  one_research::ingestion::rss] rss openai: fetching https://openai.com/blog/rss.xml
+[2026-10-20T00:38:04Z INFO  one_research::services::ingestion] source mit_news_ai: starting fetch
+[2026-10-20T00:38:04Z INFO  one_research::ingestion::rss] rss mit_news_ai: fetching https://news.mit.edu/rss/topic/machine-learning
+[2026-10-20T00:38:04Z WARN  one_research::ingestion::rss] import_ai: HTTP 403 Forbidden
+[2026-10-20T00:38:04Z ERROR one_research::services::ingestion] source import_ai: failed in 53ms — import_ai: HTTP 403 Forbidden
+[2026-10-20T00:38:04Z INFO  one_research::ingestion::rss] rss mit_news_ai: parsed 50 items
+[2026-10-20T00:38:04Z INFO  one_research::services::ingestion] source mit_news_ai: completed in 65ms, 50 items
+[2026-10-20T00:38:04Z INFO  one_research::ingestion::rss] rss openai: parsed 1300 items
+[2026-10-20T00:38:04Z INFO  one_research::services::ingestion] source openai: completed in 129ms, 1300 items
+[2026-10-20T00:38:04Z INFO  one_research::services::ingestion] source openreview: completed in 153ms, 0 items
+[2026-10-20T00:38:04Z ERROR one_research::ingestion::rss] deepmind: body encoding error: invalid utf-8 sequence of 1 bytes from index 1
+[2026-10-20T00:38:04Z ERROR one_research::services::ingestion] source deepmind: failed in 220ms — deepmind: body encoding error: invalid utf-8 sequence of 1 bytes from index 1
+[2026-10-20T00:38:05Z INFO  one_research::services::ingestion] source arxiv: completed in 278ms, 50 items
+[2026-10-20T00:38:05Z INFO  one_research::services::ingestion] source huggingface: starting fetch
+[2026-10-20T00:38:05Z INFO  one_research::ingestion::huggingface] huggingface: fetching abstracts for 65 papers from arXiv
+[2026-10-20T00:38:05Z INFO  one_research::ingestion::rss] rss bair: parsed 10 items
+[2026-10-20T00:38:05Z INFO  one_research::services::ingestion] source bair: completed in 596ms, 10 items
+[2026-10-20T00:38:07Z INFO  one_research::services::ingestion] source huggingface: completed in 2929ms, 65 items
+[2026-10-20T00:38:07Z INFO  one_research::services::ingestion] ingestion: fetch phase completed in 3208ms (1475 items total)
+[2026-10-20T00:38:08Z INFO  one_research::ingestion::huggingface] repo enrichment: 15/20 items enriched with github_repo
+[2026-10-20T00:38:08Z INFO  one_research::services::ingestion] ingestion: huggingface_repo enrichment in 475ms
+[2026-10-20T00:38:08Z INFO  one_research::services::ingestion] ingestion: total pipeline 3684ms (16/1475 items have github_repo set)
+[2026-10-20T00:38:34Z INFO  one_research] frame summary (224 drawn over 30s): p50=0ms p95=0ms p99=0ms max=1ms

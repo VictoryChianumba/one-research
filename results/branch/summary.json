@@ -1,0 +1,74 @@
+{
+ "label": "branch",
+ "cache_error": null,
+ "total_items": 1575,
+ "by_source": {
+  "arxiv": 50,
+  "bair": 10,
+  "deepmind": 100,
+  "huggingface": 65,
+  "mit_news_ai": 50,
+  "openai": 1300
+ },
+ "suspect": {
+  "literal_entity": [],
+  "glued_ampersand": [],
+  "empty_title": []
+ },
+ "suspect_counts": {
+  "literal_entity": 0,
+  "glued_ampersand": 0,
+  "empty_title": 0
+ },
+ "samples": {
+  "with_ampersand": [
+   "Sullivan & Cromwell brings legal expertise into agreement review",
+   "Q&A: What is agentic AI today, and what do we want it to be?",
+   "EMEA Youth & Wellbeing Grant",
+   "Combating online child sexual exploitation & abuse",
+   "Q&A with DoorDash’s CPO, Mariana Garavaglia",
+   "gpt-oss-120b & gpt-oss-20b Model Card",
+   "OpenAI and the CSU system bring AI to 500,000 students & faculty",
+   "Minne Atairu & Sora"
+  ],
+  "with_lt_gt": [
+   "Intelligence is Free, Now What? <br> Data Systems for, of, and by Agents"
+  ],
+  "non_ascii": [
+   "SciΠvot: Benchmarking Principal-Investigator Judgment at Pivotal Moments of Scientific AutoResearch Agents",
+   "Advancing coding in low‑resource programming languages",
+   "Giving AI a “crystal clear” view of the materials world",
+   "Task-aware Kernel Stein certificates for Rényi differential privacy",
+   "How Itaú is building generative AI for its entire customer base",
+   "The EU’s next chapter in AI is agentic",
+   "Disrupting AI-enabled “false front” operations",
+   "Computational tools for society’s most complex challenges"
+  ]
+ },
+ "files": [
+  "cache.json",
+  "hf_repo_cache.json",
+  "one-research.log"
+ ],
+ "log_highlights": [
+  "[2026-10-20T00:40:49Z WARN  one_research::ingestion::registry] source anthropic: no RSS feed available; skipping (https://www.anthropic.com/news has no feed link)",
+  "[2026-10-20T00:40:49Z INFO  one_research::ingestion::registry] source core: disabled — skipping",
+  "[2026-10-20T00:40:49Z INFO  one_research::ingestion::registry] ingestion: semantic_scholar skipped — no API key configured",
+  "[2026-10-20T00:40:50Z WARN  one_research::ingestion::rss] import_ai: HTTP 403 Forbidden",
+  "[2026-10-20T00:40:50Z ERROR one_research::services::ingestion] source import_ai: failed in 49ms — import_ai: HTTP 403 Forbidden",
+  "[2026-10-20T00:40:50Z INFO  one_research::services::ingestion] source arxiv: completed in 55ms, 50 items",
+  "[2026-10-20T00:40:50Z INFO  one_research::ingestion::rss] rss deepmind: parsed 100 items",
+  "[2026-10-20T00:40:50Z INFO  one_research::services::ingestion] source deepmind: completed in 61ms, 100 items",
+  "[2026-10-20T00:40:50Z INFO  one_research::ingestion::rss] rss mit_news_ai: parsed 50 items",
+  "[2026-10-20T00:40:50Z INFO  one_research::services::ingestion] source mit_news_ai: completed in 66ms, 50 items",
+  "[2026-10-20T00:40:50Z INFO  one_research::services::ingestion] source openreview: completed in 128ms, 0 items",
+  "[2026-10-20T00:40:50Z INFO  one_research::ingestion::rss] rss openai: parsed 1300 items",
+  "[2026-10-20T00:40:50Z INFO  one_research::services::ingestion] source openai: completed in 157ms, 1300 items",
+  "[2026-10-20T00:40:50Z INFO  one_research::ingestion::rss] rss bair: parsed 10 items",
+  "[2026-10-20T00:40:50Z INFO  one_research::services::ingestion] source bair: completed in 599ms, 10 items",
+  "[2026-10-20T00:40:52Z INFO  one_research::services::ingestion] source huggingface: completed in 2982ms, 65 items",
+  "[2026-10-20T00:40:52Z INFO  one_research::services::ingestion] ingestion: fetch phase completed in 3038ms (1575 items total)",
+  "[2026-10-20T00:40:53Z INFO  one_research::ingestion::huggingface] repo enrichment: 15/20 items enriched with github_repo",
+  "[2026-10-20T00:40:53Z INFO  one_research::services::ingestion] ingestion: total pipeline 3540ms (16/1575 items have github_repo set)"
+ ]
+}

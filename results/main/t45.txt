@@ -1,0 +1,40 @@
+
+       █▀█ █▄ █ █▀  █▀█ █▀ █▀ █▀ █▀█ █▀█ █ █
+       █ █ █ ▀█ █▀  █▀▄ █▀ ▀█ █▀ █▀█ █▀▄ █▀█   Inbox 1475  Browse 155  Library 0  Discoveries 0  History 0  Total 1475         v0.1.0
+       ▀▀▀ ▀  ▀ ▀▀  ▀ ▀ ▀▀ ▀▀ ▀▀ ▀ ▀ ▀ ▀ ▀ ▀
+
+        / Search items...                                                           source:any  state:any  type:any  signal:any
+
+
+       ╭─────────────────────────────────────────────────────────────────────────┬──────────────────────────────────────────────────╮
+       │                                                                         │                                                  │
+       │  Title                                                    Date       █  │  HexaShell: A Thin Harness for Exploring the     │
+       │                                                                      ║  │  Limits of VLM Agents as Robot Coding Agents     │
+       │  HexaShell: A Thin Harness for Exploring the Limits of    2026-10-20 ║  │  huggingface · paper · 2026-10-20 · inbox        │
+       │  VLM Agents as Robot Coding Agents                                   ║  │                                                  │
+       │                                                                      ║  │  Authors  Hongcheng Gao, Alex Zhou, Jay Zhu,     │
+       │  Has GPT-6-Astra Achieved Embodied Intelligence?          2026-10-20 ║  │           Zelin Zheng, Shijia Ge, Xiping Li,     │
+       │                                                                      ║  │           Di Wu, Yazhe Wang, Jianshu Zeng,       │
+       │  BizBench: Unveiling Hidden Challenges in Deploying       2026-10-20 ║  │                                                  │
+       │  Long-Horizon Agents for Real-World Business                         ║  │  Source   huggingface  paper                     │
+       │                                                                      ║  │  Topics   agents                                 │
+       │  Learning to Think and Explore in 3D World                2026-10-20 ║  │                                                  │
+       │                                                                      ║  │  URL      https://huggingface.co/papers/2610.23  │
+       │  Into the Unknown: Benchmarking AI agents on open         2026-10-20 ║  │  Action   o open URL                             │
+       │  scientific research problems                                        ║  │                                                  │
+       │                                                                      ║  │                                                  │
+       │  LiveMACE: Process-Aware Evaluation of LLM Agent          2026-10-20 ║  ├──────────────────────────────────────────────────┤
+       │  Capabilities in Evolving Markets                                    ║  │                                                  │
+       │                                                                      ║  │ Last read  ─ nothing opened yet ─                │
+       │  Pack Light, CarryOn: Building Object-Oriented Context    2026-10-20 ║  │                                                  │
+       │  for Long-Horizon Agents                                             ║  │ Queue      0 queued items                        │
+       │                                                                      ║  │            ─ empty ─                             │
+       │  LEV: Thinking Fast and Deep with Looped Decision Models  2026-10-20 ║  │                                                  │
+       │                                                                      ║  │ Fresh      65 today   67 in 48h                  │
+       │  Speculative Sampling in Interactive Video Generation     2026-10-20 ║  │            HF 65   arXiv 0   Other 2             │
+       │                                                                      ║  │                                                  │
+       │                                                                         │ Library    Queue 0   Read 0                      │
+       ╰─────────────────────────────────────────────────────────────────────────┴──────────────────────────────────────────────────╯
+
+       deepmind: body encoding error: invalid utf-8 sequence of 1 bytes from index 1
+       feed: j/k · Enter · Space · f · Tab · i · r · w · x · q · ? help
