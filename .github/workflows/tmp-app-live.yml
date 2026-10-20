@@ -1,0 +1,39 @@
+# TEMPORARY: live side-by-side run of main vs the CI branch. Branch is deleted after.
+name: TEMP app live comparison
+on:
+  push:
+    branches: [tmp/app-live-test]
+permissions:
+  contents: write
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { ref: main, path: main-src/one-research }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { repository: VictoryChianumba/tread, ref: 17a5dd016eb3ef43a5439cfad7abdfd630bbddc5, path: main-src/tread }
+      - run: sudo apt-get update -q && sudo apt-get install -y -q libasound2-dev && pip install --break-system-packages -q pyte==0.8.2
+      - run: rustup toolchain install 1.97.0 --profile minimal
+      - name: Build branch
+        run: cargo +1.97.0 build --release --locked -p one-research && cp target/release/one-research "$RUNNER_TEMP/bin-branch"
+      - name: Build main
+        working-directory: main-src/one-research
+        run: cargo +1.97.0 build --release -p one-research && cp target/release/one-research "$RUNNER_TEMP/bin-main"
+      - name: Run main
+        run: tmp-apptest/drive.sh "$RUNNER_TEMP/bin-main" main
+      - name: Pause so arXiv's rate window resets
+        run: sleep 45
+      - name: Run branch
+        run: tmp-apptest/drive.sh "$RUNNER_TEMP/bin-branch" branch
+      - name: Push results
+        if: ${{ !cancelled() }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c tmp/app-live-results
+          git add -f results
+          git commit -qm "TEMP: live comparison results"
+          git push -f origin tmp/app-live-results
